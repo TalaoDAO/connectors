@@ -1,5 +1,5 @@
 # apis/verifier_api.py
-from flask import Blueprint
+from flask import Blueprint,  current_app
 from flask_restx import Api, Namespace, Resource, fields
 
 # Import the handler implemented in oidc4vp.py
