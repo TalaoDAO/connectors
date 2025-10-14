@@ -1,5 +1,5 @@
 
-# MCP Server for Wallet Data Verification
+# MCP Wallet Verification for AI Agents
 
 **Audience:** developers building AI agents that need to authenticate a user with their **data wallet** (EUDI-compatible, e.g., Talao) using **MCP** + **OIDC4VP** (pull model).
 
@@ -49,6 +49,17 @@ This guide shows how to:
 - `scope` (optional) → one of `profile`, `email`, `phone`, `over18`, `custom`, `wallet_identifier`  
   - `wallet_identifier` maps to **no scope** (ID-token only; returns the wallet DID)
 - `session_id` (optional on start; server can generate; required for poll)
+
+### Scope → Returned Claims
+
+| scope | Returned claims (in `result.structuredContent`) | Notes |
+|---|---|---|
+| `email` | `email_address`, `email` | Provided as **PID** according to **eIDAS v2** rulebook. |
+| `phone` | `mobile_phone_number`, `phone` | Provided as **PID** according to **eIDAS v2** rulebook. |
+| `profile` | `family_name`, `given_name`, `birth_date` |OIDF standard scope. |
+| `wallet_identifier` | **wallet_identifier**  is the wallet **DID** or the public key **thumbprint** | ID‑token only flow; no extra attributes. |
+| `over18` | `over_18` (boolean) or equivalent age‑attestation | Wallet-dependent representation. |
+| `custom` | Defined by your Presentation Definition | Requires registration to provide your PEX/DCQL. |
 
 ---
 
@@ -230,10 +241,9 @@ All tool results (MCP 2025-06-18):
   "status": "verified",
   "session_id": "3e02ac7e-...",
   "scope": "profile",
-  "wallet_identifier": "did:jwk:...",   // if wallet_identifier / ID-token flow
   "first_name": "John",
-  "last_name": "DOE"
-  // tokens like "vp_token"/"id_token" are redacted if present
+  "last_name": "DOE",
+  "birth_date": "2000-12-01"
 }
 ```
 

@@ -95,9 +95,7 @@ def oidc4vp_qrcode(red, mode):
     #mode = current_app.config["MODE"]
     
     print("mode server dans oidc4vp = ", mode.server)
-    
-    print("mode = ", mode)
-    
+        
     # --- Auth ---
     request_api_key = request.headers.get("X-API-KEY")
     if not request_api_key:
