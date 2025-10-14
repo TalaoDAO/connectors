@@ -47,10 +47,8 @@ class currentMode:
         # Define runtime behavior depending on environment
         if self.myenv == 'aws':
             # Configuration for AWS environment
-            #self.port = 4000
             self.sys_path = '/home/admin'
             self.server = 'https://wallet-connectors.com/'
-            #self.IP = '13.37.102.193'
         elif self.myenv == 'local':
             # Configuration for local development
             self.sys_path = '/home/thierry'

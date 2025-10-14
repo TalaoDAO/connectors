@@ -94,6 +94,8 @@ def oidc4vp_qrcode():
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
     
+    print("mode = ", mode)
+    
     # --- Auth ---
     request_api_key = request.headers.get("X-API-KEY")
     if not request_api_key:

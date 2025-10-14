@@ -1,5 +1,5 @@
 
-# MCP Wallet Verification for AI Agents
+# MCP Server for Wallet Data Verification
 
 **Audience:** developers building AI agents that need to authenticate a user with their **data wallet** (EUDI-compatible, e.g., Talao) using **MCP** + **OIDC4VP** (pull model).
 
