@@ -9,7 +9,6 @@ from flask_qrcode import QRcode
 from flask_login import LoginManager
 import redis
 import markdown
-from flask_migrate import Migrate
 import env
 
 # Your modules
@@ -45,9 +44,6 @@ from apis import issuer_api,  signin_api, verifier_api, verifier_mcp
 DEFAULT_API_LIFE = 5000
 DEFAULT_GRANT_LIFE = 5000
 DEFAULT_ACCEPTANCE_TOKEN_LIFE = 28 * 24 * 60 * 60
-
-# Migrate object
-migrate = Migrate()
 
 
 def create_app() -> Flask:
@@ -115,7 +111,6 @@ def create_app() -> Flask:
 
     # ---- Init extensions bound to app ----
     db.init_app(app)
-    migrate.init_app(app, db) 
     Session(app)
     QRcode(app)
     #Mobility(app)
