@@ -339,12 +339,6 @@ def seed_user():
             country="FR",
             subscription="paid",
             profile_picture="default_picture.jpeg",
-            qtsp_account_username="manager@talao-demo.com",
-            qtsp_account_password="YcSATe73xm3.c4j",
-            qtsp_account_access_identifier="36762fb5-ed61-41ae-bd1d-330a9a100d30",
-            qtsp_account_access_key="cbfc7012A444b6173CA2c994acf1fb4ac295acA18dFF39221Fb905DEAF70D8f1",
-            qtsp_account_tenant_id="7fdb7386-8e98-40b9-b653-ca98a10b0cb9",
-            qtsp_account_app_name="CONNECTORS"
         )
         db.session.add(default_user)
         
@@ -371,12 +365,6 @@ def seed_user():
             country="FR",
             subscription="paid",
             profile_picture="default_picture.jpeg",
-            qtsp_account_username="manager@talao-demo.com",
-            qtsp_account_password="YcSATe73xm3.c4j",
-            qtsp_account_access_identifier="36762fb5-ed61-41ae-bd1d-330a9a100d30",
-            qtsp_account_access_key="cbfc7012A444b6173CA2c994acf1fb4ac295acA18dFF39221Fb905DEAF70D8f1",
-            qtsp_account_tenant_id="7fdb7386-8e98-40b9-b653-ca98a10b0cb9",
-            qtsp_account_app_name="CONNECTORS"
         )
         db.session.add(default_user)
         

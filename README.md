@@ -18,6 +18,9 @@ Send your verifier key in a header on **every** call:
 ```
 X-API-KEY: <YOUR_VERIFIER_KEY>
 ```
+
+Use **0000** as the verifier_id and verifier_key for testing purpose with Talao wallet `https://talao.io` 
+
 No cookies or OAuth are used by this MCP endpoint.
 
 ---
