@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP Test – Wallet Verification</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem; color: #1f2937; }
+    h1 { margin-bottom: .25rem; }
+    .muted { color: #6b7280; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem; margin-top: 1rem; background: #fff; }
+    label { display:block; margin:.35rem 0 .2rem; font-weight:600; }
+    input[type=text] { width: 100%; padding:.6rem .7rem; border-radius:8px; border:1px solid #d1d5db; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .btn { display:inline-block; padding:.7rem 1rem; border-radius:10px; border:1px solid #0891b2; background:#06b6d4; color:#fff; font-weight:700; cursor:pointer; }
+    .btn.secondary { background:#fff; color:#065f46; border-color:#a7f3d0; }
+    .scope { display:flex; gap:1rem; margin:.25rem 0 1rem; }
+    .scope label { font-weight:500; }
+    pre { background:#0b1220; color:#e5f7ff; padding:1rem; border-radius:12px; overflow:auto; }
+    img.qr { max-width: 260px; height:auto; display:block; }
+    .grid { display:grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items:start; }
+    .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:.4rem; }
+    .pending { background:#fbbf24; }
+    .verified { background:#10b981; }
+    .denied { background:#ef4444; }
+    .small { font-size:.9rem; }
+    .help { background:#ecfeff; border:1px solid #c8f1f5; padding:.75rem; border-radius:10px; }
+  </style>
+</head>
+<body>
+  <h1>MCP Test – Wallet Verification</h1>
+  <p class="muted">Start a verification via your MCP server, show the QR code, then poll for the result.</p>
+
+  <form class="card" method="post" action="{{ url_for('start') }}">
+    <div class="row">
+      <div>
+        <label for="mcp_url">MCP URL</label>
+        <input id="mcp_url" name="mcp_url" type="text" value="{{ mcp_url or 'http://localhost:8000/mcp' }}" required>
+      </div>
+      <div>
+        <label for="api_key">X-API-KEY</label>
+        <input id="api_key" name="api_key" type="text" value="{{ api_key or '' }}" placeholder="paste your verifier secret" required>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="verifier_id">Verifier ID</label>
+        <input id="verifier_id" name="verifier_id" type="text" value="{{ verifier_id or '0000' }}" required>
+      </div>
+      <div>
+        <label>Scope (pick one)</label>
+        <div class="scope">
+          <label><input type="radio" name="scope" value="profile" checked> profile</label>
+          <label><input type="radio" name="scope" value="email" > email </label>
+          <label><input type="radio" name="scope" value="phone" > phone</label>
+        <label><input type="radio" name="scope" value="over18"> Over 18</label>
+        <label><input type="radio" name="scope" value="wallet_identifier"> None</label>
+
+
+        </div>
+      </div>
+    </div>
+    <button class="btn" type="submit">Start verification</button>
+  </form>
+
+  <div class="card help small">
+    <strong>Tips</strong> — Use running MCP endpoint (e.g., <code>http://192.168.0.65:4000/mcp</code>) and an API key that matches <code>verifier_id</code>.
+  </div>
+</body>
+</html>
+

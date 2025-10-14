@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bitstring Status List — CONNECTORS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    /* Match the look & feel of statuslist.html */
+    .container {
+      max-width: 800px;
+      margin: 3rem auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h1 { color: var(--primary); text-align: center; margin-top: 0; }
+
+    form { display: grid; gap: 1rem; }
+    label { margin-bottom: 0.25rem; display: block; font-weight: 600; }
+    .req { font-size: 0.8em; color: #dc2626; font-variant: small-caps; margin-left: .25rem; }
+
+    form input[type="text"],
+    form select,
+    form textarea {
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    .muted   { color:#6b7280; font-size:.95rem; }
+    .success { color:#065f46; font-weight:600; }
+    .error   { color:#b91c1c; font-weight:600; }
+
+    /* Button styles aligned with statuslist.html */
+    .btn {
+      display:inline-flex; align-items:center; gap:.5rem;
+      padding:.6rem .9rem; border-radius:10px; border:1px solid #ddd;
+      background:#f9fafb; cursor:pointer; font-weight:600;
+    }
+    .btn:hover { background:#f1f5f9; }
+    .btn.danger  { border-color:#fca5a5; background:#fee2e2; color:#991b1b; }
+    .btn.success { border-color:#bbf7d0; background:#ecfdf5; color:#065f46; }
+
+    .actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .helper  { text-align:center; margin-top:.25rem; }
+  </style>
+</head>
+
+<body>
+  <!-- Same header structure/design as statuslist.html -->
+  <header>
+    <div class="logo">
+      <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET-CONNECTORS.COM</a></strong>
+    </div>
+    <div class="nav-group">
+      <nav>
+        <a href="/menu">Menu</a>
+        <a href="/documentation/bitstringstatuslist" target="_blank" rel="noopener">Explain ?</a>
+      </nav>
+      {% include "account.html" %}
+    </div>
+  </header>
+
+  <div class="container">
+    <h1>Activate or Revoke a JWT-VC (Bitstring Status List)</h1>
+    <p class="helper muted">Manage a credential’s bit in your <em>Bitstring Status List</em>.</p>
+
+    <!-- Keep original POST endpoint -->
+    <form action="/issuer/bitstringstatuslist" method="POST">
+      <div>
+        <label for="index">Status List Index <span class="req">*</span></label>
+        <input id="index" type="text" name="index" required placeholder="e.g., 1234">
+      </div>
+
+      <div class="actions">
+        <button class="btn danger"  type="submit" name="button" value="revoke">Revoke credential</button>
+        <button class="btn success" type="submit" name="button" value="active">Activate credential</button>
+      </div>
+    </form>
+  </div>
+
+  {% include "footer.html" %}
+
+  <script>
+    /* Header dropdown helper (same behavior as statuslist.html) */
+    function toggleDropdown() {
+      const dropdown = document.getElementById("dropdown");
+      if (!dropdown) return;
+      dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+    }
+    window.onclick = function(event) {
+      if (!event.target.matches('.user-icon')) {
+        const dropdown = document.getElementById("dropdown");
+        if (dropdown && dropdown.style.display === "block") {
+          dropdown.style.display = "none";
+        }
+      }
+    };
+  </script>
+</body>
+</html>

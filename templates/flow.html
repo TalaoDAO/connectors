@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verification Flow – {{ session_id }}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem; color: #1f2937; }
+    h1 { margin-bottom: .25rem; }
+    .muted { color: #6b7280; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 1rem; margin-top: 1rem; background: #fff; }
+    .grid { display:grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items:start; }
+    pre { background:#0b1220; color:#e5f7ff; padding:1rem; border-radius:12px; overflow:auto; }
+    img.qr { max-width: 260px; height:auto; display:block; }
+    .btn { display:inline-block; padding:.6rem .9rem; border-radius:10px; border:1px solid #0891b2; background:#06b6d4; color:#fff; font-weight:700; text-decoration:none; }
+    .small { font-size:.9rem; }
+    .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:.4rem; }
+    .pending { background:#fbbf24; }
+    .verified { background:#10b981; }
+    .denied { background:#ef4444; }
+    .row { display:flex; gap: .75rem; align-items:center; }
+  </style>
+</head>
+<body>
+  <h1>Verification Flow</h1>
+  <p class="muted">Session: <code>{{ session_id }}</code></p>
+
+  <div class="card grid">
+    <div>
+      <img class="qr" src="{{ qr_png_data_uri }}" alt="Scan this QR with your wallet">
+      <p class="small">Or open deep link:</p>
+      <p><a class="btn" href="{{ deeplink_url }}">Open wallet</a></p>
+    </div>
+    <div>
+      <div class="row">
+        <span id="dot" class="status-dot pending"></span>
+        <strong id="status">pending</strong>
+      </div>
+      <pre id="result_json">{}</pre>
+    </div>
+  </div>
+
+  <script>
+    const sessionId  = {{ session_id  | tojson }};
+    const mcpUrl     = {{ mcp_url     | tojson }};
+    const apiKey     = {{ api_key     | tojson }};
+    const verifierId = {{ verifier_id | tojson }}; // not required for poll, but harmless
+
+    let pollId = 0;
+
+    function setDot(status) {
+      const dot = document.getElementById("dot");
+      dot.className = "status-dot " + (
+        status === "verified" ? "verified" :
+        status === "denied"   ? "denied"   : "pending"
+      );
+    }
+
+    async function poll() {
+      pollId += 1;
+
+      const body = {
+        jsonrpc: "2.0",
+        id: pollId,
+        method: "tools/call",
+        params: {
+          name: "poll_wallet_verification",
+          arguments: { session_id: sessionId } // `verifier_id` not needed
+        }
+      };
+
+      try {
+        const res = await fetch(mcpUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-API-KEY": apiKey
+          },
+          body: JSON.stringify(body)
+        });
+
+        // If the server/proxy failed preflight or auth, surface it clearly
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          document.getElementById("result_json").textContent =
+            `HTTP ${res.status} ${res.statusText}\n` + text;
+          setTimeout(poll, 2500);
+          return;
+        }
+
+        const data   = await res.json();
+        const result = data?.result || {};
+
+        // MCP 2025-06-18: content is an array of blocks; structuredContent holds machine-readable JSON
+        let structured = result.structuredContent || {};
+        const blocks   = Array.isArray(result.content) ? result.content : [];
+
+        // Back-compat fallback: if structured is empty, try to parse the first text block as JSON
+        if (!structured || (Object.keys(structured).length === 0 && blocks.length)) {
+          const firstText = blocks.find(b => b.type === "text")?.text;
+          if (firstText) {
+            try { structured = JSON.parse(firstText); } catch (_) {}
+          }
+        }
+
+        const status = structured?.status || "pending";
+        document.getElementById("status").textContent = status;
+        setDot(status);
+        document.getElementById("result_json").textContent = JSON.stringify(structured || {}, null, 2);
+
+        if (status === "pending") {
+          setTimeout(poll, 1500);
+        }
+      } catch (e) {
+        document.getElementById("result_json").textContent = "Error: " + e;
+        setTimeout(poll, 2500);
+      }
+    }
+
+    setTimeout(poll, 1200);
+  </script>
+</body>
+</html>

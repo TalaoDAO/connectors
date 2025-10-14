@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QR Code Verifier</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Match home.html header + font -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+
+  <style>
+    :root{
+      --card-bg:#fff; --muted:#555; --b:#e5e7eb; --shadow:0 2px 8px rgba(0,0,0,.04);
+      --accent:#0b7285; --accent-2:#1971c2; --ok:#166534; --warn:#92400e; --err:#991b1b;
+    }
+    body { margin: 0; background: #f7f9fc; color: #333; font-family: Arial, sans-serif; }
+    .section { max-width: 1200px; margin: 4rem auto; padding: 0 2rem; }
+    .qr-card {
+      text-align: center; padding: 2rem; background: var(--card-bg);
+      border: 1px solid #ddd; border-radius: 16px; box-shadow: var(--shadow);
+    }
+    h1 { font-size: 1.8rem; margin: 0 0 .5rem 0; color: var(--primary); text-align: center; }
+    p.lead { font-size: 1.05rem; color: var(--muted); text-align: center; margin: 0 0 1.25rem 0; }
+    img.qr { width: 300px; height: 300px; margin: 1rem 0; display: inline-block;
+      border-radius: 8px; border: 1px solid #eee; background: #fff; padding: .5rem; }
+    .deep-link { margin-top: .75rem; word-break: break-word; color: #007BFF; font-weight: bold; text-decoration: none; display: inline-block; }
+    .deep-link:hover { text-decoration: underline; }
+
+    /* Live log card */
+    .log-card {
+      margin-top: 1.5rem; padding: 1rem 1rem .75rem; background: var(--card-bg);
+      border: 1px solid var(--b); border-radius: 16px; box-shadow: var(--shadow);
+    }
+    .log-header{
+      display:flex; align-items:center; gap:.75rem; justify-content:space-between; margin-bottom:.5rem;
+    }
+    .log-title{ font-weight:700; color: var(--accent); display:flex; align-items:center; gap:.5rem; }
+    .pill{
+      display:inline-flex; align-items:center; gap:.4rem; padding:.25rem .5rem; border-radius:999px;
+      font-size:.8rem; border:1px solid var(--b); background:#f1f5f9;
+    }
+    .dot{ width:.5rem; height:.5rem; border-radius:999px; background:#94a3b8; }
+    .dot.ok{ background:#22c55e; } .dot.off{ background:#ef4444; }
+    .log-controls{ display:flex; gap:.5rem; align-items:center; }
+    .btn{
+      appearance:none; border:1px solid var(--b); background:#fff; padding:.35rem .6rem; border-radius:10px; cursor:pointer;
+      font-size:.85rem;
+    }
+    .btn:hover{ border-color:#cbd5e1; }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{ border-color:#2563eb; }
+    .log-wrap{
+      border:1px solid var(--b); border-radius:12px; background:#fcfcfd; max-height: 340px; overflow:auto; padding:.25rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:.9rem;
+    }
+    .log-list{ list-style:none; margin:0; padding:.25rem; }
+    .log-item{ display:flex; align-items:flex-start; gap:.5rem; padding:.35rem .25rem; border-bottom:1px dashed #eef2f7; }
+    .log-item:last-child{ border-bottom:none; }
+    .badge{
+      padding:.1rem .45rem; border-radius:8px; font-size:.72rem; border:1px solid var(--b); white-space:nowrap;
+    }
+    .badge.request{ background:#e0f2fe; color:#075985; }
+    .badge.response{ background:#dcfce7; color:#166534; }
+    .badge.error{ background:#fee2e2; color:#991b1b; }
+    .ts{ color:#64748b; min-width: 10.5rem; white-space:nowrap; font-variant-numeric: tabular-nums; }
+    .summary{ flex:1; word-break: break-word; }
+    .status{ color:#475569; min-width:3.5rem; text-align:right; }
+    .muted{ color:#94a3b8; }
+    .kbd { font: 500 .78rem ui-monospace, SFMono-Regular, Menlo, monospace; border:1px solid var(--b); border-bottom-width:2px; padding:.08rem .3rem; border-radius:6px; background:#f8fafc; }
+  
+        /* --- JSON view + details --- */
+    .log-item.block { display:flex; flex-direction:column; align-items:stretch; }
+    .log-item .topline { display:flex; align-items:flex-start; gap:.5rem; }
+    .log-item .meta { margin:.35rem 0 0 0; padding-left:2.1rem; font-size:.85rem; color:#374151; }
+    .meta .row { margin:.15rem 0; }
+    .meta .kv { width:100%; border-collapse:collapse; margin:.15rem 0; }
+    .meta .kv th, .meta .kv td { padding:.15rem .35rem; border-bottom:1px dashed #eef2f7; text-align:left; vertical-align:top; }
+    .meta details { margin-top:.25rem; }
+    .meta details > summary { cursor:pointer; user-select:none; }
+    .meta pre { margin:.25rem 0; padding:.5rem; border:1px solid var(--b); border-radius:8px; background:#fff; max-height:180px; overflow:auto; }
+    .meta .kv code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; }
+
+  
+  </style>
+</head>
+<body>
+
+  <!-- Header copied to match home.html -->
+  <header>
+    <div>
+      <strong><a style="color: var(--primary); text-decoration: none;" href="/">WALLET-CONNECTORS.COM</a></strong>
+    </div>
+    <nav>
+      <a href="/verifier/select/{{verifier_type}}">Select</a>
+      <a href="/verifier/online-test/audit/{{ verifier_id }}">Audit</a>
+      <a href="/documentation/home">Explain ?</a>
+    </nav>
+  </header>
+
+  <main class="section">
+    <h1>Scan to Test</h1>
+    <p class="lead">Use your compatible wallet to scan the QR code below. This code is valid for a limited time.</p>
+
+    <div class="qr-card" role="region" aria-label="Wallet verification QR">
+      <img class="qr" src="{{ qrcode(url) }}" alt="QR code for wallet sign-in" />
+      <div>
+        <a class="deep-link" href="{{ url }}">{{ url }}</a>
+      </div>
+    </div>
+
+    <!-- Live log card -->
+    <section class="log-card" aria-live="polite" aria-busy="false">
+      <div class="log-header">
+        <div class="log-title">
+          <span>Wallet Requests & Responses</span>
+          <span id="sse-status" class="pill"><span id="sse-dot" class="dot off"></span><span id="sse-state">Disconnected</span></span>
+        </div>
+        <div class="log-controls">
+          <button id="pause-btn" class="btn" title="Pause/resume stream (or press P)">
+            <span id="pause-icon">⏸</span> <span id="pause-label">Pause</span>
+          </button>
+          <button id="copy-btn" class="btn" title="Copy visible lines">📋 Copy</button>
+          <button id="clear-btn" class="btn" title="Clear log">🧹 Clear</button>
+
+          <!-- Redirect control: appears when event arrives -->
+          <button id="continue-redirect" class="btn primary" style="display:none" title="Go to follow-up">▶ Continue</button>
+        </div>
+      </div>
+      <div class="log-wrap" id="log-wrap">
+        <ul id="log-list" class="log-list">
+          <li class="log-item muted"><span class="badge">info</span><span class="ts">—</span><span class="summary">Waiting for events for session <span class="kbd">{{ session_id }}</span>…</span><span class="status"></span></li>
+        </ul>
+      </div>
+      <div class="muted" style="margin-top:.5rem; font-size:.85rem;">
+        Tip: the panel auto-scrolls while you’re at the bottom. Scroll up to pause auto-scroll. Press <span class="kbd">P</span> to pause/resume.
+      </div>
+    </section>
+  </main>
+
+  {% include "footer.html" %}
+
+  <script>
+    function toggleDropdown() {
+      var dropdown = document.getElementById("dropdown");
+      if (!dropdown) return;
+      dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+    }
+    window.onclick = function(event) {
+      if (!event.target.matches('.user-icon')) {
+        var dropdown = document.getElementById("dropdown");
+        if (dropdown && dropdown.style.display === "block") dropdown.style.display = "none";
+      }
+    };
+
+    // --- Elements
+    const logWrap = document.getElementById('log-wrap');
+    const logList = document.getElementById('log-list');
+    const pauseBtn = document.getElementById('pause-btn');
+    const copyBtn  = document.getElementById('copy-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const sseDot   = document.getElementById('sse-dot');
+    const sseState = document.getElementById('sse-state');
+    const continueBtn = document.getElementById('continue-redirect');
+
+    let paused = false;
+    let redirectPending = false;
+    let pendingUrl = null;
+
+    const MAX_LINES = 200;
+
+    // --- Helpers
+    function isAtBottom(el){
+      return (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 8);
+    }
+    function ensureLimit(){
+      while (logList.children.length > MAX_LINES) logList.removeChild(logList.firstChild);
+    }
+    function badgeForPhase(phase){
+      const p = (phase || "").toLowerCase();
+      if (p === 'request') return '<span class="badge request">request</span>';
+      if (p === 'response') return '<span class="badge response">response</span>';
+      if (p === 'error') return '<span class="badge error">error</span>';
+      return '<span class="badge">info</span>';
+    }
+   
+    
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // --- SSE: redirect trigger (does NOT auto-navigate)
+    var source1 = new EventSource('/verifier/wallet/stream');
+    source1.onmessage = function (event) {
+      try {
+        const result = JSON.parse(event.data);
+        if (result.session_id == '{{ session_id }}') {
+          if (redirectPending) return; // already prompted
+          redirectPending = true;
+          pendingUrl = '/verifier/wallet/followup?session_id=' + result.session_id;
+
+          // Show "Continue" button. Keep streams open so logs keep flowing.
+          continueBtn.style.display = 'inline-block';
+
+          // Optional: add a note to the log
+          addLine(`[${new Date().toISOString()}] info — READY /verifier/wallet/followup • 200`);
+        }
+      } catch (e) { /* ignore */ }
+    };
+
+  function formatTs(ts){
+    // Accepts ISO or unix ms/seconds
+    try {
+      if (typeof ts === 'number') {
+        if (ts < 1e12) ts *= 1000;
+        return new Date(ts).toISOString();
+      }
+      if (!ts) return new Date().toISOString();
+      return new Date(ts).toISOString();
+    } catch { return String(ts || ''); }
+  }
+
+  function kvTable(obj){
+    const keys = Object.keys(obj || {}).sort();
+    if (!keys.length) return '<div class="muted">∅ empty</div>';
+    const rows = keys.map(k => {
+      const v = obj[k];
+      const val = (v && typeof v === 'object')
+        ? `<code>${escapeHtml(JSON.stringify(v))}</code>`
+        : `<code>${escapeHtml(String(v))}</code>`;
+      return `<tr><th>${escapeHtml(k)}</th><td>${val}</td></tr>`;
+    }).join('');
+    return `<table class="kv">${rows}</table>`;
+  }
+
+  function addEvent(payload){
+    const stick = isAtBottom(logWrap);
+    const li = document.createElement('li');
+
+    // If backend sent a string fallback, keep previous style
+    if (typeof payload === 'string') {
+      li.className = 'log-item';
+      li.innerHTML = `<span class="badge">info</span><span class="ts"></span><span class="summary">${escapeHtml(payload)}</span><span class="status"></span>`;
+      logList.appendChild(li);
+      ensureLimit();
+      if (stick) logWrap.scrollTop = logWrap.scrollHeight;
+      return;
+    }
+
+    // It's the full JSON object
+    const p = payload || {};
+    const ts = formatTs(p.ts);
+    const phase = (p.phase || 'info').toLowerCase();
+    const method = p.method || '';
+    const path = p.path || '';
+    const status = p.status || p.status_code || '';
+
+    li.className = 'log-item block';
+    li.innerHTML = `
+      <div class="topline">
+        ${badgeForPhase(phase)}
+        <span class="ts">${escapeHtml(ts)}</span>
+        <span class="summary"><strong>${escapeHtml(method)}</strong> ${escapeHtml(path)}</span>
+        <span class="status">${status ? ('#'+escapeHtml(status)) : ''}</span>
+      </div>
+
+      <div class="meta">
+        <div class="row"><strong>nonce:</strong> <code>${escapeHtml(p.nonce || '')}</code></div>
+        <div class="row"><strong>remote_addr:</strong> <code>${escapeHtml(p.remote_addr || '')}</code></div>
+        <div class="row"><strong>content_type:</strong> <code>${escapeHtml(p.content_type || '')}</code></div>
+        <div class="row"><strong>body_bytes:</strong> <code>${escapeHtml(p.body_bytes ?? '')}</code></div>
+
+        <details>
+          <summary><strong>Headers</strong> (${Object.keys(p.headers || {}).length})</summary>
+          ${kvTable(p.headers)}
+        </details>
+
+        <details>
+          <summary><strong>Query</strong> (${Object.keys(p.query || {}).length})</summary>
+          ${kvTable(p.query)}
+        </details>
+
+        <details ${p.body_preview ? '' : 'open'}>
+          <summary><strong>Body preview</strong></summary>
+          <pre>${escapeHtml(p.body_preview || '')}</pre>
+        </details>
+
+        <details>
+          <summary><strong>Raw event JSON</strong></summary>
+          <pre>${escapeHtml(JSON.stringify(p, null, 2))}</pre>
+        </details>
+      </div>
+    `;
+
+    logList.appendChild(li);
+    ensureLimit();
+    if (stick) logWrap.scrollTop = logWrap.scrollHeight;
+  }
+
+  // --- SSE: live log stream (JSON-aware)
+  var source2 = new EventSource('/verifier/wallet/test/stream');
+  source2.onopen = function(){
+    sseDot.classList.remove('off'); sseDot.classList.add('ok'); sseState.textContent = 'Connected';
+  };
+  source2.onerror = function(){
+    sseDot.classList.remove('ok'); sseDot.classList.add('off'); sseState.textContent = 'Disconnected';
+  };
+  source2.onmessage = function (event) {
+    try {
+      const result = JSON.parse(event.data); // { session_id, data }
+      if (result.session_id == '{{ session_id }}') {
+        addEvent(result.data); // <-- works for string OR object
+      }
+    } catch (e) { /* ignore parse errors */ }
+  };
+
+    // --- Controls
+    pauseBtn.addEventListener('click', () => {
+      paused = !paused;
+      document.getElementById('pause-icon').textContent = paused ? '▶️' : '⏸';
+      document.getElementById('pause-label').textContent = paused ? 'Resume' : 'Pause';
+    });
+    clearBtn.addEventListener('click', () => { logList.innerHTML = ''; });
+    copyBtn.addEventListener('click', async () => {
+      const lines = Array.from(logList.children).map(li => li.innerText);
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        copyBtn.textContent = '✅ Copied';
+        setTimeout(() => copyBtn.textContent = '📋 Copy', 1200);
+      } catch { /* silently ignore */ }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'p') { e.preventDefault(); pauseBtn.click(); }
+      if (e.key === 'Enter' && redirectPending && continueBtn.style.display !== 'none') {
+        e.preventDefault();
+        continueBtn.click();
+      }
+    });
+
+    continueBtn.addEventListener('click', () => {
+      if (!pendingUrl) return;
+      // Now that the user chose to continue, close streams and navigate.
+      try { source1.close(); } catch {}
+      try { source2.close(); } catch {}
+      window.location.assign(pendingUrl);
+    });
+  </script>
+</body>
+</html>

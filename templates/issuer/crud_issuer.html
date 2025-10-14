@@ -1,0 +1,598 @@
+<!-- FILE: templates/issuer/crud_issuer.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Create Issuer - CONNECTORS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+
+  <style>
+    .container {
+      max-width: 800px;
+      margin: 3rem auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    /* Key/Value rows */
+    .kv { display: grid; grid-template-columns: 220px 1fr; gap: .75rem 1rem; align-items: center; }
+    .kv + .kv { margin-top: .5rem; }
+    .kv .label { color: var(--label); font-weight: 600; }
+    .kv .value { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+
+    h1 { color: var(--primary); text-align: center; }
+    form { display: grid; gap: 1rem; }
+    form input[type="text"],
+    form select,
+    form textarea {
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    form button[type="submit"] {
+      background: var(--accent); color: white; border: none; padding: 0.75rem;
+      font-weight: bold; border-radius: 8px; cursor: pointer;
+    }
+    .flashes { margin: 1rem 0; color: green; font-weight: bold; }
+    label { margin-bottom: 0.25rem; display: block; font-weight: 600; }
+
+    /* Toggle buttons row */
+    .toggle-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .toggle-btn { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border-radius: 8px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; width: fit-content; font-weight: 600; }
+    .toggle-btn:hover { background: #f2f2f2; }
+    .chevron { transition: transform .2s ease; display: inline-block; }
+
+    /* Panels */
+    .panel { display: none; padding: 1rem; border: 1px dashed #e3e3e3; border-radius: 10px; background: #fcfcfc; }
+    .panel.show { display: block; }
+
+    .meta-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.75rem; }
+    .btn { display:inline-flex; align-items:center; gap:.5rem; padding:.6rem .9rem; border-radius:10px; border:1px solid #ddd; background:#f9fafb; cursor:pointer; font-weight:600; }
+    .btn:hover { background:#f1f5f9; }
+    .muted { color:#6b7280; font-size:.95rem; }
+    .success { color:#065f46; font-weight:600; }
+    .error { color:#b91c1c; font-weight:600; }
+
+    .overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,45); align-items:center; justify-content:center; z-index:1000; padding:1rem; }
+    .overlay.show { display:flex; }
+    .modal { width:min(800px,95vw); background:#fff; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,18); padding:1rem; max-height:90vh; overflow:auto; }
+    .modal header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:.5rem; }
+    .modal .actions { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:flex-end; margin-top:.75rem; }
+    .small-input { min-height:84px; }
+    .modal textarea { width:100%; min-height:220px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="logo">
+    <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET-CONNECTORS.COM</a></strong>
+  </div>
+  <div class="nav-group">
+    <nav>
+      <a href="/menu">Menu</a>
+      <a href="/issuer/select/{{issuer_type}}">Select</a>
+      <a href="/issuer/swagger">Swagger</a>
+      <a href="/documentation/issuer_create" target="_blank" rel="noopener">Explain ?</a>
+    </nav>
+    {% include "account.html" %}
+  </div>
+</header>
+
+<div class="container">
+  <h1>{{title}}</h1>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="flashes">
+        {% for message in messages %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <form method="POST" enctype="multipart/form-data">
+
+    <div class="section-card" style="margin-bottom: 1rem;">
+      <input value="{{application_api}}" name="application_api" type="hidden" hidden>
+
+      <div class="kv">
+        <div class="label">API endpoint</div>
+        <div class="value">
+          <input id="url" type="text" value="{{ api['url'] }}" readonly>
+          <button type="button" class="copy-btn" data-copy="#url">Copy</button>
+        </div>
+      </div>
+
+      <div class="kv">
+        <div class="label">issuer_id</div>
+        <div class="value">
+          <input id="issuer_id" type="text" value="{{ api['issuer_id'] }}" readonly>
+          <button type="button" class="copy-btn" data-copy="#issuer_id">Copy</button>
+        </div>
+      </div>
+
+      <div class="kv">
+        <div class="label">issuer_secret</div>
+        <div class="value">
+          <input id="issuer_secret" type="text" value="{{ api['issuer_secret'] }}" readonly>
+          <button type="button" class="copy-btn" data-copy="#issuer_secret">Copy</button>
+        </div>
+      </div>
+      <!--
+      <div class="kv">
+        <div class="label">Credential Issuer</div>
+        <div class="value">
+          <input id="issuer_identifier" type="text" value="{{ issuer_identifier }}" readonly>
+          <button type="button" class="copy-btn" data-copy="#issuer_identifier">Copy</button>
+        </div>
+      </div>-->
+    </div> 
+
+    <label>Webhook URL  <span style="font-variant: small-caps; font-size: 0.85em; color:red;">* required</span></label>
+    <input type="text" name="webhook_url" value="{{webhook_url}}" placeholder="https://example.com/webhook" required>
+
+    <label>Name </label>
+    <input type="text" name="name" value="{{name}}" placeholder="Verifier name" required>
+
+    <label>Description</label>
+    <textarea name="description" placeholder="Describe your issuer">{{description}}</textarea>
+
+    <div class="toggle-row">
+      <button type="button" class="toggle-btn" id="btn-general" aria-expanded="false" aria-controls="panel-general">
+        <span class="chevron" aria-hidden="true">▸</span> General options
+      </button>
+      <button type="button" class="toggle-btn" id="btn-grant" aria-expanded="false" aria-controls="panel-grant">
+        <span class="chevron" aria-hidden="true">▸</span> Grant Type
+      </button>
+      <button type="button" class="toggle-btn" id="btn-authorized" aria-expanded="false" aria-controls="panel-authorized">
+        <span class="chevron" aria-hidden="true">▸</span> VC Type
+      </button>
+      <button type="button" class="toggle-btn" id="btn-metadata" aria-expanded="false" aria-controls="panel-metadata">
+        <span class="chevron" aria-hidden="true">▸</span> Issuer Metadata
+      </button>
+    </div>
+
+    <!-- Panel A: General options -->
+    <div id="panel-general" class="panel " role="region" aria-label="General options">
+
+      <label>VC Issuer identifier Scheme</label>
+      <select name="issuer_urn">
+        <option value="url" {{ 'selected' if issuer_urn == url else '' }}>URL</option>
+        <option value="did" {{ 'selected' if issuer_urn == did else '' }}>DID</option>
+      </select>
+
+      <label>Key or Credential ID</label>
+      <select name="credential_id">
+        {% for credential in credentials %}
+          <option value="{{ credential.credential_id }}"
+                  {{ 'selected' if credential_id == credential.credential_id else '' }}>{{ credential.credential_id }}</option>
+        {% endfor %}
+      </select>
+
+     <label for="sign_with_certificate">Sign With Certificate</label>
+      <select name="sign_with_certificate" id="sign_with_certificate">
+        <option value="True" {{ 'selected' if sign_with_certificate else '' }}>Yes</option>
+        <option value="False" {{ 'selected' if not sign_with_certificate else '' }}>No</option>
+      </select>
+      
+      <label>Wallet Invocation</label>
+      <select name="prefix">
+        <option selected value="openid-credential-offer://">openid-credential-offer://</option>
+      </select>
+
+      <label for="status_list">Status List</label>
+      <select name="status_list" id="status_list">
+        <option value="True" {{ 'selected' if status_list else '' }}>Yes</option>
+        <option value="False" {{ 'selected' if not status_list else '' }}>No</option>
+      </select>
+
+      <label>Credential Offer Uri</label>
+      <select name="credential_offer_uri">
+        <option value="True" {{ 'selected' if credential_offer_uri else '' }}>Yes</option>
+        <option value="False" {{ 'selected' if not credential_offer_uri  else ''}}>No</option>
+      </select>
+
+      <label>OIDC4VCI Draft:</label>
+      <select name="draft" id="draft">
+        <option value="11" {{ 'selected' if draft|int == 11 else '' }} >Draft 11 (EBSI V3)</option>
+        <option value="13" {{ 'selected' if draft|int == 13 else '' }} >ID1 Draft 13 (DIIP V3)</option>
+        <option value="15" {{ 'selected' if draft|int == 15 else '' }} >ID2 Draft 15</option>
+        <option value="17" {{ 'selected' if draft|int == 17 else '' }} >Final 1.0</option>
+      </select>
+    </div>
+
+    <!-- Panel B: Grant -->
+    <div id="panel-grant" class="panel" role="region" aria-label="Grant Type">
+      <label>Grant Type</label>
+      <select name="grant_type">
+        <option value="authorization_code" {{ 'selected' if grant_type == 'authorization_code' else '' }}>Authorizaton Code Flow</option>
+        <option value="urn:ietf:params:oauth:grant-type:pre-authorized_code" {{ 'selected' if grant_type == 'urn:ietf:params:oauth:grant-type:pre-authorized_code'  else ''}}>Pre Authorization Code flow</option>
+      </select>
+
+      <label>Push Authorization Request</label>
+      <select name="par">
+        <option value="True" {{ 'selected' if par else '' }}>Yes</option>
+        <option value="False" {{ 'selected' if not par  else ''}}>No</option>
+      </select>
+
+      <label>Tx Code Required</label>
+      <select name="tx_code_required">
+        <option value="True" {{ 'selected' if tx_code_required else '' }}>Yes</option>
+        <option value="False" {{ 'selected' if not tx_code_required  else ''}}>No</option>
+      </select>
+
+      <label>Tx Code Input Mode</label>
+      <select name="tx_code_input_mode">
+        <option value="text" {{ 'selected' if tx_code_input_mode == 'text' else '' }}>text</option>
+        <option value="numeric" {{ 'selected' if tx_code_input_mode == 'numeric'  else ''}}>numeric</option>
+      </select>
+
+      <label>Tx Code Length</label>
+      <select name="tx_code_length">
+        {% for i in [4,5,6] %}
+          <option value="{{i}}"" {{ 'selected' if tx_code_length|int == i else '' }}>{{i}} </option>
+        {% endfor %}
+      </select>
+
+      <label>Tx Code Description</label>
+      <input type="text" name="tx_code_description" value="{{tx_code_description}}" >
+
+      <label>Authorization Server</label>
+      <input type="text" name="authorization_server" value="{{authorization_server}}" >
+    </div>
+
+    <!-- Panel C: VC Type  -->
+    <div id="panel-authorized" class="panel" role="region" aria-label="Authorized">
+      <!-- Store array of objects: [{urn, credential_identifier}] -->
+      <input type="hidden" name="vc_type" id="vc_type_input" value='{{ (issuer_vc_type|tojson) if issuer_vc_type is defined else "[]" }}'>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
+        <label style="margin:0">VC Types attached to this issuer</label>
+        <button type="button" class="btn" id="open-vct-modal">+ Add VC Type</button>
+      </div>
+
+      <div id="selected-vct" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;"></div>
+
+      <p class="muted" style="margin-top:.5rem">
+        Add one or more VC Types. For each, enter a <code>credential_identifier</code> (letters, digits, <code>_</code> or <code>-</code>; no spaces).
+      </p>
+    </div>
+
+    <!-- Panel D: Issuer Metadata -->
+    <div id="panel-metadata" class="panel" role="region" aria-label="Verifier Metadata">
+      <label>Provide Signed Metadata</label>
+      <select name="signed_metadata">
+        <option value="True" {{ 'selected' if signed_metadata else '' }}>Yes</option>
+        <option value="False" {{ 'selected' if not signed_metadata  else ''}}>No</option>
+      </select>
+    </div>
+
+    <button type="submit" class="button">{{button}}</button>
+  </form>
+</div>
+
+{% include "footer.html" %}
+
+<script>
+  /* Header dropdown helpers */
+  function toggleDropdown() {
+    const dropdown = document.getElementById("dropdown");
+    if (!dropdown) return;
+    dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+  }
+  window.onclick = function(event) {
+    if (!event.target.matches('.user-icon')) {
+      const dropdown = document.getElementById("dropdown");
+      if (dropdown && dropdown.style.display === "block") {
+        dropdown.style.display = "none";
+      }
+    }
+  };
+
+  // NEW: robust copy buttons for URL / issuer_id / issuer_secret
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    const sel = btn.getAttribute('data-copy');
+    const el = sel ? document.querySelector(sel) : null;
+    if (!el) return;
+    const val = (el.value ?? el.textContent ?? '').toString();
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(val);
+      } else {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = val; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      btn.textContent = 'Copied!';
+      setTimeout(() => (btn.textContent = 'Copy'), 1200);
+    } catch (_) {
+      btn.textContent = 'Failed';
+      setTimeout(() => (btn.textContent = 'Copy'), 1200);
+    }
+  });
+
+  function updateClientIdSchemes() {}
+  window.updateClientIdSchemes = updateClientIdSchemes;
+
+  function setupToggle(btnId, panelId) {
+    const btn = document.getElementById(btnId);
+    const panel = document.getElementById(panelId);
+    if (!btn || !panel) return;
+    const chev = btn.querySelector('.chevron');
+    btn.addEventListener('click', () => {
+      const open = !panel.classList.contains('show');
+      panel.classList.toggle('show', open);
+      btn.setAttribute('aria-expanded', String(open));
+      if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setupToggle('btn-general', 'panel-general');
+    setupToggle('btn-grant', 'panel-grant');
+    setupToggle('btn-authorized', 'panel-authorized');
+    setupToggle('btn-metadata', 'panel-metadata');
+  });
+</script>
+
+<!-- VCT modal -->
+<div class="overlay" id="vct-overlay" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vct-modal-title">
+    <header>
+      <h3 id="vct-modal-title" style="margin:0">Add VC Type from Registry</h3>
+      <button type="button" class="btn" id="close-vct-modal">Close</button>
+    </header>
+
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem">
+      <input id="vct-search" type="text" placeholder="Search name, keywords, fields…" style="flex:1">
+      <select id="vct-scope">
+        <option value="public">Public</option>
+        <option value="my">My VCTs</option>
+        <option selected value="all">Public + Mine</option>
+      </select>
+      <button type="button" class="btn" id="vct-refresh">Search</button>
+    </div>
+
+    <div id="vct-results" style="display:grid;gap:.5rem"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="close-vct-modal-2">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- VC Type picker: store objects {urn, credential_identifier} and render both values ----------
+document.addEventListener("DOMContentLoaded", function(){
+  function $(sel){ return document.querySelector(sel); }
+  function createEl(tag, attrs, children){
+    var el = document.createElement(tag);
+    attrs = attrs || {};
+    for (var k in attrs){ if (k in el){ el[k]=attrs[k]; } else { el.setAttribute(k, attrs[k]); } }
+    (children || []).forEach(function(c){ el.appendChild(typeof c==="string" ? document.createTextNode(c) : c); });
+    return el;
+  }
+
+  var vcInput      = $("#vc_type_input");   // stores array[ {urn, credential_identifier} ]
+  var selectedWrap = $("#selected-vct");
+  var overlay      = $("#vct-overlay");
+  var openBtn      = $("#open-vct-modal");
+  var closeBtn     = $("#close-vct-modal");
+  var closeBtn2    = $("#close-vct-modal-2");
+  var searchInput  = $("#vct-search");
+  var scopeSelect  = $("#vct-scope");
+  var refreshBtn   = $("#vct-refresh");
+  var resultsBox   = $("#vct-results");
+
+  // Cache urn -> {name, url}
+  var vctCache = Object.create(null);
+
+  function openModal(){ if (overlay){ overlay.classList.add("show"); overlay.setAttribute("aria-hidden","false"); } }
+  function closeModal(){ if (overlay){ overlay.classList.remove("show"); overlay.setAttribute("aria-hidden","true"); } }
+
+  // ---- read/write objects instead of ids ----
+  function readItems(){
+    try {
+      var parsed = JSON.parse(vcInput.value || "[]");
+      if (!Array.isArray(parsed)) return [];
+      // Backward-compat: convert ["urn:..."] -> [{urn:"urn:...", credential_identifier:""}]
+      return parsed.map(function(x){
+        if (typeof x === "string") return { urn: x, credential_identifier: "" };
+        if (x && typeof x === "object") {
+          var urn = String(x.urn || x.id || x.vct || x.vct_urn || "");
+          var ci  = String(x.credential_identifier || "");
+          return urn ? { urn: urn, credential_identifier: ci } : null;
+        }
+        return null;
+      }).filter(Boolean);
+    } catch(e){ return []; }
+  }
+  function writeItems(items){
+    var out = (items || []).map(function(it){
+      return { urn: String(it.urn || ""), credential_identifier: String(it.credential_identifier || "") };
+    }).filter(function(it){ return !!it.urn; });
+    vcInput.value = JSON.stringify(out);
+  }
+
+  function resolveOne(urn){
+    if (vctCache[urn]) return Promise.resolve();
+    var url = "/vct/registry/api/list?q=" + encodeURIComponent(urn);
+    return fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function(r){ return r.json(); })
+      .then(function(rows){
+        rows = Array.isArray(rows) ? rows : [];
+        var hit = rows.find(function(r){
+          var rid = String(r.urn || r.vct_urn || r.id || r.vct || "");
+          return rid === urn;
+        });
+        vctCache[urn] = {
+          name: hit && hit.name ? String(hit.name) : urn,
+          url:  (hit && typeof hit.vct === "string" ? hit.vct
+               : (hit && typeof hit.url === "string" ? hit.url
+               : (hit && typeof hit.website === "string" ? hit.website : ""))) || ""
+        };
+      })
+      .catch(function(){ vctCache[urn] = { name: urn, url: "" }; });
+  }
+  function enrichAll(urns){
+    var missing = urns.filter(function(urn){ return !vctCache[urn]; });
+    if (!missing.length) return Promise.resolve();
+    return Promise.all(missing.map(resolveOne));
+  }
+
+  // Show URN + credential_identifier in chips
+  function renderSelected(){
+    selectedWrap.innerHTML = "";
+    var items = readItems(); // [{urn, credential_identifier}]
+    if (!items.length){
+      selectedWrap.appendChild(createEl("span", { className:"muted" }, ["No VC Types yet."]));
+      return;
+    }
+    var urns = items.map(function(it){ return it.urn; });
+    enrichAll(urns).then(function(){
+      items.forEach(function(it){
+        var meta = vctCache[it.urn] || { name: it.urn, url:"" };
+        var line1 = createEl("div", {}, [
+        createEl("strong", { style:"margin-right:.35rem" }, [ meta.name || it.urn ]),
+        meta.url ? createEl("a", { href: meta.url, target:"_blank", rel:"noopener", className:"muted" }, []) : document.createTextNode("")
+        ]);
+        //var line2 = createEl("div", { className:"muted" }, [ (it.credential_identifier || "—") ]);
+        // Delete button
+        var removeBtn = createEl("button", { type:"button", className:"btn", style:"padding:.1rem .4rem" }, ["Delete"]);
+        removeBtn.addEventListener("click", function(){
+          var arr = readItems().filter(function(x){ return !(x.urn === it.urn && x.credential_identifier === it.credential_identifier); });
+          writeItems(arr);
+          renderSelected();
+        });
+        // Copy button
+        var copyBtn = createEl("button", { type:"button", className:"btn", style:"padding:.1rem .4rem" }, ["Copy Credential Identifier"]);
+        copyBtn.addEventListener("click", async function(e){
+          e.stopPropagation();
+          var val = String(it.credential_identifier || "");
+          if (!val) { alert("No credential_identifier set for this VC Type."); return; }
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(val);
+            } else {
+              // fallback
+              var ta = document.createElement("textarea");
+              ta.value = val;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+            }
+            copyBtn.textContent = "Copied!";
+            setTimeout(function(){ copyBtn.textContent = "Copy Credential Identifier"; }, 1200);
+          } catch (_) {
+            copyBtn.textContent = "Failed";
+            setTimeout(function(){ copyBtn.textContent = "Copy Credential Identifier"; }, 1200);
+          }
+        });
+
+        var chip = createEl("div", { className:"btn", style:"display:block;text-align:left; background:#eef2ff;border-color:#c7d2fe; cursor:pointer" }, [ line1]);
+if (meta.url) {
+  chip.setAttribute("role","link");
+  chip.addEventListener("click", function(e){
+    if (e.target.closest("button")) return;
+    window.open(meta.url, "_blank", "noopener");
+  });
+}
+chip.appendChild(copyBtn);
+chip.appendChild(removeBtn);
+        selectedWrap.appendChild(chip);
+      });
+    });
+  }
+
+  function renderVCTList(rows){
+    resultsBox.innerHTML = "";
+    if (!rows.length){
+      resultsBox.appendChild(createEl("div", { className:"muted" }, ["No VC Types found. Try another search."]));
+      return;
+    }
+    rows.forEach(function(row){
+      var urn  = String(row.urn || row.vct_urn || row.id || row.vct || "");
+      var name = String(row.name || urn);
+      var desc = String(row.description || "");
+      var url = typeof row.vct === "string" ? row.vct
+        : (typeof row.url === "string" ? row.url
+        : (typeof row.website === "string" ? row.website : ""));
+
+      var header = createEl("div", { style:"display:flex;justify-content:space-between;gap:.5rem;align-items:center" }, [
+        createEl("div", {}, [
+          createEl("strong", {}, [name]),
+          desc ? createEl("div", { className:"muted" }, [desc]) : document.createTextNode("")
+        ]),
+        createEl("button", { type:"button", className:"btn" }, ["Add"])
+      ]);
+
+      var card = createEl("div", { className:"btn", style:"display:block;text-align:left" }, [ header ]);
+      header.lastChild.addEventListener("click", function(){
+        if (!urn) return;
+
+        // Prompt for credential_identifier (no spaces; [A-Za-z0-9_-]+)
+        var suggest = (name || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "");
+        var ci = window.prompt("Enter credential_identifier (letters, digits, _ or -; no spaces):", suggest || "");
+        if (ci == null) return; // cancelled
+        ci = String(ci).trim();
+        if (!/^[A-Za-z0-9_-]+$/.test(ci)){
+          alert("Invalid credential_identifier. Use letters, digits, underscore or hyphen only (no spaces).");
+          return;
+        }
+
+        // Add or replace by URN (unique by URN)
+        var items = readItems();
+        var existingIdx = items.findIndex(function(x){ return x.urn === urn; });
+        var obj = { urn: urn, credential_identifier: ci };
+        if (existingIdx >= 0) { items[existingIdx] = obj; } else { items.push(obj); }
+
+        writeItems(items);
+        vctCache[urn] = { name:name, url:url || "" }; // cache for UI
+        renderSelected();
+      });
+      resultsBox.appendChild(card);
+    });
+  }
+
+  function fetchVCT(){
+    var q = (searchInput && searchInput.value || "").trim();
+    var scope = (scopeSelect && scopeSelect.value) || "public";
+    var params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (scope) params.set("scope", scope);
+    var url = "/vct/registry/api/list" + (params.toString() ? ("?" + params.toString()) : "");
+    openModal();
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function(res){ return res.json(); })
+      .then(function(rows){ renderVCTList(Array.isArray(rows) ? rows : []); })
+      .catch(function(){ renderVCTList([]); });
+  }
+
+  // Wire up
+  if (openBtn)    openBtn.addEventListener("click", fetchVCT);
+  if (closeBtn)   closeBtn.addEventListener("click", closeModal);
+  if (closeBtn2)  closeBtn2.addEventListener("click", closeModal);
+  if (overlay)    overlay.addEventListener("click", function(e){ if (e.target === overlay) closeModal(); });
+  if (refreshBtn) refreshBtn.addEventListener("click", fetchVCT);
+  if (searchInput) searchInput.addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); fetchVCT(); } });
+
+  // Initial render
+  renderSelected();
+});
+</script>
+
+</body>
+</html>
+

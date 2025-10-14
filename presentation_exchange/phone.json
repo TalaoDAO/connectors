@@ -1,0 +1,28 @@
+{
+  "id": "phone",
+  "input_descriptors": [
+    {
+      "id": "mobile_phone_number",
+      "format": {
+        "vc+sd-jwt": {
+          "sd-jwt_alg_values": [
+            "ES256"
+          ],
+          "kb-jwt_alg_values": [
+            "ES256"
+          ]
+        }
+      },
+      "constraints": {
+        "limit_disclosure": "required",
+        "fields": [
+          {
+            "path": [
+              "$.mobile_phone_number"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

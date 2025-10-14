@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QR Code Verifier</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Match home.html header + font -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+
+  <style>
+    /* Keep the page consistent with home.html */
+    body {
+      margin: 0;
+      background: #f7f9fc;
+      color: #333;
+      font-family: Arial, sans-serif;
+    }
+
+    .section {
+      max-width: 1200px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+    }
+
+    .qr-card {
+      text-align: center;
+      padding: 2rem;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin: 0 0 0.5rem 0;
+      color: var(--primary);
+      text-align: center;
+    }
+
+    p.lead {
+      font-size: 1.05rem;
+      color: #555;
+      text-align: center;
+      margin: 0 0 1.25rem 0;
+    }
+
+    img.qr {
+      width: 300px;
+      height: 300px;
+      margin: 1rem 0;
+      display: inline-block;
+      border-radius: 8px;
+      border: 1px solid #eee;
+      background: #fff;
+      padding: .5rem;
+    }
+
+    .deep-link {
+      margin-top: 0.75rem;
+      word-break: break-word;
+      color: #007BFF;
+      font-weight: bold;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .deep-link:hover { text-decoration: underline; }
+  
+/* --- Markdown report styles --- */
+.md-body { text-align: left; max-width: 70ch; margin: 0 auto; line-height: 1.6; color: #333; font-size: 0.98rem; }
+.md-body h1, .md-body h2, .md-body h3 { color: var(--primary); margin: 1.2rem 0 .5rem; line-height: 1.25; }
+.md-body h1 { font-size: 1.6rem; } .md-body h2 { font-size: 1.3rem; } .md-body h3 { font-size: 1.1rem; }
+.md-body p, .md-body ul, .md-body ol, .md-body blockquote { margin: .6rem 0; }
+.md-body ul, .md-body ol { padding-left: 1.25rem; }
+.md-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background: #f3f4f6; padding: .1rem .35rem; border-radius: 4px; border: 1px solid #eee; }
+.md-body pre code { display: block; padding: .85rem; overflow-x: auto; }
+.md-body table { border-collapse: collapse; width: 100%; margin: .8rem 0; background: #fff; }
+.md-body th, .md-body td { border: 1px solid #e5e7eb; padding: .5rem .6rem; text-align: left; }
+.md-body th { background: #f9fafb; font-weight: 600; }
+
+.toolbar {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+  margin-bottom: .75rem;
+}
+.btn.secondary {
+  background:#fff; border:1px solid #cfe7ec; color:#064b53;
+  padding:.55rem .9rem; border-radius:10px; font-weight:600; cursor:pointer;
+}
+.btn.secondary:hover { background:#f5fbfd; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <strong><a style="color: var(--primary); text-decoration: none;" href="/">WALLET-CONNECTORS.COM</a></strong>
+    </div>
+    <nav>
+      <a href="/verifier/select/{{verifier_type}}">Back</a>
+      
+    </nav>
+  </header>
+
+  <main class="section">
+    <h1>Report</h1>
+    <p class="lead">Audit made by VALIDATORS</p>
+
+    <div class="qr-card" role="region" aria-label="Wallet verification QR">
+      
+      <div class="qr-card" role="region" aria-label="Wallet verification QR">
+  <!-- Toolbar -->
+  <div class="toolbar" aria-label="Report actions">
+    <button id="btn-download-md" class="btn secondary" type="button" aria-label="Download report as Markdown">Download .md</button>
+    <button id="btn-download-html" class="btn secondary" type="button" aria-label="Download report as HTML">Download .html</button>
+  </div>
+
+  <!-- Markdown target -->
+  <div id="report" class="md-body"></div>
+
+  <!-- Pass raw markdown safely to JS -->
+  <script id="report-md" type="application/json">{{ report | tojson | safe }}</script>
+</div>
+      
+      <!-- Markdown target -->
+<div id="report" class="md-body"></div>
+
+<!-- Pass raw markdown safely to JS -->
+<script id="report-md" type="application/json">{{ report | tojson | safe }}</script>
+    </div>
+  </main>
+
+  {% include "footer.html" %}
+
+  <!-- Safe HTML sanitizer -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <!-- Markdown parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <!-- Render the Markdown report -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const mdNode = document.getElementById("report-md");
+      const md = mdNode ? JSON.parse(mdNode.textContent || '""') : "";
+      marked.setOptions({ gfm: true, breaks: true });
+      const html = DOMPurify.sanitize(marked.parse(md || ""));
+      const target = document.getElementById("report");
+      if (target) target.innerHTML = html;
+    });
+  </script>
+  <script>
+    function toggleDropdown() {
+      var dropdown = document.getElementById("dropdown");
+      if (!dropdown) return;
+      dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+    }
+    window.onclick = function(event) {
+      if (!event.target.matches('.user-icon')) {
+        var dropdown = document.getElementById("dropdown");
+        if (dropdown && dropdown.style.display === "block") {
+          dropdown.style.display = "none";
+        }
+      }
+    };
+
+   
+  </script>
+  <script>
+  // helper to trigger file download from a string
+  function downloadText(filename, text, mime = 'text/plain;charset=utf-8') {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const mdNode = document.getElementById("report-md");
+    const md = mdNode ? JSON.parse(mdNode.textContent || '""') : "";
+
+    // filename with timestamp
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const baseName = `audit-report-${ts}`;
+
+    // Download Markdown
+    const btnMd = document.getElementById('btn-download-md');
+    if (btnMd) {
+      btnMd.addEventListener('click', () => {
+        downloadText(`${baseName}.md`, md || "", 'text/markdown;charset=utf-8');
+      });
+    }
+
+    // Download rendered HTML (wrap minimal HTML around current rendered content)
+    const btnHtml = document.getElementById('btn-download-html');
+    if (btnHtml) {
+      btnHtml.addEventListener('click', () => {
+        const bodyHtml = document.getElementById('report')?.innerHTML || '';
+        const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${baseName}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body{font-family: Arial, sans-serif; background:#fff; color:#333; line-height:1.6; margin:20px;}
+  .md-body h1, .md-body h2, .md-body h3 { color:#0ea5b0; }
+  .md-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#f3f4f6; padding:.1rem .35rem; border-radius:4px; border:1px solid #eee; }
+  .md-body pre code { display:block; padding:.85rem; overflow-x:auto; }
+  .md-body table { border-collapse: collapse; width: 100%; margin: .8rem 0; }
+  .md-body th, .md-body td { border: 1px solid #e5e7eb; padding: .5rem .6rem; text-align: left; }
+  .md-body th { background: #f9fafb; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="md-body">
+${bodyHtml}
+</div>
+</body>
+</html>`;
+        downloadText(`${baseName}.html`, fullHtml, 'text/html;charset=utf-8');
+      });
+    }
+  });
+</script>
+
+</body>
+</html>

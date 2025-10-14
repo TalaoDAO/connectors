@@ -1,0 +1,323 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Identity with AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+
+  <style>
+   
+    .hero {
+      text-align: center;
+      padding: 6rem 2rem;
+      background: linear-gradient(to bottom, #ffffff, #e5e9f0);
+    }
+    .main-title {
+      font-size: 3.5rem;
+      color: var(--primary);
+      margin-bottom: 1rem;
+    }
+    .description {
+      font-size: 1.25rem;
+      max-width: 700px;
+      margin: auto;
+      color: #555;
+    }
+    .cta {
+      margin-top: 2rem;
+    }
+    .glow-button, .outline-button {
+      padding: 0.75rem 2rem;
+      margin: 1rem 0.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      display: inline-block;
+    }
+    .glow-button {
+      background-color: var(--accent);
+      color: white;
+      box-shadow: 0 0 12px var(--accent);
+      border: none;
+    }
+    .outline-button {
+      border: 2px solid var(--accent);
+      color: var(--accent);
+      background: transparent;
+    }
+    .section {
+      max-width: 1200px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+    }
+    .section h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      color: var(--primary);
+      margin-bottom: 2.5rem;
+    }
+    .features, .developers, .tools {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+    .card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 16px;
+      padding: 2rem;
+      text-align: center;
+      transition: transform 0.3s, box-shadow 0.3s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 6px 20px rgba(0,168,204,0.15);
+    }
+    .card h3 {
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+      font-size: 1.2rem;
+    }
+    .card p {
+      color: #444;
+      font-size: 0.95rem;
+    }
+    .card a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    @media (max-width: 768px) {
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+    }
+    .user-menu {
+  position: relative;
+  display: inline-block;
+}
+
+
+.card.disabled {
+  background: #eee;
+  color: #aaa;
+  pointer-events: none;
+  opacity: 0.6;
+  box-shadow: none;
+}
+.card.disabled h3,
+.card.disabled p {
+  color: #aaa;
+}
+
+
+  </style>
+</head>
+<body>
+  <header>
+  <div class="logo">
+    <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET-CONNECTORS.COM</a></strong>
+  </div>
+  <nav>
+    <a href="/documentation/menu">Explain ?</a>
+   
+
+
+    {% if user.is_authenticated %}
+          {% include "account.html" %}
+
+     {% endif %}
+  </nav>
+</header>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="flashes">
+        {% for message in messages %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+   <section id="developers" class="section">
+    <h2>Servers</h2>
+    <div class="developers">
+  <!--    <div class="card">
+        <a href="/issuer/select/sandbox">
+          <h3>Issuers</h3>
+          <p>Issue credentials in a live test environment.</p>
+        </a>
+      </div> -->
+        <div class="card">
+        <a href="/signin/select/sandbox">
+          <h3>Sign-In with Wallet</h3>
+          <p>Test real-time authentication workflows.</p>
+        </a>
+      </div>
+      <div class="card">
+        <a href="/verifier/select/sandbox">
+          <h3>Verifiers</h3>
+          <p>Test real-time credential verification workflows.</p>
+        </a>
+      </div>
+      
+    </div>
+  </section>
+
+<!--
+  {% if user.subscription != "free" %}
+   <section id="developers" class="section">
+    <h2>Production</h2>
+    <div class="developers">
+      <div class="card ">
+        <a href="/issuer/select/sandbox">
+          <h3>Issuers</h3>
+          <p>Issue credentials in a live test environment.</p>
+        </a>
+      </div>
+        <div class="card">
+        <a href="/signin/select/sandbox">
+          <h3>Sign-In with Wallet</h3>
+          <p>Test real-time authentication workflows.</p>
+        </a>
+      </div>
+      <div class="card">
+        <a href="/verifier/select/sandbox">
+          <h3>Verifiers</h3>
+          <p>Test real-time credential verification workflows.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+
+  {% if user.subscription == "free" %}
+   <section id="developers" class="section">
+    <h2>Production</h2>
+    <div class="developers">
+      <div class="card disabled">
+        <a href="/issuer/select/sandbox">
+          <h3>Issuers</h3>
+          <p>Issue credentials in a live test environment.</p>
+        </a>
+      </div>
+        <div class="card disabled">
+        <a href="/signin/select/sandbox">
+          <h3>Sign-In with Wallet</h3>
+          <p>Test real-time authentication workflows.</p>
+        </a>
+      </div>
+      <div class="card disabled">
+        <a href="/verifier/select/sandbox">
+          <h3>Verifiers</h3>
+          <p>Test real-time credential verification workflows.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+-->
+
+
+<section id="developers" class="section">
+      <h2>Helpers</h2>
+
+    <div class="developers">
+      <div class="card">
+        <a href="/credential/select/sandbox">
+          <h3>Add Keys</h3>
+          <p>Keys in a live test environment.</p>
+        </a>
+      </div>
+      {% if user.subscription == 'free' %}
+      <div class="card disabled">
+      {% else %}
+      <div class="card">
+      {% endif %}
+        <a href="/credential/select/qualified">
+          <h3>Link to Qualified Credentials</h3>
+          <p>Credentials hosted remotly by Vintegris.</p>
+        </a>
+      </div>      
+    </div>
+
+  </section>
+
+<!--
+
+   <section id="statuslist" class="section">
+    <h2>Status List Manager</h2>
+    <div class="developers">
+      <div class="card">
+        <a href="/issuer/statuslist" target="_blank">
+          <h3>Token Status List (SD-JWT)</h3>
+          <p>Try issuing credentials with a status list endpoint for revocation.</p>
+        </a>
+      </div>
+      <div class="card">
+        <a href="/issuer/bitstringstatuslist" target="_blank">
+          <h3>Bitstring Status List (JSON-LD)</h3>
+          <p>Local test for issuing credentials with bitstring-based status tracking.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+-->
+   
+
+  {% if user.name == "admin" %}
+    <section id="tools" class="section">
+    <h2>Administration</h2>
+    <div class="tools">
+      <div class="card">
+        <a href="https://talao.co/ai/vc" target="_blank">
+          <h3>Create a subscribed new customers</h3>
+          <p>......</p>
+        </a>
+      </div>
+      <div class="card">
+        <a href="https://talao.co/ai/vc" target="_blank">
+          <h3>Dashboard</h3>
+          <p>......</p>
+        </a>
+      </div>
+     {% endif %}
+    </div>
+  </section>
+
+  {% include "footer.html" %}
+
+  <script>
+  function toggleDropdown() {
+    var dropdown = document.getElementById("dropdown");
+    dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+  }
+
+  // Optional: close dropdown on click outside
+  window.onclick = function(event) {
+    if (!event.target.matches('.user-icon')) {
+      var dropdown = document.getElementById("dropdown");
+      if (dropdown && dropdown.style.display === "block") {
+        dropdown.style.display = "none";
+      }
+    }
+  };
+</script>
+
+</body>
+</html>
