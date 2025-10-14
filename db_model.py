@@ -257,7 +257,7 @@ def seed_verifier_for_demo(mode):
         }
         verifier_0 = Verifier(
             user_id=1,
-            name="Verifier for demo",
+            name="Verifier for demon profile DIIP V3",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo and swagger",
@@ -276,7 +276,7 @@ def seed_verifier_for_demo(mode):
         application_api_1 = {
             "url": mode.server + "verifier/app",
             "verifier_id": "0001",
-            "verifier_secret": "0000"
+            "verifier_secret": "0001"
         }
         verifier_1 = Verifier(
             user_id=1,
@@ -284,7 +284,7 @@ def seed_verifier_for_demo(mode):
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
-            client_id_scheme="redirect_uri",
+            client_id_scheme="did",
             client_id=mode.server + "verifier/wallet/callback",
             response_mode="direct_post",
             credential_id="signature_key_1",
@@ -298,16 +298,16 @@ def seed_verifier_for_demo(mode):
         )
         application_api_2 = {
             "url": mode.server + "verifier/app",
-            "verifier_id": "0001",
-            "verifier_secret": "0000"
+            "verifier_id": "0002",
+            "verifier_secret": "0002"
         }
         verifier_2 = Verifier(
             user_id=1,
-            name="talao wallet draft 23",
+            name="oidc4vp draft 28 (DIIP V4)",
             draft="23",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
-            client_id_scheme="redirect_uri",
+            client_id_scheme="did",
             client_id=mode.server + "verifier/wallet/callback",
             response_mode="direct_post",
             credential_id="signature_key_1",

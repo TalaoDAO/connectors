@@ -116,8 +116,8 @@
           <h3>Connect wallets to agents</h3>
           <p>Agents can initiate a verifiable presentation with a user’s wallet, show a deep link / QR, then poll for verification and retrieve claims — all through MCP tools.</p>
           <ul>
-            <li>Works with <span class="chip">EUDI‑compliant wallets</span> such as <span class="chip">Talao</span>.</li>
-            <li>Bridges your <strong>OAuth&nbsp;2.0</strong> / OIDC4VP verifier API to AI agents.</li>
+            <li>Works with <span class="chip">EUDI‑compliant wallets</span> such as <span class="chip"><a href="https://www.talao.io/talao-wallet/">Talao</a></span>.</li>
+            <li>Bridges <strong>wallets</strong> through an OIDC4VP verifier to AI agents.</li>
             <li>Designed for <strong>App‑to‑Agent</strong> (A2A) workflows.</li>
           </ul>
         </div>
@@ -138,11 +138,11 @@
       <div class="how">
         <div class="step">
           <h4>Agent calls <code>start_wallet_verification</code></h4>
-          <p>The server requests a presentation from your verifier API and returns a deep link and QR.</p>
+          <p>The MCP client requests a presentation from a user wallet with a scope as email, profile, phone... and returns a deep link and QR.</p>
         </div>
         <div class="step">
           <h4>User opens wallet</h4>
-          <p>The agent shows the QR or link. The user approves in their wallet (e.g., Talao).</p>
+          <p>The agent shows the QR or link to the user. The user scans with their wallet and eventually consents to share their data.</p>
         </div>
         <div class="step">
           <h4>Agent polls</h4>
@@ -150,14 +150,14 @@
         </div>
         <div class="step">
           <h4>Claims available</h4>
-          <p>When verified, the server returns wallet data (tokens redacted by default).</p>
+          <p>When verified, the server returns user verfiable data and metadata.</p>
         </div>
       </div>
     </section>
 
     <section id="quickstart" class="section" aria-labelledby="quickstart-title">
       <h2 id="quickstart-title">Quick start (curl)</h2>
-      <p class="note">Replace <code>&lt;X-API-KEY&gt;</code> with your MCP client key (verifier secret). In production use <code>https://wallet-connectors.com</code>; in local dev replace the host/port accordingly.</p>
+      <p class="note">Replace <code>&lt;X-API-KEY&gt;</code> with your MCP client key (verifier secret) or use for "0000" for testing. Register to setup specific wallet profile and get your own verifier_id and secret.</p>
       <div class="two-col">
         <div class="card">
 <pre><code class="language-bash"># 1) List tools
@@ -238,11 +238,11 @@ curl -s https://wallet-connectors.com/mcp \
         </article>
         <article class="card">
           <h3>Token redaction</h3>
-          <p>Raw <code>vp_token</code> and <code>id_token</code> are redacted by default in MCP responses.</p>
+          <p>Raw <code>vp_token</code> and <code>id_token</code> are checked according to standards and trust registries. MCP responses are simple to use.</p>
         </article>
         <article class="card">
           <h3>TTL‑based cleanup</h3>
-          <p>Flows expire automatically in the verifier backend (Redis TTL).</p>
+          <p>Flows expire automatically in the verifier backend (Redis TTL). No data are stored on servers.</p>
         </article>
       </div>
     </section>
@@ -252,7 +252,7 @@ curl -s https://wallet-connectors.com/mcp \
       <p class="subtitle">Use the MCP tools above or see <code>/mcp/info</code> for server metadata.</p>
       <div class="cta">
         <a class="btn secondary" href="/mcp/tools_list">MCP tools</a>
-        <a class="btn secondary" href="/documentation/home">Read docs</a>
+        <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>
       </div>
     </section>
   </main>
