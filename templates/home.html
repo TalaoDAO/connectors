@@ -138,7 +138,7 @@
       <div class="how">
         <div class="step">
           <h4>Agent calls <code>start_wallet_verification</code></h4>
-          <p>The MCP client requests a presentation from a user wallet with a scope as email, profile, phone... and returns a deep link and QR.</p>
+          <p>The MCP client requests a presentation from a user wallet with a scope such as email, profile, phone... and returns a deep link and QR.</p>
         </div>
         <div class="step">
           <h4>User opens wallet</h4>
@@ -150,14 +150,14 @@
         </div>
         <div class="step">
           <h4>Claims available</h4>
-          <p>When verified, the server returns user verfiable data and metadata.</p>
+          <p>When verified, the server returns user verifiable data and metadata.</p>
         </div>
       </div>
     </section>
 
     <section id="quickstart" class="section" aria-labelledby="quickstart-title">
       <h2 id="quickstart-title">Quick start (curl)</h2>
-      <p class="note">Replace <code>&lt;X-API-KEY&gt;</code> with your MCP client key (verifier secret) or use for "0000" for testing. Register to setup specific wallet profile and get your own verifier_id and secret.</p>
+      <p class="note">Use public test profiles: <code>verifier_id</code> ∈ { <strong>0000</strong>, <strong>0001</strong>, <strong>0002</strong> }; the <code>X-API-KEY</code> equals the <code>verifier_id</code>. Register to setup specific wallet profile and get your own <code>verifier_id</code> and secret.</p>
       <div class="two-col">
         <div class="card">
 <pre><code class="language-bash"># 1) List tools
@@ -217,11 +217,11 @@ curl -s https://wallet-connectors.com/mcp \
   "result": {
     "content": [
       {"type":"image","data":"&lt;base64png&gt;","mimeType":"image/png"},
-      {"type":"text","text":"Scan the QR code or open wallet link: openid4vp://..."}
+      {"type":"text","text":"Scan the QR code or open wallet link: openid4vp://....."}
     ],
     "structuredContent": {
       "session_id": "3e02ac7e-da66-4dd1-9abe-30348dcc728f",
-      "deeplink_url": "openid4vp://...?request_uri=https://.../request_uri/abc",
+      "deeplink_url": "openid4vp://.....?request_uri=https://.../request_uri/abc",
       "pull_url": "https://wallet-connectors.com/verifier/wallet/pull/3e02..."
     }
   }
@@ -249,7 +249,7 @@ curl -s https://wallet-connectors.com/mcp \
 
     <section class="section cta-bottom" aria-labelledby="start">
       <h2 id="start">Ready to connect a wallet to your agent?</h2>
-      <p class="subtitle">Use the MCP tools above or see <code>/mcp/info</code> for server metadata.</p>
+      <p class="subtitle">Authenticate users with their <strong>EUDI‑compliant wallet</strong> (e.g., <strong>Talao</strong>). This server exposes your verifier APIs via the <strong>Model Context Protocol</strong> using a <strong>pull</strong> model (no webhooks).</p>
       <div class="cta">
         <a class="btn secondary" href="/mcp/tools_list">MCP tools</a>
         <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>
