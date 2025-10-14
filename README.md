@@ -1,120 +1,59 @@
 
-# MCP Server for Data Wallets (EUDI / OIDC4VP)
+# MCP Server for Data Wallets — **Remote Usage Guide**
 
-Connect **EUDI-compliant wallets** (e.g., Talao) to **AI agents** via the **Model Context Protocol (MCP)**.  
-This server wraps your **OAuth 2.0 / OIDC4VP** verifier API and exposes a **pull-based** flow to agents (no webhooks).
+Connect **EUDI‑compliant wallets** (e.g., **Talao**) to **AI agents** via the **Model Context Protocol (MCP)**.  
+This hosted service exposes your OIDC4VP verifier as MCP tools using a **pull** model (no webhooks).
 
-> ✅ MCP Spec: **2025-06-18** — uses `params.arguments`, returns `result.content` (blocks) + `result.structuredContent`.
+- **Base URL**: `https://wallet-connectors.com`
+- **MCP RPC endpoint**: `POST https://wallet-connectors.com/mcp`
+- **Spec**: MCP **2025‑06‑18** — uses `params.arguments`; returns `result.content` (blocks) + `result.structuredContent`.
 
----
-
-## ✨ Features
-
-- **MCP tools**: start a wallet presentation, poll status, and revoke/cleanup
-- **Pull model** (agent polls your verifier): simpler than webhooks
-- **QR + deep link**: returned as MCP content blocks (image + text)
-- **Token redaction**: `vp_token` / `id_token` are redacted by default
-- **Spec-compliant**: MCP 2025‑06‑18 content shapes and JSON-RPC semantics
-- **Works with** EUDI-compliant wallets (including Talao)
+> This README explains **how to consume the remote service**. There are no self‑hosting or deployment steps here.
 
 ---
 
-## 🗂️ Project layout (key files)
+## Authentication
 
+Send your verifier key in a header on **every** call:
 ```
-main.py                 # Flask app factory; wires routes via init_app()
-verifier_mcp.py         # MCP server (HTTP JSON-RPC at /mcp)
-oidc4vp.py              # OIDC4VP bridge with pull endpoint for status
-templates/home.html     # Landing page (overview + examples)
-templates/flow.html     # Demo QR + live polling page
-test_mcp_flask_demo.py  # Minimal test UI that hits /mcp (optional)
+X-API-KEY: <YOUR_VERIFIER_KEY>
 ```
-
-> The app **does not** require environment variables; config is set in `main.py` (see below).
+No cookies or OAuth are used by this MCP endpoint.
 
 ---
 
-## ⚙️ Configuration
+## What you get (tools)
 
-Set these in `main.py` before calling `init_app(app)`:
+| Tool | Purpose | Key arguments | Returns (structuredContent) |
+|---|---|---|---|
+| `start_wallet_verification` | Start an OIDC4VP flow and get a **deeplink** + **QR** | `verifier_id` (required), optional `scope`, optional `session_id`, optional `mode`, optional `presentation` | `session_id`, `deeplink_url`, `pull_url`, `public_base_url` |
+| `poll_wallet_verification` | Poll the flow status | `session_id` | `status` (`pending` \| `verified` \| `denied`), plus wallet claims (tokens redacted) |
+| `revoke_wallet_flow` | Acknowledge cleanup for a session | `session_id` | `{ ok: true, session_id }` |
 
-```python
-app.config.update({
-    # Public URLs (use https in production)
-    "PUBLIC_BASE_URL":   "https://wallet-connectors.com",
-
-    # Your existing verifier endpoints (wrapped by the MCP server)
-    "VERIFIER_API_BASE": "https://wallet-connectors.com/verifier/app",
-    "PULL_STATUS_BASE":  "https://wallet-connectors.com/verifier/wallet/pull",
-
-    # Optional default key (used if client didn't send X-API-KEY)
-    "VERIFIER_API_KEY":  "0000",
-
-    # CORS: allow "*" for public use, or provide a set of origins
-    "CORS_ALLOWED_ORIGINS": "*",  # or {"https://wallet-connectors.com", "https://partner.com"}
-})
-```
+**Scopes** supported by `start_wallet_verification`:
+- `profile`, `email`, `phone`, `over18`, `custom`, `wallet_identifier`
+- Using `wallet_identifier` maps to **no scope** in the OIDC layer, producing an **ID‑token only** flow (wallet DID).
 
 ---
 
-## 🚀 Run locally
+## Quick start (curl)
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt  # flask, requests, qrcode, (optional) flask-cors
-python main.py                   # or: gunicorn -w 3 -b 0.0.0.0:8000 main:app
-```
-
-Open the test UI (if using `test_mcp_flask_demo.py`):
-
-```bash
-pip install flask requests
-python test_mcp_flask_demo.py
-# Visit http://localhost:5055
-```
-
----
-
-## 🔌 Endpoints
-
-- `POST /mcp` — **MCP JSON-RPC** endpoint
-- `GET  /mcp/info` — server metadata (name, version, protocolVersion)
-- `GET  /mcp/healthz` — liveness check
-
-Your wrapped verifier endpoints (already exist in your backend):
-
-- `POST VERIFIER_API_BASE` — start presentation (returns `url`, `session_id`)
-- `GET  PULL_STATUS_BASE/<session_id>` — poll status (returns `status`, claims…)
-
----
-
-## 🧰 MCP Tools
-
-### 1) `start_wallet_verification`
-
-Create an OIDC4VP authorization request (returns **QR image** + **deeplink**).
-
-**Arguments**
-```json
-{
-  "verifier_id": "string",
-  "session_id": "string (optional)",
-  "mode": "audit | test (optional)",
-  "presentation": "object (optional)",
-  "scope": "email | phone | profile | over18 | custom | wallet_identifier (optional)"
-}
-```
-
-> `wallet_identifier` maps to **no scope** in the OIDC layer, producing an **ID-token only** flow (wallet DID).
-
-**JSON-RPC example**
+List tools:
 ```bash
 curl -s https://wallet-connectors.com/mcp \
   -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
+```
+
+Start a flow:
+```bash
+curl -s https://wallet-connectors.com/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
   -H 'X-API-KEY: <X-API-KEY>' \
   -d '{
     "jsonrpc":"2.0",
-    "id":2,
+    "id":"start1",
     "method":"tools/call",
     "params":{
       "name":"start_wallet_verification",
@@ -123,17 +62,48 @@ curl -s https://wallet-connectors.com/mcp \
   }' | jq
 ```
 
-**Result shape**
+Use the `session_id` from the previous response to poll:
+```bash
+curl -s https://wallet-connectors.com/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -H 'X-API-KEY: <X-API-KEY>' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"poll1",
+    "method":"tools/call",
+    "params":{
+      "name":"poll_wallet_verification",
+      "arguments":{"session_id":"<SESSION_ID_FROM_START>"}
+    }
+  }' | jq
+```
+
+---
+
+## Response shapes (MCP 2025‑06‑18)
+
+All tool results return:
+```json
+{
+  "result": {
+    "content": [ /* array of blocks (text/image/...) */ ],
+    "structuredContent": { /* machine-readable JSON */ }
+  }
+}
+```
+
+### `start_wallet_verification` — example result
 ```json
 {
   "result": {
     "content": [
-      {"type":"image","data":"<base64-png>", "mimeType":"image/png"},
-      {"type":"text", "text":"Scan the QR or open: openid4vp://..."}
+      {"type":"image","data":"<base64-PNG>", "mimeType":"image/png"},
+      {"type":"text", "text":"Scan the QR or open: openid4vp://...?request_uri=..."}
     ],
     "structuredContent": {
       "session_id": "3e02ac7e-da66-4dd1-9abe-30348dcc728f",
-      "deeplink_url": "openid4vp://...?request_uri=...",
+      "deeplink_url": "openid4vp://...?request_uri=https://.../request_uri/abc",
       "pull_url": "https://wallet-connectors.com/verifier/wallet/pull/3e02...",
       "public_base_url": "https://wallet-connectors.com"
     }
@@ -141,28 +111,12 @@ curl -s https://wallet-connectors.com/mcp \
 }
 ```
 
----
-
-### 2) `poll_wallet_verification`
-
-Check the current status and retrieve wallet claims.
-
-**Arguments**
-```json
-{ "session_id": "string" }
-```
-
-**Statuses**
-- `pending` — user hasn’t approved yet
-- `verified` — wallet approved; claims present
-- `denied` — user rejected or flow expired
-
-**Result shape**
+### `poll_wallet_verification` — example result (verified)
 ```json
 {
   "result": {
     "content": [
-      {"type":"text","text":"{\"status\":\"verified\",...}"}
+      {"type":"text","text":"{\"status\":\"verified\",\"session_id\":\"3e02...\"}"}
     ],
     "structuredContent": {
       "status": "verified",
@@ -176,135 +130,178 @@ Check the current status and retrieve wallet claims.
   }
 }
 ```
-> The server accepts **flattened** claims from `oidc4vp.py` or nested `wallet_data`. Tokens are **redacted** if present.
+> Claims may be **flattened** at the top level (as above) or nested under `wallet_data`. Raw `vp_token` / `id_token` are **redacted**.
 
 ---
 
-### 3) `revoke_wallet_flow`
+## Minimal client snippets
 
-Acknowledge cleanup for a session (backend TTL performs actual deletion).
+### JavaScript (browser)
+```js
+const mcpUrl = "https://wallet-connectors.com/mcp";
+const apiKey = "<X-API-KEY>";
 
-**Arguments**
-```json
-{ "session_id": "string" }
+// 1) start
+const startBody = {
+  jsonrpc: "2.0",
+  id: "start",
+  method: "tools/call",
+  params: {
+    name: "start_wallet_verification",
+    arguments: { verifier_id: "0000", scope: "profile" }
+  }
+};
+const startRes = await fetch(mcpUrl, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "X-API-KEY": apiKey
+  },
+  body: JSON.stringify(startBody)
+}).then(r => r.json());
+const flow = startRes?.result?.structuredContent;
+console.log("deeplink:", flow.deeplink_url, "session:", flow.session_id);
+
+// 2) poll
+const pollBody = {
+  jsonrpc: "2.0",
+  id: "poll",
+  method: "tools/call",
+  params: {
+    name: "poll_wallet_verification",
+    arguments: { session_id: flow.session_id }
+  }
+};
+const pollRes = await fetch(mcpUrl, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "X-API-KEY": apiKey
+  },
+  body: JSON.stringify(pollBody)
+}).then(r => r.json());
+const status = pollRes?.result?.structuredContent?.status;
+console.log("status:", status);
 ```
 
-**Result shape**
+### Python (requests)
+```py
+import requests, json
+
+MCP = "https://wallet-connectors.com/mcp"
+HDR = {"Content-Type": "application/json", "Accept": "application/json", "X-API-KEY": "<X-API-KEY>"}
+
+def rpc(method, params, id="1"):
+    body = {"jsonrpc":"2.0","id":id,"method":method,"params":params}
+    r = requests.post(MCP, headers=HDR, json=body, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+# start
+start = rpc("tools/call", {"name":"start_wallet_verification","arguments":{"verifier_id":"0000","scope":"profile"}}, id="start")
+flow = start["result"]["structuredContent"]
+print("deeplink:", flow["deeplink_url"], "session:", flow["session_id"])
+
+# poll
+poll = rpc("tools/call", {"name":"poll_wallet_verification","arguments":{"session_id": flow["session_id"]}}, id="poll")
+print("status:", poll["result"]["structuredContent"]["status"])
+```
+
+### Node (fetch)
+```js
+import fetch from "node-fetch";
+
+const MCP = "https://wallet-connectors.com/mcp";
+const HDR = { "Content-Type":"application/json", "Accept":"application/json", "X-API-KEY":"<X-API-KEY>" };
+
+const rpc = async (method, params, id="1") => {
+  const res = await fetch(MCP, { method:"POST", headers:HDR, body: JSON.stringify({ jsonrpc:"2.0", id, method, params }) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+
+const start = await rpc("tools/call", { name:"start_wallet_verification", arguments:{ verifier_id:"0000", scope:"profile" } }, "start");
+const flow  = start.result.structuredContent;
+const poll  = await rpc("tools/call", { name:"poll_wallet_verification", arguments:{ session_id: flow.session_id } }, "poll");
+console.log("status:", poll.result.structuredContent.status);
+```
+
+---
+
+## Browser clients & CORS
+
+- The service supports browser **preflight** (`OPTIONS /mcp`) and returns permissive headers.
+- Always include `Accept: application/json` and `Content-Type: application/json`.
+- You can host your page anywhere; just call `https://wallet-connectors.com/mcp` with the API key header.
+
+---
+
+## Error handling
+
+There are **two** error layers:
+
+1) **JSON‑RPC errors** (top‑level `error`):
 ```json
 {
+  "jsonrpc": "2.0",
+  "id": "poll",
+  "error": { "code": 401, "message": "Missing or invalid X-API-KEY" }
+}
+```
+
+2) **Tool‑level errors** (successful JSON‑RPC with `result.isError: true`):
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "start",
   "result": {
-    "content":[{"type":"text","text":"Flow revoked (TTL cleanup handled server-side)."}],
-    "structuredContent":{"ok":true,"session_id":"..."}
+    "isError": true,
+    "content": [{ "type":"text","text":"verifier_id is required" }],
+    "structuredContent": { "error":"invalid_arguments","missing":["verifier_id"] }
   }
 }
 ```
 
+**Common codes/messages**
+- `401` missing/invalid API key
+- `400` invalid arguments (e.g., missing `verifier_id` or `session_id`)
+- `upstream_error` when the verifier API returns a 4xx/5xx
+- `network_error` if the upstream call fails
+
 ---
 
-## 🔐 Auth & CORS
+## End‑to‑end flow at a glance
 
-- **Auth**: clients must send `X-API-KEY: <your-verifier-key>`
-- **CORS**: browser clients require preflight (`OPTIONS /mcp`)
-  - Public mode: set `CORS_ALLOWED_ORIGINS="*"` (no cookies; API key in header)
-  - Strict mode: provide a set of allowed origins
-
-**Quick preflight test**
-
-```bash
-curl -i -X OPTIONS https://wallet-connectors.com/mcp \
-  -H 'Origin: https://example.org' \
-  -H 'Access-Control-Request-Method: POST' \
-  -H 'Access-Control-Request-Headers: content-type,x-api-key'
 ```
+Agent → /mcp tools/call start_wallet_verification
+          ↳ structuredContent: session_id + deeplink_url + pull_url + QR image block
 
-Expect `204` and:
-```
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: POST, OPTIONS
-Access-Control-Allow-Headers: Content-Type, X-API-KEY
+User  → scans QR / opens deeplink in wallet and approves
+
+Agent → /mcp tools/call poll_wallet_verification (repeat until status != pending)
+          ↳ structuredContent: { status: verified | denied, claims... }
 ```
 
 ---
 
-## 🧪 Test UI (QR + Poll)
+## Privacy & security
 
-You can use the minimal demo app to render the QR and live-poll:
-
-```bash
-python test_mcp_flask_demo.py
-# then open http://localhost:5055 and enter your /mcp URL + X-API-KEY
-```
+- No cookies; header‑based auth only (`X-API-KEY`).
+- `vp_token` / `id_token` are redacted from MCP responses.
+- Keep your API key secret; rotate if you suspect exposure.
+- Implement client‑side backoff when polling (`1–2s`) to respect rate limits.
 
 ---
 
-## 🏭 Production deployment
+## Metadata endpoints
 
-**Gunicorn**
-```bash
-gunicorn -w 3 -b 0.0.0.0:8000 main:app
-```
-
-**Dockerfile (example)**
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . /app
-RUN pip install --no-cache-dir -r requirements.txt
-ENV PYTHONUNBUFFERED=1
-EXPOSE 8000
-CMD ["gunicorn","-w","3","-b","0.0.0.0:8000","main:app"]
-```
-
-**Nginx (ensure `OPTIONS` passes with CORS headers)**
-```nginx
-location /mcp {
-  if ($request_method = OPTIONS) {
-    add_header Access-Control-Allow-Origin *;
-    add_header Access-Control-Allow-Methods "POST, OPTIONS";
-    add_header Access-Control-Allow-Headers "Content-Type, X-API-KEY";
-    add_header Access-Control-Max-Age 600;
-    return 204;
-  }
-  proxy_pass http://127.0.0.1:8000/mcp;
-}
-```
+- `GET https://wallet-connectors.com/mcp/info` → `{ name, version, protocolVersion, endpoints, auth }`
+- `GET https://wallet-connectors.com/mcp/healthz` → `{ ok: true }`
 
 ---
 
-## 🛡️ Security & Privacy
+## Changelog (surface)
 
-- No cookies; **API key only** (`X-API-KEY`) for auth
-- Redact `vp_token` / `id_token` in MCP responses
-- Keep logs free of raw tokens and PII
-- Enforce rate limits and request IDs in production
-
----
-
-## 🧩 MCP compliance (2025‑06‑18)
-
-- `initialize`: returns `protocolVersion` `"2025-06-18"`, `capabilities`, and `serverInfo`
-- `tools/list`: tool metadata with `inputSchema`
-- `tools/call`: uses `params.arguments` (not `args`)
-- Tool results: `result.content` (array of **blocks**) + `result.structuredContent` (JSON)
-
----
-
-## 🆘 Troubleshooting
-
-- **CORS preflight fails**  
-  Ensure `OPTIONS /mcp` returns **204** with `Access-Control-*` headers; set `CORS_ALLOWED_ORIGINS="*"` in `main.py` for public use.
-
-- **Browser prints only `[ { "type": "text", ... } ]`**  
-  Parse `result.structuredContent` for machine JSON; `content[]` is human-readable blocks (image/text).
-
-- **Agent stuck on `pending`**  
-  Confirm the wallet approved the presentation and that `oidc4vp.py` returns `status: "verified"` to `PULL_STATUS_BASE/<session_id>`.
-
-- **Scope mismatch**  
-  Use `"wallet_identifier"` when you want ID-token-only (no PEX/DCQL). The MCP server maps that to **no scope** for `oidc4vp.py`.
-
----
-
-## 📄 License
-
-Choose a license (e.g., MIT or Apache‑2.0) and place it in `LICENSE`.
+- **0.2.0** — MCP 2025‑06‑18 compliance; `params.arguments`; `content[]` + `structuredContent`; QR as image block; token redaction.
