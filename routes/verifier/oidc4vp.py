@@ -90,9 +90,11 @@ def build_verifier_metadata(verifier_id) -> dict:
 
 
 # API to build the authorization request                                      
-def oidc4vp_qrcode():
-    red = current_app.config["REDIS"]
-    mode = current_app.config["MODE"]
+def oidc4vp_qrcode(red, mode):
+    #red = current_app.config["REDIS"]
+    #mode = current_app.config["MODE"]
+    
+    print("mode server dans oidc4vp = ", mode.server)
     
     print("mode = ", mode)
     

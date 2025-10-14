@@ -124,10 +124,12 @@ class OIDC4VPQRCode(Resource):
     @ns.response(400, "Bad request", model=error_model)
     @ns.response(401, "Unauthorized", model=error_model)
     def post(self):
+        red = current_app.config["REDIS"]
+        mode = current_app.config["MODE"]
         """
         Build the OIDC4VP Authorization Request as a request_uri, returning a URL suitable for QR code display.
         """
-        return oidc4vp_qrcode()
+        return oidc4vp_qrcode(red, mode)
 
     
 def init_app(app):

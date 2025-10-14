@@ -29,7 +29,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import requests
-from flask import request, jsonify, current_app, make_response
+from flask import request, jsonify, current_app, make_response, current_app
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
