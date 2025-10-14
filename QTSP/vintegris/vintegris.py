@@ -189,17 +189,3 @@ class TrustedAppSigner:
         r.raise_for_status()
         return r.json()["signatures"][0]
 
-
-if __name__ == "__main__":
-    c = "f82f470153e86dad92e318ac0c32b221"
-    signer = TrustedAppSigner()
-    #print(signer.get_list())
-    print(signer.get_info("f82f470153e86dad92e318ac0c32b2212"))
-    #signer.select_credential("f82f470153e86dad92e318c0c32b221")
-    #signature1 = signer.sign_hash(b"hello world")
-    #print("Signature 1:", signature1)
-    
-    """
-    signature2 = signer.sign_hash(b"Bonjour")
-    print("Signature 2:", signature2)
-    """
