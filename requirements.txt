@@ -14,4 +14,3 @@ pkce
 langchain-openai
 gunicorn
 gevent
-celery[redis]
