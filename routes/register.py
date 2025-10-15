@@ -22,11 +22,11 @@ except Exception:
 GOOGLE_CLIENT_ID = keys.get("google_client_id")
 GOOGLE_CLIENT_SECRET = keys.get("google_client_secret")
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
-GOOGLE_CALLBACK = "https://vc-registry.com/register/auth/google/callback"
+GOOGLE_CALLBACK = "https://wallet-connectors.com/register/auth/google/callback"
 
 GITHUB_CLIENT_ID = keys.get("github_client_id")
 GITHUB_CLIENT_SECRET = keys.get("github_client_secret")
-GITHUB_CALLBACK = "https://vc-registry.com/register/auth/github/callback"
+GITHUB_CALLBACK = "https://wallet-connectors.com/register/auth/github/callback"
 
 
 google_client = WebApplicationClient(GOOGLE_CLIENT_ID)
@@ -102,7 +102,7 @@ def register_google_callback(db):
     db.session.add(new_user)
     db.session.commit()
     try:
-        message.message("New user on VC Registry", "thierry.thevenet@talao.io", json.dumps(userinfo), mode)
+        message.message("New user on Wallet Connectors", "thierry.thevenet@talao.io", json.dumps(userinfo), mode)
     except Exception as x:
         logging.warning("message() failed: %s", x)
     login_user(new_user)
@@ -141,7 +141,7 @@ def register_github_callback(db):
     db.session.add(new_user)
     db.session.commit()
     try:
-        message.message("New user on VC Registry", "thierry.thevenet@talao.io", json.dumps(userinfo), mode)
+        message.message("New user on Wallet Connectors", "thierry.thevenet@talao.io", json.dumps(userinfo), mode)
     except Exception as x:
         logging.warning("message() failed: %s", x)
     login_user(new_user)
