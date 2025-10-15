@@ -151,13 +151,15 @@ def oidc4vp_qrcode():
         "response_mode": verifier.response_mode,
         "nonce": nonce
     }
-    authorization_request["client_metadata"] = build_verifier_metadata(verifier_id)
 
     # OIDC4VP
     mcp_scope = body.get("scope")
     pex_fallback_presentation = json.load(open("presentation_exchange/raw.json", "r"))
     dcql_fallback_presentation = json.load(open("dcql_query/raw.json", "r"))
     if 'vp_token' in verifier.response_type:
+        
+        authorization_request["client_metadata"] = build_verifier_metadata(verifier_id)
+
         if verifier.presentation_format == "presentation_exchange":
             if mcp_scope in ["email", "phone", "profile", "over18", "raw"]:
                 presentation_request = json.load(open("presentation_exchange/" + mcp_scope + ".json", "r"))

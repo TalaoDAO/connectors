@@ -152,24 +152,7 @@ def oidc_openid_configuration():
 
 def oidc_authorize():
     red = current_app.config["REDIS"]
-    mode = current_app.config["MODE"]
-    
-    def same_origin_as_client(redirect_uri: str, client_base_url: str) -> bool:
-        """Simple, registry-free safety: only allow redirect_uri with same scheme+host as client's base URL.
-        Allows http only for localhost."""
-        try:
-            ru, cu = urlparse(redirect_uri), urlparse(client_base_url)
-            if not ru.scheme or not ru.netloc:
-                return False
-            if ru.scheme not in {"https", "http"}:
-                return False
-            # allow http for localhost development
-            if ru.scheme == "http" and ru.hostname != mode.IP:
-                return False
-            return (ru.scheme, ru.hostname, ru.port or (80 if ru.scheme =="http" else 443)) == \
-                (cu.scheme, cu.hostname, cu.port or (80 if cu.scheme =="http" else 443))
-        except Exception:
-            return False
+    #mode = current_app.config["MODE"]
 
     def redirect_with(redirect_uri: str, params: dict, use_fragment: bool = False):
         sep = "#" if use_fragment else "?"
@@ -190,14 +173,15 @@ def oidc_authorize():
 
         data = json.loads(raw.decode("utf-8"))
         redirect_uri = data["redirect_uri"]
-        response_type = data.get("response_type", "code")
+        app_response_type = data.get("app_response_type", "code")
+        
         state = data.get("state")
 
-        if response_type == "code":
+        if app_response_type == "code":
             return redirect_with(redirect_uri, {"code": code, "state": state}, use_fragment=False)
 
         # Minimal sandbox implicit (id_token) support
-        if response_type == "id_token":
+        if app_response_type == "id_token":
             wallet_raw = red.get(f"{code}_wallet_data")
             if not wallet_raw:
                 session.clear()
@@ -270,7 +254,7 @@ def oidc_authorize():
     scope = scope.split() if scope else []
     
     response_types = []
-    print("scope = ", scope)
+    app_response_type = response_type
     # Add vp_token if any of these scopes are requested
     if set(scope) & {"email", "over18", "profile"}:  
         response_types.append("vp_token")
@@ -279,8 +263,8 @@ def oidc_authorize():
         response_types.append("id_token")
     response_type = " ".join(response_types) if response_types else None
     
-    print("response_type = ", response_type)
     data = {
+        "app_response_type": app_response_type,
         "client_id": client_id,
         "scope": scope,
         "state": request.args.get("state"),
@@ -706,10 +690,12 @@ def signin_qrcode():
     if code_data.get("state", None):
         authorization_request["state"] = code_data["state"]
         
-    authorization_request["client_metadata"] = build_signin_metadata(signin_id)
 
     # OIDC4VP
     if 'vp_token' in code_data["response_type"]:
+        
+        authorization_request["client_metadata"] = build_signin_metadata(signin_id)
+
         try:  
             scope = [item for item in code_data["scope"] if item != "openid"][0]
             if scope not in ["profile", "email", "over18"]:
@@ -964,6 +950,7 @@ async def signin_response():
     red.setex(session_id + "_wallet_data", CODE_LIFE, wallet_data)
     
     event_data = json.dumps({"session_id": session_id})
+    print("event data = ", event_data)
     red.publish('signin_wallet_stream', event_data)
     
     return jsonify(response), status_code

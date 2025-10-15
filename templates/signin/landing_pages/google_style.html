@@ -187,12 +187,12 @@
 
   <!-- Live status: when verification completes, redirect to follow-up -->
   <script>
-    const source = new EventSource('/verifier/wallet/stream');
+    const source = new EventSource('/signin/wallet/stream');
     source.onmessage = function (event) {
       try {
         const result = JSON.parse(event.data);
         if (result.session_id == '{{ session_id }}') {
-          window.location.href = '/verifier/wallet/followup?session_id=' + result.session_id;
+          window.location.href = '/signin/wallet/followup?session_id=' + result.session_id;
         }
       } catch (e) { /* ignore parse errors */ }
     };

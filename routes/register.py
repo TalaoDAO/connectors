@@ -152,6 +152,7 @@ def login_with_wallet():
     mode = current_app.config["MODE"]
     signin = db.session.get(Signin, 1)
     application_api = decrypt_json(signin.application_api)
+    
     TALAO_CLIENT_ID = application_api["client_id"]
     TALAO_DISCOVERY_URL = application_api["url"] + "/.well-known/openid-configuration"
     TALAO_CALLBACK = mode.server + "register/auth/wallet/callback"
@@ -161,8 +162,10 @@ def login_with_wallet():
         talao_config["authorization_endpoint"],
         redirect_uri=TALAO_CALLBACK,
         scope=["openid"],
-        response_mode="query"
+        #response_mode="query",
+        #response_type="code"
     )
+    print("auth uri = ", auth_uri)
     return redirect(auth_uri)
 
 
@@ -179,7 +182,7 @@ def register_wallet_callback(db):
     try:
         # 1) Discover OIDC endpoints
         disc_resp = requests.get(TALAO_DISCOVERY_URL, timeout=10)
-        disc_resp.raise_for_status()
+        print("disc resp ", disc_resp)
         talao_config = disc_resp.json()
         token_endpoint = talao_config["token_endpoint"]
         userinfo_endpoint = talao_config["userinfo_endpoint"]
@@ -190,6 +193,7 @@ def register_wallet_callback(db):
             authorization_response=request.url,
             redirect_url=TALAO_CALLBACK,
         )
+        print("in register = ", token_url, headers, body)
         token_resp = requests.post(
             token_url,
             headers=headers,
@@ -226,14 +230,14 @@ def register_wallet_callback(db):
             return redirect("/")
 
         # 4) Create or log in user
-        user = User.query.filter_by(sub=sub).first()
+        user = User.query.filter_by(name=sub).first()
         if user:
             login_user(user)
             flash("✅ Welcome back.")
             return redirect(ENTRY)
 
         new_user = User(
-            sub=sub,
+            name=sub,
             registration="wallet",
             subscription="free",
         )
