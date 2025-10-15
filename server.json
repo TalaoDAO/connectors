@@ -1,8 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "com.wallet-connectors/wallet-verifier-mcp",
-  "description": "Remote MCP server that lets AI agents verify user data via EUDI/Talao wallets using OIDC4VP (pull model). Scopes: profile, email, phone, wallet_identifier, over18.",
-  "status": "active",
+  "description": "MCP server for verifying EUDI/Talao wallet data via OIDC4VP (pull) for AI agents.",
   "version": "1.0.0",
   "homepage": "https://wallet-connectors.com/",
   "documentation": "https://wallet-connectors.com/documentation/verifier_agents_mcp",
