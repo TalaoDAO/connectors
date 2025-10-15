@@ -1,53 +1,58 @@
-
-# verifier_mcp.py — MCP-compliant server (spec 2025-06-18)
-# Exposes your verifier APIs to AI agents with a pull model.
-#
-# Integration:
-#   from apis import verifier_mcp
-#   verifier_mcp.init_app(app)
-#
-# Config expected in current_app.config (set in main.py):
-#   PUBLIC_BASE_URL   -> default "https://wallet-connectors.com"
-#   VERIFIER_API_BASE -> default MODE.server + "verifier/app"
-#   PULL_STATUS_BASE  -> default MODE.server + "verifier/wallet/pull"
-#   VERIFIER_API_KEY  -> OPTIONAL default key if caller doesn't send X-API-KEY
-#
-# Transport/auth:
-#   - HTTP JSON-RPC 2.0 at POST /mcp
-#   - Custom header X-API-KEY (forwarded to upstream /verifier/app)
-#
-# MCP compliance highlights (2025-06-18):
-#   - Supports "initialize", "tools/list", and "tools/call"
-#   - tools/call uses params.arguments (not args)
-#   - Result uses {"content":[...], "structuredContent":{...}} block format
-#   - Provides image/text blocks; redacts raw tokens in structuredContent
-#
 import io
 import json
 import base64
 import uuid
 from typing import Any, Dict, List, Optional
-
+import logging
 import requests
-from flask import request, jsonify, current_app, make_response, current_app
+from flask import request, jsonify, current_app, make_response
+from db_model import Verifier
+from utils.kms import decrypt_json
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
 SERVER_VERSION = "0.2.0"
 
+ 
+LEVELS = {
+    "trace":   logging.DEBUG,   # MCP may send "trace"; map it to DEBUG
+    "debug":   logging.DEBUG,
+    "info":    logging.INFO,
+    "warn":    logging.WARNING,
+    "warning": logging.WARNING,
+    "error":   logging.ERROR,
+}
+
+
 def init_app(app):
-    # --------- helpers ---------
+    
+    def jrpc_result(_id, result):
+        return {"jsonrpc":"2.0","id":_id,"result":result}, 200, {"Content-Type":"application/json"}
+
+    def jrpc_ok(_id):
+        return jrpc_result(_id, {})
+
+    def jrpc_error(_id, code=-32603, message="Internal error"):
+        return {"jsonrpc":"2.0","id":_id,"error":{"code":code,"message":message}}, 200, {"Content-Type":"application/json"}
+    
+        # --------- helpers ---------
     def _cfg(key: str, default: Optional[str] = None) -> str:
         if key in current_app.config:
             return current_app.config[key]
         # fallbacks using MODE.server if available
         if key == "VERIFIER_API_BASE":
-            return current_app.config["MODE"].server + "verifier/app"
+            return current_app.config["MODE"].server + "verifier/wallet/start"
         if key == "PULL_STATUS_BASE":
             return current_app.config["MODE"].server + "verifier/wallet/pull"
         if key == "PUBLIC_BASE_URL":
             return "https://wallet-connectors.com"
         return default
+    
+    def _bearer_or_api_key():
+        auth = request.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            return auth.split(" ", 1)[1].strip()
+        return request.headers.get("X-API-KEY")
 
     def _qr_png_b64(text: str) -> Optional[str]:
         """Return base64 PNG of QR for 'text'; None if qrcode not available."""
@@ -90,7 +95,7 @@ def init_app(app):
         })
         
     @app.get("/mcp/tools_list")
-    def mcp_toold_list():
+    def mcp_tools_list():
         return jsonify(_tools_list())
 
     # --------- CORS for /mcp ---------
@@ -105,7 +110,7 @@ def init_app(app):
                 resp.headers["Access-Control-Allow-Origin"] = origin
                 resp.headers["Vary"] = "Origin"
         resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-KEY"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-KEY, Authorization"
         resp.headers["Access-Control-Max-Age"] = "600"
         return resp
 
@@ -120,18 +125,35 @@ def init_app(app):
         return {
             "tools": [
                 {
+                    "name": "get_supported_scopes",
+                    "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                },
+                {
                     "name": "start_wallet_verification",
-                    "description": "Create an OIDC4VP authorization request (QR + deeplink) via the Verifier API.",
+                    "description": "Create a wallet request as a QR code image or deeplink.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "verifier_id": {"type": "string", "description": "Verifier/application identifier."},
-                            "session_id": {"type": "string", "description": "Optional caller-provided session id."},
-                            "scope": {"type": "string",
-                                "enum": ["email", "phone", "profile", "over18", "custom", "wallet_identifier"],
-                                "description": "Optional scope hint. 'wallet_identifier' means ID-token only."}
+                            "verifier_id": {
+                                "type": "string",
+                                "description": "Verifier identifier."
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Optional caller-provided session id."
+                            },
+                            "scope": {
+                                "type": "string",
+                                "enum": ["email", "phone", "profile", "over18", "custom", "wallet_identifier", "raw"],
+                                "description": "Claims: profile→ family_name,given_name,birth_date; email→ email_address; phone→ mobile_phone_number; over18→ age attestation; wallet_identifier→ DID only; custom→ use your own Presentation Definition."
+                            }
                         },
-                        "required": ["verifier_id"]
+                        "required": ["verifier_id", "scope"]
                     }
                 },
                 {
@@ -140,7 +162,9 @@ def init_app(app):
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "session_id": {"type": "string"}
+                            "session_id": {
+                                "type": "string"
+                            }
                         },
                         "required": ["session_id"]
                     }
@@ -151,7 +175,9 @@ def init_app(app):
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "session_id": {"type": "string"}
+                            "session_id": {
+                                "type": "string"
+                            }
                         },
                         "required": ["session_id"]
                     }
@@ -164,7 +190,8 @@ def init_app(app):
         verifier_api_base = _cfg("VERIFIER_API_BASE")
         pull_status_base = _cfg("PULL_STATUS_BASE")
         public_base_url = _cfg("PUBLIC_BASE_URL")
-        # required
+        
+        # verifier_id is required
         verifier_id = arguments.get("verifier_id")
         if not verifier_id:
             return _ok_content(
@@ -181,7 +208,7 @@ def init_app(app):
             scope = None
         
         # supported scope
-        if scope not in [None, "email", "phone", "profile", "custom", "over18"]:
+        if scope not in [None, "email", "phone", "profile", "custom", "over18", "raw"]:
             return _ok_content(
                 [{"type": "text", "text": "scope is not supported"}],
                 structured={"error": "invalid_arguments"},
@@ -199,7 +226,7 @@ def init_app(app):
             r = requests.post(verifier_api_base, json=payload, headers=headers, timeout=30)
         except Exception as e:
             return _ok_content(
-                [{"type": "text", "text": f"Network error calling verifier API: {e}"}],
+                [{"type": "text", "text": f"Network error calling oidc4vp API : {e}"}],
                 structured={"error": "network_error", "detail": str(e)},
                 is_error=True
             )
@@ -245,9 +272,13 @@ def init_app(app):
                 structured={"error": "invalid_arguments", "missing": ["session_id"]},
                 is_error=True
             )
+            
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if verifier_api_key:
+            headers["X-API-KEY"] = verifier_api_key
 
         try:
-            r = requests.get(f"{pull_status_base.rstrip('/')}/{session_id}", timeout=20)
+            r = requests.get(f"{pull_status_base.rstrip('/')}/{session_id}", headers=headers, timeout=20)
             payload = r.json()
         except Exception as e:
             return _ok_content(
@@ -276,11 +307,11 @@ def init_app(app):
 
         return _ok_content(text_blocks, structured=structured)
 
-
     def _call_revoke_wallet_flow(arguments: Dict[str, Any], verifier_api_key: Optional[str]) -> Dict[str, Any]:
         session_id = arguments.get("session_id")
         structured = {"ok": True, "session_id": session_id}
         return _ok_content([{"type": "text", "text": "Flow revoked (TTL cleanup handled server-side)."}], structured=structured)
+
 
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
@@ -290,7 +321,7 @@ def init_app(app):
             return _add_cors(make_response("", 204))
     
         req = request.get_json(force=True, silent=False)
-        print("request = ", req)
+        logging.info("request received = %s", json.dumps(req, indent=2))
 
         if not isinstance(req, dict) or req.get("jsonrpc") != "2.0" or "method" not in req:
             rid = req.get("id") if isinstance(req, dict) else None
@@ -299,16 +330,19 @@ def init_app(app):
         method = req["method"]
         req_id = req.get("id")
         params = req.get("params") or {}
-        api_key = request.headers.get("X-API-KEY") or _cfg("VERIFIER_API_KEY")
+        
+        if method and method.startswith("notifications/"):
+            return ("", 200)
+        
+        # Get API key as Authorization bearer or X-API-KEY
+        api_key = _bearer_or_api_key()
 
         # initialize handshake
         if method == "initialize":
             result = {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {
-                    "tools": {"listChanged": False},
-                    "resources": {"listChanged": False},
-                    "prompts": {"listChanged": False},
+                    "tools": {"listChanged": True},
                     "logging": {}
                 },
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
@@ -318,20 +352,78 @@ def init_app(app):
         # tools/list
         if method == "tools/list":
             return jsonify({"jsonrpc": "2.0", "result": _tools_list(), "id": req_id})
+    
+        # trace and debug
+        if method == "logging/setLevel":
+            level_str = (params.get("level") or "").lower()
+            py_level = LEVELS.get(level_str)
+            if py_level is None:
+                py_level = logging.INFO
+            logging.getLogger().setLevel(py_level)
+
+            return jrpc_ok(req_id)
 
         # tools/call
         if method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments") or {}
-            if name == "start_wallet_verification":
-                out = _call_start_wallet_verification(arguments, api_key)
+            api_key = _bearer_or_api_key()
+            if not api_key:
+                return jsonify({"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: missing token"}})
+            
+            if name == "get_supported_scopes":
+                out = _ok_content([{"type":"text","text":"Scopes and profiles"}],
+                        structured={
+                            "scopes": {
+                                "email": ["email_address"],              
+                                "phone": ["mobile_phone_number"],          
+                                "profile": ["family_name","given_name","birth_date"],
+                                "wallet_identifier": ["wallet_identifier"],
+                                "over18": ["over_18"],
+                                "custom": "Defined by your Presentation Definition"
+                                },
+                            "profiles": {
+                                "0000": "wallet basic",
+                                "0001": "wallet with DID DIIP V3 profile",
+                                "0002": "wallet with DID DIIP V4 profile"
+                            },
+                            "auth": "Send X-API-KEY header. For test profiles, key = verifier_id (0000, 0001, 0002)."
+                        })  
+    
+            elif name == "start_wallet_verification":
+                verifier_id = arguments.get("verifier_id")
+                # For public test profiles, simplest rule: token must equal verifier_id
+                if verifier_id in {"0000","0001","0002"} and api_key != verifier_id:
+                    return jsonify({"jsonrpc":"2.0","id":req_id,
+                                    "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
+                
+                if verifier_id in {"0000","0001","0002"}:
+                    if api_key != verifier_id:
+                        return jsonify({"jsonrpc":"2.0","id":req_id,
+                                        "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
+                    out = _call_start_wallet_verification(arguments, api_key)
+                else:
+                    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
+                    if not verifier:
+                        return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: missing verifier"}}
+                    expected_key = decrypt_json(verifier.application_api)["verifier_secret"]
+                    if expected_key != api_key:
+                        return jsonify({"jsonrpc":"2.0","id":req_id,
+                                        "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
+                    out = _call_start_wallet_verification(arguments, api_key)
+            
             elif name == "poll_wallet_verification":
                 out = _call_poll_wallet_verification(arguments, api_key)
+            
             elif name == "revoke_wallet_flow":
                 out = _call_revoke_wallet_flow(arguments, api_key)
+            
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})
-            print("tool response = ", {"jsonrpc": "2.0", "result": out, "id": req_id})
+            
+            logging.info("tool response = %s", json.dumps({"jsonrpc": "2.0", "result": out, "id": req_id}, indent=2))
             return jsonify({"jsonrpc": "2.0", "result": out, "id": req_id})
 
         # unknown method

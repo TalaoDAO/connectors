@@ -3,9 +3,6 @@
     {
       "id": "eid-limited",
       "format": "dc+sd-jwt",
-      "meta": {
-        "vct_values": ["eu:europa:ec.eudi.pid.1"]
-      },
       "claims": [
         {"path": ["given_name"]},
         {"path": ["family_name"]},

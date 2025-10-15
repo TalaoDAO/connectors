@@ -1,6 +1,14 @@
 
 # MCP Wallet Verification for AI Agents
 
+## Authentication
+
+- Preferred: send `Authorization: Bearer <token>`
+- Also accepted: `X-API-KEY: <token>`
+
+For public test profiles, the token/key equals the `verifier_id` (`0000`, `0001`, `0002`).
+
+
 **Audience:** developers building AI agents that need to authenticate a user with their **data wallet** (EUDI-compatible, e.g., Talao) using **MCP** + **OIDC4VP** (pull model).
 
 This guide shows how to:
@@ -280,3 +288,6 @@ please **register** to obtain a dedicated `verifier_id` and `X-API-KEY`.
 - **Tool error vs RPC error**  
   - RPC error: top-level `"error": {...}`  
   - Tool error: `"result.isError": true` with `result.structuredContent.error`
+
+
+> Privacy note: Raw tokens (`vp_token`, `id_token`, etc.) are **not returned** by the MCP server; only derived claims are provided in `structuredContent`.

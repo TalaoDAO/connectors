@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MCP Server for Data Wallets – Connect EUDI & Talao wallets to AI agents</title>
+  <title>EUDI Wallet MCP Server for AI Agents (Talao, eIDAS v2)</title>
 
   <!-- SEO / Social -->
   <meta name="description" content="Expose OIDC4VP wallet verification to AI agents via the Model Context Protocol (MCP). Pull-based flow, works with EUDI-compliant wallets like Talao." />
@@ -76,6 +76,36 @@
     .note{ font-size:.95rem; color:#5b6470; }
     .kbd{ background:#eef7f8; padding:.15rem .45rem; border-radius:6px; border:1px solid #cde9ee; }
   </style>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "Wallet Connectors",
+        "url": "https://wallet-connectors.com/",
+        "sameAs": ["https://www.talao.io/"],
+        "logo": "https://wallet-connectors.com/static/logo.png"
+      },
+      {
+        "@type": "WebSite",
+        "name": "Wallet Connectors",
+        "url": "https://wallet-connectors.com/"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "EUDI Wallet MCP Server",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Any",
+        "url": "https://wallet-connectors.com/",
+        "description": "MCP Server to connect EUDI wallets (e.g., Talao) to AI Agents using OIDC4VP (pull model), aligned with eIDAS v2.",
+        "keywords": "EUDI wallet, AI Agent, MCP Server, Talao, eIDAS v2, OIDC4VP, verifiable credentials"
+      }
+    ]
+  }
+  </script>
+
 </head>
 <body>
 
@@ -101,7 +131,7 @@
     <section class="hero" aria-labelledby="hero-title">
       <span class="badge">MCP • OIDC4VP • EUDI</span>
       <h1 id="hero-title" class="main-title">MCP server for data wallet</h1>
-      <p class="subtitle">Authenticate users with their <strong>EUDI‑compliant wallet</strong> (e.g., <strong>Talao</strong>). This server exposes your verifier APIs via the <strong>Model Context Protocol</strong> using a <strong>pull</strong> model (no webhooks).</p>
+      <p class="subtitle">AI Agents can now authenticate users with their <strong>EUDI‑compliant wallet</strong> (e.g., <strong>Talao</strong>). This server exposes verifier APIs via the <strong>Model Context Protocol</strong> using a <strong>pull</strong> model.</p>
       <div class="cta" role="group" aria-label="Primary actions">
         <a class="btn primary" href="/mcp/info">MCP info</a>
         <a class="btn secondary" href="#quickstart">Quick start</a>
@@ -128,7 +158,7 @@
             <li><code>poll_wallet_verification</code> — check status (<em>pending</em>, <em>verified</em>, <em>denied</em>) and fetch wallet data (structuredContent).</li>
             <li><code>revoke_wallet_flow</code> — acknowledge flow cleanup (TTL handled server‑side).</li>
           </ul>
-          <p class="note">Calls are protected with <code>X-API-KEY</code> (the MCP client must send your verifier secret).</p>
+          <p class="note">Calls are protected with <code>Authorization: Bearer &lt;token&gt;</code> (or <code>X-API-KEY</code>); for public tests, the token/key equals the <code>verifier_id</code>.</p>
         </div>
       </div>
     </section>
@@ -157,7 +187,7 @@
 
     <section id="quickstart" class="section" aria-labelledby="quickstart-title">
       <h2 id="quickstart-title">Quick start (curl)</h2>
-      <p class="note">Use public test profiles: <code>verifier_id</code> ∈ { <strong>0000</strong>, <strong>0001</strong>, <strong>0002</strong> }; the <code>X-API-KEY</code> equals the <code>verifier_id</code>. Register to setup specific wallet profile and get your own <code>verifier_id</code> and secret.</p>
+      <p class="note">Use public test profiles: <code>verifier_id</code> ∈ { <strong>0000</strong>, <strong>0001</strong>, <strong>0002</strong> }. The header token can be <code>Authorization: Bearer 0000</code> (or <code>X-API-KEY: 0000</code>) for 0000. Register to set up a specific wallet profile and get your own <code>verifier_id</code> and secret.</p>
       <div class="two-col">
         <div class="card">
 <pre><code class="language-bash"># 1) List tools
@@ -238,7 +268,7 @@ curl -s https://wallet-connectors.com/mcp \
         </article>
         <article class="card">
           <h3>Token redaction</h3>
-          <p>Raw <code>vp_token</code> and <code>id_token</code> are checked according to standards and trust registries. MCP responses are simple to use.</p>
+          <p>Raw tokens are <strong>not returned</strong>; the server exposes derived claims only.</p>
         </article>
         <article class="card">
           <h3>TTL‑based cleanup</h3>
@@ -249,15 +279,45 @@ curl -s https://wallet-connectors.com/mcp \
 
     <section class="section cta-bottom" aria-labelledby="start">
       <h2 id="start">Ready to connect a wallet to your agent?</h2>
-      <p class="subtitle">Authenticate users with their <strong>EUDI‑compliant wallet</strong> (e.g., <strong>Talao</strong>). This server exposes your verifier APIs via the <strong>Model Context Protocol</strong> using a <strong>pull</strong> model (no webhooks).</p>
+      <p class="subtitle">Use the MCP tools above or see <code>/mcp/info</code> for server metadata.</p>
       <div class="cta">
-        <a class="btn secondary" href="/mcp/tools_list">MCP tools</a>
+        <a class="btn secondary" href="/mcp/info">MCP tools</a>
         <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>
       </div>
     </section>
   </main>
 
   {% include "footer.html" %}
+
+
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"FAQPage",
+    "mainEntity":[
+      {
+        "@type":"Question",
+        "name":"What is an MCP Server for EUDI wallets?",
+        "acceptedAnswer":{"@type":"Answer","text":"A Model Context Protocol server that lets an AI Agent start and poll OIDC4VP verifications with an EUDI wallet (e.g., Talao) using a pull model, aligned with eIDAS v2."}
+      },
+      {
+        "@type":"Question",
+        "name":"Which wallets are supported?",
+        "acceptedAnswer":{"@type":"Answer","text":"Any EUDI-compliant wallet; tested profiles include Talao and DIIP-style flows for OIDC4VP draft 20 and draft 25."}
+      },
+      {
+        "@type":"Question",
+        "name":"What data can my AI Agent request?",
+        "acceptedAnswer":{"@type":"Answer","text":"Scopes include: email (email_address), phone (mobile_phone_number), profile (family_name, given_name, birth_date, wallet_identifier). You can register custom Presentation Definitions for more."}
+      },
+      {
+        "@type":"Question",
+        "name":"Is it aligned with eIDAS v2?",
+        "acceptedAnswer":{"@type":"Answer","text":"Yes. The flow is designed to respect PID handling and OIDC4VP patterns aligned with eIDAS v2 guidance."}
+      }
+    ]
+  }
+  </script>
 
 </body>
 </html>

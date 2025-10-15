@@ -32,9 +32,23 @@ def init_app(app):
     # endpoints for wallet
     app.add_url_rule('/verifier/wallet/callback',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
     app.add_url_rule('/verifier/wallet/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
-    # NEW: pull endpoint for MCP clients (replace webhooks)
+    
+    # endpoint for MCP server
     app.add_url_rule('/verifier/wallet/pull/<session_id>', view_func=wallet_pull_status, methods=['GET'])
+    app.add_url_rule('/verifier/wallet/start', view_func=oidc4vp_qrcode, methods=['POST'])
     return
+
+"""
+def get_verifier_key(verifier_id):
+    if not verifier_id:
+        return {"error": "invalid_request", "error_description": "issuer_id missing"}, 400        
+    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
+    if not verifier:
+        logging.warning("verifier not found: %s", verifier_id)
+        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
+    api_key = decrypt_json(verifier.application_api)["verifier_secret"]
+    return {"key": api_key} 
+"""
 
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
@@ -90,12 +104,10 @@ def build_verifier_metadata(verifier_id) -> dict:
 
 
 # API to build the authorization request                                      
-def oidc4vp_qrcode(red, mode):
-    #red = current_app.config["REDIS"]
-    #mode = current_app.config["MODE"]
-    
-    print("mode server dans oidc4vp = ", mode.server)
-        
+def oidc4vp_qrcode():
+    red = current_app.config["REDIS"]
+    mode = current_app.config["MODE"]
+            
     # --- Auth ---
     request_api_key = request.headers.get("X-API-KEY")
     if not request_api_key:
@@ -115,7 +127,7 @@ def oidc4vp_qrcode(red, mode):
         logging.warning("verifier not found: %s", verifier_id)
         return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
 
-    if not request_api_key == decrypt_json(verifier.application_api)["verifier_secret"]:
+    if request_api_key != decrypt_json(verifier.application_api)["verifier_secret"]:
         return {"error": "unauthorized"}, 401
 
     # RELAXED: Do NOT require webhook_url when using pull model (still allowed if provided)
@@ -126,8 +138,9 @@ def oidc4vp_qrcode(red, mode):
     if not body.get("session_id"):
         return {"error": "invalid_request", "error_description": "session_id is required"}, 401
 
+    # we use the session_id as nonce
+    nonce = body["session_id"]
     session_id = body["session_id"]
-    nonce = str(uuid.uuid1())
 
     # authorization request
     authorization_request = { 
@@ -142,18 +155,20 @@ def oidc4vp_qrcode(red, mode):
 
     # OIDC4VP
     mcp_scope = body.get("scope")
+    pex_fallback_presentation = json.load(open("presentation_exchange/raw.json", "r"))
+    dcql_fallback_presentation = json.load(open("dcql_query/raw.json", "r"))
     if 'vp_token' in verifier.response_type:
         if verifier.presentation_format == "presentation_exchange":
-            if mcp_scope in ["email", "phone", "profile", "over18"]:
+            if mcp_scope in ["email", "phone", "profile", "over18", "raw"]:
                 presentation_request = json.load(open("presentation_exchange/" + mcp_scope + ".json", "r"))
-            else:    
-                presentation_request = json.loads(verifier.presentation) if verifier.presentation else body.get("presentation", {})
+            else:    # custom
+                presentation_request = json.loads(verifier.presentation) if verifier.presentation else pex_fallback_presentation
             authorization_request['presentation_definition'] = presentation_request
         else:
-            if mcp_scope == "profile":
-                presentation_request = json.load(open("dcql_query/profile.json", "r")) 
+            if mcp_scope in ["email", "phone", "profile", "raw"]:
+                presentation_request = json.load(open("dcql_query/" + mcp_scope  + ".json", "r")) 
             else:    
-                presentation_request = json.loads(verifier.presentation) if verifier.presentation else body.get("presentation", {})
+                presentation_request = json.loads(verifier.presentation) if verifier.presentation else dcql_fallback_presentation
             authorization_request['dcql_query'] = presentation_request
             
         authorization_request['aud'] = 'https://self-issued.me/v2'
@@ -211,7 +226,7 @@ def oidc4vp_qrcode(red, mode):
 
     url = verifier.prefix + '?' + urlencode(authorization_request_for_qrcode)
 
-    return ({
+    return jsonify({
         "url": url,
         "session_id": session_id
     })
@@ -397,6 +412,9 @@ async def verifier_response():
         
     wallet_data.update(disclosure)
     wallet_data.update(claims)
+    if data["mcp_scope"] == "raw":
+        wallet_data["raw"] = request.form
+        
     red.setex(session_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
 
     # Update pull status for MCP clients
@@ -409,11 +427,27 @@ async def verifier_response():
 def wallet_pull_status(session_id: str):
     """Return the current status for a given session_id.
     Responses:
-      200 verified/denied -> include wallet_data (tokens redacted should be done by caller if needed)
-      202 pending         -> still waiting for wallet
-      404 not_found       -> unknown or expired flow
+    200 verified/denied -> include wallet_data (tokens redacted should be done by caller if needed)
+    202 pending         -> still waiting for wallet
+    404 not_found       -> unknown or expired flow
     """
     red = current_app.config["REDIS"]
+    
+    # --- Auth ---
+    request_api_key = request.headers.get("X-API-KEY")
+    if not request_api_key:
+        return {"error": "unauthorized", "error_description": "Missing X-API-KEY"}, 401
+    try:
+        data = json.loads(red.get(session_id).decode())
+    except Exception:
+        return {"error": "invalid_request", "error_description": "request expired"}, 400  
+    verifier_id = data.get("verifier_id")    
+    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
+    if not verifier:
+        logging.warning("verifier not found: %s", verifier_id)
+        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
+    if request_api_key != decrypt_json(verifier.application_api)["verifier_secret"]:
+        return {"error": "unauthorized"}, 401
 
     # Fetch status first
     status_raw = red.get(session_id + "_status")
