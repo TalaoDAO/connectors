@@ -3,8 +3,9 @@
 Connect **EUDI‑compliant wallets** (e.g., **Talao**) to **AI agents** via the **Model Context Protocol (MCP)**.  
 This hosted service exposes your OIDC4VP verifier as MCP tools using a **pull** model (no webhooks or callbacks).
 
-- **Base URL**: `https://wallet-connectors.com`
-- **MCP RPC endpoint**: `POST https://wallet-connectors.com/mcp`
+- **Base URL**: [https://wallet-connectors.com](https://wallet-connectors.com) 
+- **MCP RPC endpoint**: `POST https://wallet-connectors.com/mcp` 
+- **Manifest**: [https://wallet-connectors.com/manifest.json](https://wallet-connectors.com/manifest.json)
 - **Spec version**: MCP **2025‑06‑18** — uses `params.arguments`; returns `result.content` (blocks) + `result.structuredContent`.
 
 > ✅ This README explains both **how to use** and **how to integrate** the Wallet Connectors MCP server with ChatGPT, VS Code, or your own clients.  
