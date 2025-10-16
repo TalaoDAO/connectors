@@ -19,7 +19,9 @@ Send your verifier key in a header on **every** call:
 X-API-KEY: <YOUR_VERIFIER_KEY>
 ```
 
-Use **0000** as the verifier_id and verifier_key for testing purpose with [Talao wallet](https://talao.io) 
+Use **0000** as the verifier_id and verifier_key for testing purpose with [Talao wallet](https://talao.io) and a basic verifier profile. 
+
+Other custom verifiers are available on https://wallet-connectors.com .
 
 No cookies or OAuth are used by this MCP endpoint.
 
@@ -39,6 +41,21 @@ No cookies or OAuth are used by this MCP endpoint.
 
 ---
 
+
+## Scope → Returned Claims
+
+| scope | Returned claims (in `result.structuredContent`) | Notes |
+|---|---|---|
+| `email` | `email_address`, `email` | Provided as **PID** according to **eIDAS v2** rulebook. |
+| `phone` | `mobile_phone_number`, `phone` | Provided as **PID** according to **eIDAS v2** rulebook. |
+| `profile` | `family_name`, `given_name`, `birth_date` |OIDF standard scope. |
+| `wallet_identifier` | **wallet_identifier**  is the wallet **DID** or the public key **thumbprint** | ID‑token only flow; no extra attributes. |
+| `over18` | `over_18` (boolean) or equivalent age‑attestation | Wallet-dependent representation. |
+| `custom` | Defined by your Presentation Definition | Requires registration to provide your PEX/DCQL. |
+
+---
+
+
 ## Quick start (curl)
 
 List tools:
@@ -48,12 +65,12 @@ curl -s https://wallet-connectors.com/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
 ```
 
-Start a flow:
+Start a flow with 0000 as X-API-KEY for demo and profile as scope:
 ```bash
 curl -s https://wallet-connectors.com/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'X-API-KEY: <X-API-KEY>' \
+  -H 'X-API-KEY: 0000' \
   -d '{
     "jsonrpc":"2.0",
     "id":"start1",
@@ -70,7 +87,7 @@ Use the `session_id` from the previous response to poll:
 curl -s https://wallet-connectors.com/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'X-API-KEY: <X-API-KEY>' \
+  -H 'X-API-KEY: 0000' \
   -d '{
     "jsonrpc":"2.0",
     "id":"poll1",
@@ -307,4 +324,4 @@ Agent → /mcp tools/call poll_wallet_verification (repeat until status != pendi
 
 ## Changelog (surface)
 
-- **0.2.0** — MCP 2025‑06‑18 compliance; `params.arguments`; `content[]` + `structuredContent`; QR as image block; token redaction.
+- **1.0.0** — MCP 2025‑06‑18 compliance; `params.arguments`; `content[]` + `structuredContent`; QR as image block; token redaction.
