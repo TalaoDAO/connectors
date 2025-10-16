@@ -193,35 +193,35 @@
 <pre><code class="language-bash"># 1) List tools
 curl -s https://wallet-connectors.com/mcp \
   -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 # 2) Start verification (server can generate session_id)
 curl -s https://wallet-connectors.com/mcp \
   -H 'Content-Type: application/json' \
-  -H 'X-API-KEY: &lt;X-API-KEY&gt;' \
+  -H 'X-API-KEY: 0000' \
   -d '{
     "jsonrpc":"2.0",
     "id":2,
     "method":"tools/call",
     "params":{
       "name":"start_wallet_verification",
-      "arguments":{"verifier_id":"0000","scope":"profile"}
+      "arguments":{"verifier_id":"0000","scope":"profile", "session_id": "user-1234"}
     }
-  }' | jq
+  }'
 
 # 3) Poll (use session_id from step 2 → result.structuredContent.session_id)
 curl -s https://wallet-connectors.com/mcp \
   -H 'Content-Type: application/json' \
-  -H 'X-API-KEY: &lt;X-API-KEY&gt;' \
+  -H 'X-API-KEY: 0000' \
   -d '{
     "jsonrpc":"2.0",
     "id":3,
     "method":"tools/call",
     "params":{
       "name":"poll_wallet_verification",
-      "arguments":{"session_id":"3e02ac7e-da66-4dd1-9abe-30348dcc728f"}
+      "arguments":{"session_id":"user-1234"}
     }
-  }' | jq</code></pre>
+  }'</code></pre>
         </div>
         <div class="card">
 <pre><code class="language-json">{
