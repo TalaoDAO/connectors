@@ -122,11 +122,6 @@
 <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET-CONNECTORS.COM</a></strong>
 </div>
 <nav>
-    {% if verifier_type == "sandbox" and user.subscription != "free" %}
-        <a href="/verifier/select/qualified">Production</a>
-    {% elif verifier_type == "qualified" %}
-        <a href="/verifier/select/sandbox">Sandbox</a>
-    {% endif %}
     <a href="/verifier/create/{{verifier_type}}">Create</a>
   <!--  <a href="/verifier/swagger">Swagger</a> -->
 
