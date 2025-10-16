@@ -165,7 +165,6 @@ def login_with_wallet():
         #response_mode="query",
         #response_type="code"
     )
-    print("auth uri = ", auth_uri)
     return redirect(auth_uri)
 
 
@@ -182,7 +181,6 @@ def register_wallet_callback(db):
     try:
         # 1) Discover OIDC endpoints
         disc_resp = requests.get(TALAO_DISCOVERY_URL, timeout=10)
-        print("disc resp ", disc_resp)
         talao_config = disc_resp.json()
         token_endpoint = talao_config["token_endpoint"]
         userinfo_endpoint = talao_config["userinfo_endpoint"]
@@ -193,7 +191,6 @@ def register_wallet_callback(db):
             authorization_response=request.url,
             redirect_url=TALAO_CALLBACK,
         )
-        print("in register = ", token_url, headers, body)
         token_resp = requests.post(
             token_url,
             headers=headers,

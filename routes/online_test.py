@@ -105,7 +105,6 @@ def verifier_online_test_test(verifier_type, id):
         r.raise_for_status()
         url = (r.json() or {}).get("url", "")
     except Exception:
-        print("QR code value fetch failed = ", r.json())
         return jsonify(r.json())
     return render_template(
             "verifier/verifier_test.html",
@@ -116,7 +115,6 @@ def verifier_online_test_test(verifier_type, id):
 
 
 def verifier_online_test_webhook():
-    print(request.form)
     return jsonify('ok')
 
 
@@ -188,13 +186,11 @@ def signin_online_test_callback(id):
     userinfo_endpoint = talao_config["userinfo_endpoint"]
     uri, headers, body = talao_client.add_token(userinfo_endpoint)
     userinfo = requests.get(uri, headers=headers, data=body).json()
-    print("userinfo = ", userinfo)
     return redirect("/signin/select/" + signin.signin_type)
 
 
 # Audit Issuer
 def issuer_online_audit(issuer_type, id):
-    print("call received")
     mode = current_app.config["MODE"]
     issuer = Issuer.query.get_or_404(id)
     application_api_json = decrypt_json(issuer.application_api)

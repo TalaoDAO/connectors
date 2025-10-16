@@ -65,8 +65,6 @@ def create_app() -> Flask:
     mode = env.currentMode(myenv)  # object with .server, .port, .flaskserver, etc.
     mode.debug_on()
     
-    print("mode.server  = ", mode.server)
-
     # Redis init red = redis.StrictRedis()
     red = redis.Redis(host='localhost', port=6379, db=0)
 

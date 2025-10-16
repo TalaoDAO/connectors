@@ -93,7 +93,12 @@ def init_app(app):
             "endpoints": {"rpc": "/mcp"},
             "auth": {"type": "api_key", "header": "X-API-KEY"}
         })
-        
+    
+    @app.get("/manifest.json")
+    def manifest():
+        file = json.load(open("manifest.json", "r"))
+        return jsonify(file)
+            
     @app.get("/mcp/tools_list")
     def mcp_tools_list():
         return jsonify(_tools_list())

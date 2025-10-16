@@ -16,6 +16,6 @@ def init_app(app):
 
 @login_required
 def menu():
-    print(current_user.subscription)
+    logging.info(" user = %s", current_user.subscription)
     return render_template("menu.html", user=current_user)
 
