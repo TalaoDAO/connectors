@@ -11,7 +11,7 @@ from utils.kms import decrypt_json
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "1.0.0"
 
  
 LEVELS = {
@@ -23,6 +23,7 @@ LEVELS = {
     "error":   logging.ERROR,
 }
 
+SUPPORTED_SCOPES = ["wallet_identifier", "email", "phone", "profile", "custom", "over18", "raw"]
 
 def init_app(app):
     
@@ -40,7 +41,7 @@ def init_app(app):
         if key in current_app.config:
             return current_app.config[key]
         # fallbacks using MODE.server if available
-        if key == "VERIFIER_API_BASE":
+        if key == "VERIFIER_API_START":
             return current_app.config["MODE"].server + "verifier/wallet/start"
         if key == "PULL_STATUS_BASE":
             return current_app.config["MODE"].server + "verifier/wallet/pull"
@@ -192,7 +193,7 @@ def init_app(app):
 
     # --------- Tool implementations ---------
     def _call_start_wallet_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str]) -> Dict[str, Any]:
-        verifier_api_base = _cfg("VERIFIER_API_BASE")
+        verifier_api_start = _cfg("VERIFIER_API_START")
         pull_status_base = _cfg("PULL_STATUS_BASE")
         public_base_url = _cfg("PUBLIC_BASE_URL")
         
@@ -205,20 +206,26 @@ def init_app(app):
                 is_error=True
             )
         
+        # scope is required
+        scope = arguments.get("scope")
+        if not scope:
+            return _ok_content(
+                [{"type": "text", "text": "scope is required"}],
+                structured={"error": "invalid_arguments", "missing": ["scope"]},
+                is_error=True
+            )
+        
         # optional session_id
         session_id = arguments.get("session_id") or str(uuid.uuid4())
         
-        scope = arguments.get("scope")
-        if scope == "wallet_identifier":
-            scope = None
-        
         # supported scope
-        if scope not in [None, "email", "phone", "profile", "custom", "over18", "raw"]:
+        if scope not in SUPPORTED_SCOPES:
             return _ok_content(
-                [{"type": "text", "text": "scope is not supported"}],
-                structured={"error": "invalid_arguments"},
+                [{"type": "text", "text": "this scope is not supported"}],
+                structured={"error":"invalid_arguments","detail":{"scope":scope,"allowed":SUPPORTED_SCOPES} },
                 is_error=True
             )
+        
         
         payload = {"verifier_id": verifier_id, "session_id": session_id, "scope": scope}
 
@@ -228,7 +235,7 @@ def init_app(app):
             headers["X-API-KEY"] = fwd_key
 
         try:
-            r = requests.post(verifier_api_base, json=payload, headers=headers, timeout=30)
+            r = requests.post(verifier_api_start, json=payload, headers=headers, timeout=30)
         except Exception as e:
             return _ok_content(
                 [{"type": "text", "text": f"Network error calling oidc4vp API : {e}"}],
@@ -386,12 +393,13 @@ def init_app(app):
                                 "profile": ["family_name","given_name","birth_date"],
                                 "wallet_identifier": ["wallet_identifier"],
                                 "over18": ["over_18"],
-                                "custom": "Defined by your Presentation Definition"
+                                "custom": "Defined by your presentation_definition or dcql_query",
+                                "raw": "wallet raw response, only for debug"
                                 },
                             "profiles": {
-                                "0000": "wallet basic",
-                                "0001": "wallet with DID DIIP V3 profile",
-                                "0002": "wallet with DID DIIP V4 profile"
+                                "0000": "wallet with DID",
+                                "0001": "wallet DIIP V3 profile",
+                                "0002": "wallet DIIP V4 profile"
                             },
                             "auth": "Send X-API-KEY header. For test profiles, key = verifier_id (0000, 0001, 0002)."
                         })  
@@ -399,9 +407,6 @@ def init_app(app):
             elif name == "start_wallet_verification":
                 verifier_id = arguments.get("verifier_id")
                 # For public test profiles, simplest rule: token must equal verifier_id
-                if verifier_id in {"0000","0001","0002"} and api_key != verifier_id:
-                    return jsonify({"jsonrpc":"2.0","id":req_id,
-                                    "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
                 
                 if verifier_id in {"0000","0001","0002"}:
                     if api_key != verifier_id:

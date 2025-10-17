@@ -136,10 +136,10 @@ def oidc4vp_qrcode():
         return {"error": "invalid_request", "error_description": "A presentation object (PEX or DCQL) is required"}, 400
 
     if not body.get("session_id"):
-        return {"error": "invalid_request", "error_description": "session_id is required"}, 401
+        return {"error": "invalid_request", "error_description": "session_id is required"}, 400
 
-    # we use the session_id as nonce
-    nonce = body["session_id"]
+    # we dont use session_id as nonce
+    nonce = str(uuid.uuid4()) # body["session_id"]
     session_id = body["session_id"]
 
     # authorization request
@@ -152,45 +152,40 @@ def oidc4vp_qrcode():
         "nonce": nonce
     }
 
-    # OIDC4VP
+    # OIDC4VP request setup
     mcp_scope = body.get("scope")
-    pex_fallback_presentation = json.load(open("presentation_exchange/raw.json", "r"))
-    dcql_fallback_presentation = json.load(open("dcql_query/raw.json", "r"))
-    if 'vp_token' in verifier.response_type:
         
+    if 'vp_token' in verifier.response_type:              
         authorization_request["client_metadata"] = build_verifier_metadata(verifier_id)
-
+        
         if verifier.presentation_format == "presentation_exchange":
-            if mcp_scope in ["email", "phone", "profile", "over18", "raw"]:
-                presentation_request = json.load(open("presentation_exchange/" + mcp_scope + ".json", "r"))
-            else:    # custom
-                presentation_request = json.loads(verifier.presentation) if verifier.presentation else pex_fallback_presentation
-            authorization_request['presentation_definition'] = presentation_request
+            path = "presentation_exchange/"
+            presentation_claim = "presentation_definition"
         else:
-            if mcp_scope in ["email", "phone", "profile", "raw"]:
-                presentation_request = json.load(open("dcql_query/" + mcp_scope  + ".json", "r")) 
-            else:    
-                presentation_request = json.loads(verifier.presentation) if verifier.presentation else dcql_fallback_presentation
-            authorization_request['dcql_query'] = presentation_request
+            path = "dcql_query/"
+            presentation_claim = "dcql_query"
+        fallback_presentation = json.load(open( path + "raw.json", "r"))
+        if mcp_scope in ["email", "phone", "profile", "over18", "raw"]:
+            authorization_request[presentation_claim] = json.load(open(path + mcp_scope + ".json", "r"))
+        elif mcp_scope == "custom":
+            authorization_request[presentation_claim] = json.loads(verifier.presentation) if verifier.presentation else fallback_presentation
+        elif mcp_scope == "wallet_identifier":
+            authorization_request['scope'] = 'openid'
+            authorization_request["response_type"] = "id_token"
+            authorization_request.pop("client_metadata", None)
+        else:
+            authorization_request[presentation_claim] = fallback_presentation
             
         authorization_request['aud'] = 'https://self-issued.me/v2'
         
-        if verifier.client_id_scheme:
+        if verifier.client_id_scheme and int(verifier.draft) < 23:
             authorization_request["client_id_scheme"] = verifier.client_id_scheme
-    else:
-        presentation_request = {}
 
     # SIOPV2
     if 'id_token' in verifier.response_type:
         authorization_request['scope'] = 'openid'
     
-    if not mcp_scope: # -> "wallet_identifier":
-        authorization_request['scope'] = 'openid'
-        authorization_request["response_type"] = "id_token"
-        authorization_request.pop("presentation_definition", None)
-        authorization_request.pop("client_metadata", None)
-    
-    # store data in redis attached to the nonce to bind with the response
+    # store data in redis attached to the nonce to bind with the wallet response
     data = { 
         "verifier_id": verifier_id,
         "session_id": session_id,
@@ -198,6 +193,7 @@ def oidc4vp_qrcode():
     }
     data.update(authorization_request)
     red.setex(nonce, QRCODE_LIFE, json.dumps(data))
+    red.setex(session_id, QRCODE_LIFE, json.dumps(data)) # fallback
 
     # NEW: initialize a pull status key for this flow (so we can detect expiry)
     red.setex(session_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
@@ -224,7 +220,7 @@ def oidc4vp_qrcode():
         "client_id": verifier.client_id,
         "request_uri": mode.server + "verifier/wallet/request_uri/" + stream_id 
     }
-    logging.info(json.dumps(authorization_request_for_qrcode, indent= 4)  )
+    logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
     url = verifier.prefix + '?' + urlencode(authorization_request_for_qrcode)
 
@@ -259,8 +255,6 @@ def get_format(vp, type="vp"):
 async def verifier_response():
     red = current_app.config["REDIS"]
     logging.info("Enter wallet response endpoint")
-    logging.info("Header = %s", request.headers)
-    logging.info("Form = %s", request.form)
     access = True
 
     # get if error
@@ -293,15 +287,10 @@ async def verifier_response():
         logging.info('presentation submission received = %s', presentation_submission)
         if isinstance(presentation_submission, str):
             presentation_submission = json.loads(presentation_submission)
-            logging.info("presentation submission is a string")
-        else:
-            logging.info("presentation submission is a dict /json object")
 
     if id_token:
-        logging.info('id token received = %s', id_token)
+        logging.info('id token received from wallet')
         id_token_payload = oidc4vc.get_payload_from_token(id_token)
-    else:
-        logging.info("id_token not received")
 
     vp_format = get_format(vp_token)   
     logging.info("VP format = %s", vp_format)   
@@ -331,6 +320,7 @@ async def verifier_response():
     # look for claims and disclosures
     disclosure = {}
     claims = {}
+    vp_token_list = None
     if access and vp_token:
         if vp_format == "vc+sd-jwt":
             vp_token_list = vp_token.split("~")
@@ -355,8 +345,8 @@ async def verifier_response():
                     disc = json.loads(base64.urlsafe_b64decode(_disclosure.encode()).decode())
                     disclosure.update({disc[1]: disc[2]})
                 except Exception:
-                    logging.info("i = %s", i)
-                    logging.info("_disclosure = %s", _disclosure)
+                    logging.warning("i = %s", i)
+                    logging.warning("_disclosure = %s", _disclosure)
         else: # ldp_vp
             verifyResult = json.loads(await didkit.verify_presentation(vp_token, "{}"))
             # TODO
@@ -364,6 +354,8 @@ async def verifier_response():
 
     # get data from nonce binding
     nonce = None
+    print("vp_token = ", vp_token)
+    print("id_token = ", id_token)
     if vp_token:
         logging.info("cnf in vp_token = %s",oidc4vc.get_payload_from_token(vp_token_list[0])['cnf'])
         nonce = oidc4vc.get_payload_from_token(vp_token_list[-1])['nonce']
@@ -404,13 +396,9 @@ async def verifier_response():
             sub = "Error"
 
     # data for MCP client or webhook (To be defined)
-    if data["mcp_scope"]:
-        wallet_data = {
-            "credential_status": "VALID", # INVALID , SUSPENDED
-            "scope": data["mcp_scope"]
-        }
-    else:
-        wallet_data = {"wallet_identifier": sub}
+    wallet_data = {"credential_status":"VALID", "scope": data["mcp_scope"]}
+    if data["mcp_scope"] == "wallet_identifier":
+        wallet_data["wallet_identifier"] = sub
         
     wallet_data.update(disclosure)
     wallet_data.update(claims)
@@ -439,10 +427,12 @@ def wallet_pull_status(session_id: str):
     request_api_key = request.headers.get("X-API-KEY")
     if not request_api_key:
         return {"error": "unauthorized", "error_description": "Missing X-API-KEY"}, 401
+    
     try:
         data = json.loads(red.get(session_id).decode())
     except Exception:
-        return {"error": "invalid_request", "error_description": "request expired"}, 400  
+        return jsonify({"status":"not_found","session_id":session_id}), 404
+    
     verifier_id = data.get("verifier_id")    
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
     if not verifier:
@@ -450,7 +440,7 @@ def wallet_pull_status(session_id: str):
         return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
     if request_api_key != decrypt_json(verifier.application_api)["verifier_secret"]:
         return {"error": "unauthorized"}, 401
-
+    
     # Fetch status first
     status_raw = red.get(session_id + "_status")
     if not status_raw:
@@ -476,5 +466,6 @@ def wallet_pull_status(session_id: str):
         "status": status,
         "session_id": session_id,
     }
-    response.update(wallet_data)
+    if wallet_data is not None:
+        response.update(wallet_data)
     return jsonify(response), 200

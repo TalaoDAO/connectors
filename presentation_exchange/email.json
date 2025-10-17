@@ -22,11 +22,6 @@
         "fields": [
           {
             "path": [
-              "$.vct"
-            ]
-          },
-          {
-            "path": [
               "$.email_address"
             ]
           }

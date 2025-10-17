@@ -304,7 +304,7 @@ def seed_verifier_for_demo(mode):
         verifier_2 = Verifier(
             user_id=1,
             name="oidc4vp draft 28 (DIIP V4)",
-            draft="23",
+            draft="28",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
             client_id_scheme="did",
