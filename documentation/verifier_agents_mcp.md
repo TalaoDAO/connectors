@@ -17,7 +17,7 @@ This service bridges decentralized identity wallets with AI systems such as Chat
 - Preferred: `Authorization: Bearer <token>`  
 - Also accepted: `X-API-KEY: <token>`
 
-For public test profiles, **token = verifier_id** (`0000`, `0001`, `0002`).
+For public test profiles, **token = verifier_id** (`0000`, `0001`, `0002`, `0003`).
 
 No cookies or OAuth are used. Each MCP call must include the header.
 
@@ -25,11 +25,12 @@ No cookies or OAuth are used. Each MCP call must include the header.
 
 ## 🧠 2. Test Verifier Profiles (ready to use)
 
-| `verifier_id` | OIDC4VP Draft | Verifier identity | Description | X-API-KEY |
-|---------------|---------------|------------------|--------------|-----------|
-| `0000` | Draft 20 | Redirect-URI | Baseline for DIIP v3 / Draft 20 wallets | `0000` |
-| `0001` | Draft 20 | DID (Decentralized Identifier) | Same as 0000 but verifier identifies via DID | `0001` |
-| `0002` | Draft 25 | DID | Newer flow for Draft 25 wallets | `0002` |
+| `verifier_id` | OIDC4VP Draft | Verifier identity | Default scope | Returned data (typical fields) | X-API-KEY |
+|---------------|---------------|------------------|---------------|--------------------------------|-----------|
+| `0000` | Draft 20 | Redirect-URI | `wallet_identifier` | `wallet_identifier` (DID or JWK thumbprint) | `0000` |
+| `0001` | Draft 20 | DID | `email` | `email_address` (`email`) | `0001` |
+| `0002` | Draft 20 | DID | `over18` | `over_18` (boolean) | `0002` |
+| `0003` | Draft 28 | DID | `profile` | `family_name`, `given_name`, `birth_date` | `0003` |
 
 > Use these IDs and keys for sandbox testing.  
 > To register your own verifier or Presentation Definition (custom claims), see **Section 11**.
@@ -42,12 +43,13 @@ No cookies or OAuth are used. Each MCP call must include the header.
 Starts a new OIDC4VP flow and returns a QR + deeplink for user authentication.
 
 **Arguments:**
-- `verifier_id` *(required)* — one of your registered verifier profiles  
-- `scope` *(optional)* — `profile`, `email`, `phone`, `over18`, `wallet_identifier`, or `custom`  
+- `verifier_id` *(required)* — one of your registered verifier profiles (demo: 0000–0003)
 - `session_id` *(optional)* — custom session (else generated)
-- `mode`, `presentation` *(optional)* — advanced options
+
+> The scope is **implicit** based on the chosen `verifier_id` (see table above).
 
 **Returns:**  
+`content[]` (QR image, helper text) + `structuredContent` JSON with:**  
 `content[]` (QR image, helper text) + `structuredContent` JSON with:
 ```json
 {
@@ -66,7 +68,6 @@ Poll verification status for a `session_id`.
 {
   "status": "pending | verified | denied",
   "session_id": "...",
-  "scope": "profile",
   "claims": {...}
 }
 ```
@@ -77,10 +78,20 @@ Acknowledge cleanup after completion. Useful for front‑ends; the backend TTL h
 
 ---
 
-## 🎯 4. Scopes and Returned Claims
+## 🎯 4. Default Scopes & Returned Claims (demo profiles)
 
-| Scope | Returned claims (in `structuredContent`) | Notes |
-|---|---|---|
+The demo `verifier_id`s bind to a single scope each:
+
+| Verifier | Scope | Returned claims (flattened) | Notes |
+|---|---|---|---|
+| `0000` | `wallet_identifier` | `wallet_identifier` | Often DID or JWK thumbprint derived from ID token |
+| `0001` | `email` | `email_address` (aka `email`) | PID/eIDAS‑style |
+| `0002` | `over18` | `over_18` (boolean) | True/false age gate |
+| `0003` | `profile` | `family_name`, `given_name`, `birth_date` | OIDF standard profile subset |
+
+> For custom scopes/claims, register your verifier with a Presentation Definition.
+
+---|---|---|
 | `profile` | `family_name`, `given_name`, `birth_date` | OIDF standard |
 | `email` | `email_address`, `email` | eIDAS v2 PID |
 | `phone` | `mobile_phone_number`, `phone` | eIDAS v2 PID |
@@ -97,7 +108,7 @@ Acknowledge cleanup after completion. Useful for front‑ends; the backend TTL h
 curl -s https://wallet-connectors.com/mcp   -H 'Content-Type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
 ```
 
-### Start (Demo 0000)
+### Start (Demo 0000 — default scope: wallet_identifier)
 ```bash
 curl -s https://wallet-connectors.com/mcp   -H 'Content-Type: application/json' -H 'Accept: application/json' -H 'X-API-KEY: 0000'   -d '{
     "jsonrpc":"2.0",
@@ -105,7 +116,7 @@ curl -s https://wallet-connectors.com/mcp   -H 'Content-Type: application/json' 
     "method":"tools/call",
     "params":{
       "name":"start_wallet_verification",
-      "arguments":{"verifier_id":"0000","scope":"profile"}
+      "arguments":{"verifier_id":"0000"}
     }
   }' | jq
 ```
@@ -141,7 +152,7 @@ const rpc = async (method, params, id="1") => {
   return res.json();
 };
 
-const start = await rpc("tools/call", { name: "start_wallet_verification", arguments: { verifier_id: "0000", scope: "profile" } });
+const start = await rpc("tools/call", { name: "start_wallet_verification", arguments: { verifier_id: "0000" } });
 console.log(start.result.structuredContent.deeplink_url);
 
 const poll = await rpc("tools/call", { name: "poll_wallet_verification", arguments: { session_id: start.result.structuredContent.session_id } });
@@ -158,7 +169,7 @@ HDR = {"Content-Type":"application/json","Accept":"application/json","X-API-KEY"
 def rpc(method, params, id="1"):
     return requests.post(MCP, headers=HDR, json={"jsonrpc":"2.0","id":id,"method":method,"params":params}).json()
 
-start = rpc("tools/call", {"name":"start_wallet_verification","arguments":{"verifier_id":"0000","scope":"profile"}})
+start = rpc("tools/call", {"name":"start_wallet_verification","arguments":{"verifier_id":"0000"}})
 sid = start["result"]["structuredContent"]["session_id"]
 
 while True:
@@ -253,6 +264,16 @@ Reload and open the MCP panel.
     "structuredContent": {
       "status": "verified",
       "session_id": "3e02‑...",
+      "wallet_identifier": "did:jwk:ey987875978987ED",
+    }
+  }
+}
+```json
+{
+  "result": {
+    "structuredContent": {
+      "status": "verified",
+      "session_id": "3e02‑...",
       "wallet_identifier": "did:jwk:...",
       "first_name": "John",
       "last_name": "DOE"
@@ -281,7 +302,7 @@ Reload and open the MCP panel.
 ## 🧩 10. Best Practices
 
 - Poll every **1–2 s** until `status != "pending"`  
-- Use minimal scopes — request only necessary claims  
+- Use minimal scopes — use the appropriate demo verifier for minimal claims  
 - Handle both flattened and nested claim structures  
 - Redacted tokens: `vp_token` / `id_token` are never exposed  
 - Enable CORS with proper headers for browser clients
@@ -331,6 +352,7 @@ Visit [wallet‑connectors.com](https://wallet-connectors.com) for registration.
 
 ## 🧾 15. Versioning & Changelog
 
+- **1.4.0** — Scope parameter removed from `start_wallet_verification`; default scope now bound to each `verifier_id` (added demo `0003 → profile`).
 - **1.3.0** — Comprehensive unified developer documentation; test profiles; best practices.  
 - **1.2.0** — Added ChatGPT / VS Code setup; sample clients.  
 - **1.1.0** — Structured MCP 2025‑06‑18 compliance.  

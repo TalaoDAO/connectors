@@ -172,7 +172,7 @@
       <div class="how">
         <div class="step">
           <h4>Agent calls <code>start_wallet_verification</code></h4>
-          <p>The MCP client requests a presentation from a user wallet with a scope such as email, profile, phone... and returns a deep link and QR.</p>
+          <p>The MCP client requests a presentation from a user wallet. The <em>scope is implicit</em> based on the <code>verifier_id</code> (see demo profiles) and the server returns a deep link and QR.</p>
         </div>
         <div class="step">
           <h4>User opens wallet</h4>
@@ -187,11 +187,39 @@
           <p>When verified, the server returns user verifiable data and metadata.</p>
         </div>
       </div>
-    </section>
+    
+    <div class="card" style="margin-top:1rem;">
+      <h3>Demo verifiers → default scopes → returned data</h3>
+      <div class="two-col">
+        <div>
+          <ul>
+            <li><strong>0000</strong> → <code>wallet_identifier</code> → returns <code>wallet_identifier</code> (DID or JWK thumbprint)</li>
+            <li><strong>0001</strong> → <code>email</code> → returns <code>email_address</code> (<em>email</em>)</li>
+            <li><strong>0002</strong> → <code>over18</code> → returns boolean <code>over_18</code></li>
+            <li><strong>0003</strong> → <code>profile</code> → returns <code>family_name</code>, <code>given_name</code>, <code>birth_date</code></li>
+          </ul>
+        </div>
+        <div>
+<pre><code class="language-json"># Example poll payload (shape varies per verifier)
+{
+  "status": "verified",
+  "session_id": "...",
+  "wallet_identifier": "did:jwk:...",
+  "email_address": "user@example.com",
+  "over_18": true,
+  "family_name": "DOE",
+  "given_name": "John",
+  "birth_date": "1990-01-01"
+}</code></pre>
+          <p class="note">Only the fields relevant to the selected demo verifier will be present.</p>
+        </div>
+      </div>
+    </div>
+    
 
     <section id="quickstart" class="section" aria-labelledby="quickstart-title">
       <h2 id="quickstart-title">Quick start (curl)</h2>
-      <p class="note">Use public test profiles: <code>verifier_id</code> ∈ { <strong>0000</strong>, <strong>0001</strong>, <strong>0002</strong> }. The header token can be <code>Authorization: Bearer 0000</code> (or <code>X-API-KEY: 0000</code>) for 0000. Register to set up a specific wallet profile and get your own <code>verifier_id</code> and secret.</p>
+      <p class="note">Use public test profiles: <code>verifier_id</code> ∈ { <strong>0000</strong>, <strong>0001</strong>, <strong>0002</strong>, <strong>0003</strong> }. The header token can be <code>Authorization: Bearer &lt;verifier_id&gt;</code> (or <code>X-API-KEY: &lt;verifier_id&gt;</code>). Each demo verifier has a <em>default scope</em> bound to it:<br><code>0000 → wallet_identifier</code> • <code>0001 → email</code> • <code>0002 → over18</code> • <code>0003 → profile</code>. Register to set up a specific wallet profile and get your own <code>verifier_id</code> and secret.
       <p class="note"> To play this use case, download the Talao wallet from stores, get your Personal ID and scan the QR code image received in step 2. Change scope to use another verifiable credential of your wallet.</p>
       <div class="two-col">
         <div class="card">
@@ -210,7 +238,7 @@ curl -s https://wallet-connectors.com/mcp \
     "method":"tools/call",
     "params":{
       "name":"start_wallet_verification",
-      "arguments":{"verifier_id":"0000","scope":"profile", "session_id": "user-1234"}
+      "arguments":{"verifier_id":"0000", "session_id": "user-1234"}
     }
   }'
 
@@ -236,8 +264,7 @@ curl -s https://wallet-connectors.com/mcp \
     "name": "start_wallet_verification",
     "arguments": {
       "verifier_id": "0000",
-      "session_id": "user-1234",
-      "scope": "profile"
+      "session_id": "user-1234"
     }
   },
   "id": 2
@@ -316,7 +343,7 @@ curl -s https://wallet-connectors.com/mcp \
       {
         "@type":"Question",
         "name":"What data can my AI Agent request?",
-        "acceptedAnswer":{"@type":"Answer","text":"Scopes include: email (email_address), phone (mobile_phone_number), profile (family_name, given_name, birth_date, wallet_identifier). You can register custom Presentation Definitions for more."}
+        "acceptedAnswer":{"@type":"Answer","text":"Each demo verifier has a default scope: 0000→wallet_identifier, 0001→email, 0002→over18, 0003→profile. Register custom Presentation Definitions for other claims (e.g., phone)."}
       },
       {
         "@type":"Question",

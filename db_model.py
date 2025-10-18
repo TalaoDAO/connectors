@@ -303,8 +303,8 @@ def seed_verifier_for_demo(mode):
         }
         verifier_2 = Verifier(
             user_id=1,
-            name="oidc4vp draft 28 (DIIP V4)",
-            draft="28",
+            name="oidc4vp draft 20",
+            draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
             client_id_scheme="did",
@@ -319,9 +319,33 @@ def seed_verifier_for_demo(mode):
             response_redirect_uri="",
             verifier_metadata=json.dumps(verifier_metadata)
         )
+        application_api_3 = {
+            "url": mode.server + "verifier/app",
+            "verifier_id": "0003",
+            "verifier_secret": "0003"
+        }
+        verifier_3 = Verifier(
+            user_id=1,
+            name="oidc4vp draft 28",
+            draft="28",
+            verifier_type="sandbox",
+            description="This is a verifier for demo mcp server",
+            client_id_scheme="did",
+            client_id=mode.server + "verifier/wallet/callback",
+            response_mode="direct_post",
+            credential_id="signature_key_1",
+            webhook_url="http://example.com",
+            application_api=encrypt_json(application_api_3),
+            application_api_verifier_id="0003",
+            response_encryption=False,
+            prefix="openid-vc://",
+            response_redirect_uri="",
+            verifier_metadata=json.dumps(verifier_metadata)
+        )
         db.session.add(verifier_0)
         db.session.add(verifier_1)
         db.session.add(verifier_2)
+        db.session.add(verifier_3)
         db.session.commit()
             
 

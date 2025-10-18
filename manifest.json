@@ -1,7 +1,7 @@
 {
   "name": "Wallet Connectors MCP Server",
   "id": "wallet-connectors",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "protocolVersion": "2025-06-18",
   "description": "MCP server that bridges EUDI-compliant data wallets (OIDC4VP) with AI agents via secure JSON-RPC tools.",
   "homepage": "https://wallet-connectors.com",
@@ -48,13 +48,9 @@
             "type": "string",
             "description": "Verifier identifier (e.g. 0000)"
           },
-          "scope": {
-            "type": "string",
-            "enum": ["email", "phone", "profile", "over18", "custom", "wallet_identifier", "raw"]
-          },
           "session_id": { "type": "string" }
         },
-        "required": ["verifier_id", "scope"]
+        "required": ["verifier_id"]
       }
     },
     {

@@ -11,7 +11,7 @@ from utils.kms import decrypt_json
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.1.0"
 
  
 LEVELS = {
@@ -22,8 +22,6 @@ LEVELS = {
     "warning": logging.WARNING,
     "error":   logging.ERROR,
 }
-
-SUPPORTED_SCOPES = ["wallet_identifier", "email", "phone", "profile", "custom", "over18", "raw"]
 
 def init_app(app):
     
@@ -52,7 +50,9 @@ def init_app(app):
         return default
     
     def _bearer_or_api_key():
+        print(request.headers)
         auth = request.headers.get("Authorization", "")
+        print("auth = ", auth)
         if auth.lower().startswith("bearer "):
             return auth.split(" ", 1)[1].strip()
         return request.headers.get("X-API-KEY")
@@ -154,14 +154,9 @@ def init_app(app):
                             "session_id": {
                                 "type": "string",
                                 "description": "Optional caller-provided session id."
-                            },
-                            "scope": {
-                                "type": "string",
-                                "enum": ["email", "phone", "profile", "over18", "custom", "wallet_identifier", "raw"],
-                                "description": "Claims: profile→ family_name,given_name,birth_date; email→ email_address; phone→ mobile_phone_number; over18→ age attestation; wallet_identifier→ DID only; custom→ use your own Presentation Definition."
                             }
                         },
-                        "required": ["verifier_id", "scope"]
+                        "required": ["verifier_id"]
                     }
                 },
                 {
@@ -208,27 +203,18 @@ def init_app(app):
                 is_error=True
             )
         
-        # scope is required
-        scope = arguments.get("scope")
-        if not scope:
-            return _ok_content(
-                [{"type": "text", "text": "scope is required"}],
-                structured={"error": "invalid_arguments", "missing": ["scope"]},
-                is_error=True
-            )
+        # scope is now unique by verifier_id
+        scope_for_demo = {
+            "0000": "wallet_identifier",
+            "0001": "email",
+            "0002": "over18",
+            "0003": "profile"
+        }
+        scope = scope_for_demo.get(verifier_id, "custom")
         
         # optional session_id
         session_id = arguments.get("session_id") or str(uuid.uuid4())
-        
-        # supported scope
-        if scope not in SUPPORTED_SCOPES:
-            return _ok_content(
-                [{"type": "text", "text": "this scope is not supported"}],
-                structured={"error":"invalid_arguments","detail":{"scope":scope,"allowed":SUPPORTED_SCOPES} },
-                is_error=True
-            )
-        
-        
+            
         payload = {"verifier_id": verifier_id, "session_id": session_id, "scope": scope}
 
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -391,28 +377,20 @@ def init_app(app):
             if name == "get_supported_scopes":
                 out = _ok_content([{"type":"text","text":"Scopes and profiles"}],
                         structured={
-                            "scopes": {
-                                "email": ["email_address"],              
-                                "phone": ["mobile_phone_number"],          
-                                "profile": ["family_name","given_name","birth_date"],
-                                "wallet_identifier": ["wallet_identifier"],
-                                "over18": ["over_18"],
-                                "custom": "Defined by your presentation_definition or dcql_query",
-                                "raw": "wallet raw response, only for debug"
-                                },
                             "profiles": {
-                                "0000": "wallet with DID",
-                                "0001": "wallet DIIP V3 profile",
-                                "0002": "wallet DIIP V4 profile"
+                                "0000": "wallet identifier",
+                                "0001": "email",
+                                "0002": "over 18 proof",
+                                "0003": "first name, last name and birth date"
                             },
-                            "auth": "Send X-API-KEY header. For test profiles, key = verifier_id (0000, 0001, 0002)."
+                            "auth": "Send X-API-KEY header. For test profiles, key = verifier_id (0000, 0001, 0002, 0003)."
                         })  
     
             elif name == "start_wallet_verification":
                 verifier_id = arguments.get("verifier_id")
                 # For public test profiles, simplest rule: token must equal verifier_id
                 
-                if verifier_id in {"0000","0001","0002"}:
+                if verifier_id in {"0000","0001","0002", "0003"}:
                     if api_key != verifier_id:
                         return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
