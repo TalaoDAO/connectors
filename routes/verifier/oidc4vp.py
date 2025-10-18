@@ -5,11 +5,10 @@ import json, base64
 import uuid
 import logging
 from datetime import datetime, timedelta
-import requests
 from jwcrypto import jwk, jwt
 from utils import oidc4vc, signer
 import didkit
-from db_model import Verifier, Credential, User, db
+from db_model import Verifier, Credential, User
 from urllib.parse import urlparse, urlencode
 from utils.kms import decrypt_json
 import logging
@@ -17,7 +16,6 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 # customer application 
-ACCESS_TOKEN_LIFE = 2000
 CODE_LIFE = 2000
 
 # wallet

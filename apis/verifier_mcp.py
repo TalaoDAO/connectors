@@ -47,6 +47,8 @@ def init_app(app):
             return current_app.config["MODE"].server + "verifier/wallet/pull"
         if key == "PUBLIC_BASE_URL":
             return "https://wallet-connectors.com"
+        if key == "REDIS":
+            return current_app.config["REDIS"]
         return default
     
     def _bearer_or_api_key():
@@ -321,6 +323,8 @@ def init_app(app):
 
     def _call_revoke_wallet_flow(arguments: Dict[str, Any], verifier_api_key: Optional[str]) -> Dict[str, Any]:
         session_id = arguments.get("session_id")
+        red = _cfg("REDIS")
+        red.delete(session_id)
         structured = {"ok": True, "session_id": session_id}
         return _ok_content([{"type": "text", "text": "Flow revoked (TTL cleanup handled server-side)."}], structured=structured)
 

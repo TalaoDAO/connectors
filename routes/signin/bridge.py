@@ -667,13 +667,13 @@ def signin_qrcode():
         code_data = json.loads(red.get(request.args['code']).decode())
     except Exception:
         logging.error("session expired in login_qrcode")
-        return render_template("signin_oidc/signin_session_problem.html", message='Session expired')
+        return render_template("signin/signin_session_problem.html", message='Session expired')
     
     try:
         signin_id = code_data['signin_id']
     except Exception:
         logging.error("client id or nonce missing")
-        return render_template("signin_oidc/signin_session_problem.html", message='Server error ')
+        return render_template("signin/signin_session_problem.html", message='Server error ')
     
     signin = Signin.query.get_or_404(signin_id)
     nonce = str(uuid.uuid1())
