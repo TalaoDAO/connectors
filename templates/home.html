@@ -194,23 +194,42 @@
         <div>
           <ul>
             <li><strong>0000</strong> → <code>wallet_identifier</code> → returns <code>wallet_identifier</code> (DID or JWK thumbprint)</li>
+            <br>
             <li><strong>0001</strong> → <code>email</code> → returns <code>email_address</code> (<em>email</em>)</li>
+            <br>
             <li><strong>0002</strong> → <code>over18</code> → returns boolean <code>over_18</code></li>
+            <br>
             <li><strong>0003</strong> → <code>profile</code> → returns <code>family_name</code>, <code>given_name</code>, <code>birth_date</code></li>
           </ul>
         </div>
         <div>
-<pre><code class="language-json"># Example poll payload (shape varies per verifier)
+<pre><code class="language-json"># Example poll payload (0000)
 {
   "status": "verified",
   "session_id": "...",
   "wallet_identifier": "did:jwk:...",
+}
+# Example poll payload (0001)
+{
+  "status": "verified",
+  "session_id": "...",
   "email_address": "user@example.com",
-  "over_18": true,
+}
+# Example poll payload (0002)
+{
+  "status": "verified",
+  "session_id": "...",
+  "over_18": True,
+}
+# Example poll payload (0003)
+{
+  "status": "verified",
+  "session_id": "...",
   "family_name": "DOE",
   "given_name": "John",
   "birth_date": "1990-01-01"
-}</code></pre>
+}
+</code></pre>
           <p class="note">Only the fields relevant to the selected demo verifier will be present.</p>
         </div>
       </div>

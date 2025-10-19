@@ -50,7 +50,6 @@ def init_app(app):
         return default
     
     def _bearer_or_api_key():
-        print(request.headers)
         auth = request.headers.get("Authorization", "")
         print("auth = ", auth)
         if auth.lower().startswith("bearer "):
@@ -194,14 +193,7 @@ def init_app(app):
         pull_status_base = _cfg("PULL_STATUS_BASE")
         public_base_url = _cfg("PUBLIC_BASE_URL")
         
-        # verifier_id is required
         verifier_id = arguments.get("verifier_id")
-        if not verifier_id:
-            return _ok_content(
-                [{"type": "text", "text": "verifier_id is required"}],
-                structured={"error": "invalid_arguments", "missing": ["verifier_id"]},
-                is_error=True
-            )
         
         # scope is now unique by verifier_id
         scope_for_demo = {
@@ -216,12 +208,11 @@ def init_app(app):
         session_id = arguments.get("session_id") or str(uuid.uuid4())
             
         payload = {"verifier_id": verifier_id, "session_id": session_id, "scope": scope}
-
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        fwd_key = verifier_api_key or _cfg("VERIFIER_API_KEY")
-        if fwd_key:
-            headers["X-API-KEY"] = fwd_key
-
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-API-KEY": verifier_api_key
+        }
         try:
             r = requests.post(verifier_api_start, json=payload, headers=headers, timeout=30)
         except Exception as e:
@@ -272,11 +263,12 @@ def init_app(app):
                 structured={"error": "invalid_arguments", "missing": ["session_id"]},
                 is_error=True
             )
-            
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        if verifier_api_key:
-            headers["X-API-KEY"] = verifier_api_key
-
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-API-KEY": verifier_api_key
+        }
         try:
             r = requests.get(f"{pull_status_base.rstrip('/')}/{session_id}", headers=headers, timeout=20)
             payload = r.json()
@@ -307,8 +299,14 @@ def init_app(app):
 
         return _ok_content(text_blocks, structured=structured)
 
-    def _call_revoke_wallet_flow(arguments: Dict[str, Any], verifier_api_key: Optional[str]) -> Dict[str, Any]:
+    def _call_revoke_wallet_flow(arguments: Dict[str, Any]) -> Dict[str, Any]:
         session_id = arguments.get("session_id")
+        if not session_id:
+            return _ok_content(
+                [{"type": "text", "text": "session_id is required"}],
+                structured={"error": "invalid_arguments", "missing": ["session_id"]},
+                is_error=True
+            )
         red = _cfg("REDIS")
         red.delete(session_id)
         structured = {"ok": True, "session_id": session_id}
@@ -318,6 +316,7 @@ def init_app(app):
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
+        logging.info("header %s", request.headers)
         
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
@@ -334,10 +333,14 @@ def init_app(app):
         params = req.get("params") or {}
         
         if method and method.startswith("notifications/"):
-            return ("", 200)
+            return ("", 202)
         
         # Get API key as Authorization bearer or X-API-KEY
         api_key = _bearer_or_api_key()
+        
+        # ping basic 
+        if method == "ping":
+            return jsonify({"jsonrpc": "2.0", "result": {}, "id": req_id})
 
         # initialize handshake
         if method == "initialize":
@@ -400,17 +403,19 @@ def init_app(app):
                     if not verifier:
                         return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing verifier"}}
+                    
                     expected_key = decrypt_json(verifier.application_api)["verifier_secret"]
                     if expected_key != api_key:
                         return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
+                    
                     out = _call_start_wallet_verification(arguments, api_key)
             
             elif name == "poll_wallet_verification":
                 out = _call_poll_wallet_verification(arguments, api_key)
             
             elif name == "revoke_wallet_flow":
-                out = _call_revoke_wallet_flow(arguments, api_key)
+                out = _call_revoke_wallet_flow(arguments)
             
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})

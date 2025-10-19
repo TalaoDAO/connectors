@@ -189,12 +189,14 @@
 <a class="button btn-edit" href="/verifier/update/{{verifier_type}}/{{ verifier.id }}">Update</a>
 <a class="button btn-edit" href="/verifier/online-test/audit/{{verifier_type}}/{{ verifier.id }}">Audit</a>
 <a class="button btn-edit" href="/verifier/online-test/test/{{verifier_type}}/{{ verifier.id }}">Test</a>
-          {% if verifier_type == "sandbox" and user.subscription != "free" %}
+<!--
+
+{% if verifier_type == "sandbox" and user.subscription != "free" %}
           <a class="button btn-edit" href="/verifier/go_to_production/{{verifier_type}}/{{ verifier.id }}">Move to Production</a>
           {% elif  verifier_type == "qualified" %}
           <a class="button btn-edit" href="/verifier/go_to_sandbox/{{verifier_type}}/{{ verifier.id }}">Move to Sandbox</a>
           {% endif %}
-
+-->
         </td>
 </tr>
       {% else %}
