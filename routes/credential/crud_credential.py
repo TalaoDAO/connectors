@@ -34,7 +34,7 @@ def _prefill_vars(cred=None):
     return dict(
         credential_id=cred.credential_id or "",
         key=_dec(cred.key),
-        encryption_key=_dec(cred.encryption_key),
+        #encryption_key=_dec(cred.encryption_key),
         x5c=(cred.x5c or ""),  # <-- no decrypt, show raw JSON string
         did=cred.did or "",
         verification_method=cred.verification_method or "",

@@ -117,6 +117,10 @@ def init_app(app):
     def _tools_list() -> Dict[str, Any]:
         return {
             "tools": [
+                # The above code snippet is defining a function named "get_supported_scopes" in
+                # Python. This function is intended to return supported scopes, the claims each scope
+                # returns, and available verifier profiles. The function does not require any input
+                # parameters as the input schema is defined as an empty object.
                 {
                     "name": "get_supported_scopes",
                     "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",
@@ -124,6 +128,20 @@ def init_app(app):
                         "type": "object",
                         "properties": {},
                         "required": []
+                    }
+                },
+                {
+                    "name": "open_wallet",
+                    "description": "Open the agent wallet .",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "wallet_id": {
+                                "type": "string",
+                                "description": "Wallet decentralized identifier."
+                            }
+                        },
+                        "required": [""]
                     }
                 },
                 {

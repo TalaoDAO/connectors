@@ -179,6 +179,25 @@ class Credential(db.Model):
     san_uri = db.Column(db.String(256))
     exp = db.Column(db.DateTime)
 
+class Wallet(db.Model):
+    id = db.Column(db.Integer, primary_key=True)   # internal identifier
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    description = db.Column(db.Text)
+    did = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    exp = db.Column(db.DateTime)
+
+
+def seed_wallet():
+    if not Wallet.query.first():
+        default_wallet = Wallet(
+            user_id=1,
+            name="Wallet_for_all",
+            did=""
+        )
+        db.session.add(default_wallet)
+        db.session.commit()
+
 
 def seed_credential():
     if not Credential.query.first():
