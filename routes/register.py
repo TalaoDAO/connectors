@@ -34,6 +34,7 @@ github_client = WebApplicationClient(GITHUB_CLIENT_ID)
 #talao_client = WebApplicationClient(TALAO_CLIENT_ID)
 
 ENTRY = "/verifier/select/sandbox"
+ENTRY = "/menu"
 
 def init_app(app, db):
     
