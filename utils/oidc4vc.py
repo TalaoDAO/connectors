@@ -542,7 +542,7 @@ def verify_x5c_chain(x5c_list):
     
     Checks:
       1. Each certificate is signed by the next one in the list.
-      2. Each certificate is valid at the current time.
+      2. Each certificate is valid db.Column(db.String(64))at the current time.
     
     Args:
         x5c_list (List[str]): List of base64-encoded DER certificates (leaf to root).

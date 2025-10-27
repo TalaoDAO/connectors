@@ -184,7 +184,18 @@ class Wallet(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     description = db.Column(db.Text)
     name = db.Column(db.Text)
+    optional_path = db.Column(db.String(64))
     did = db.Column(db.Text)
+    did_document = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    exp = db.Column(db.DateTime)
+    
+    
+class VerifiableCredential(db.Model):
+    id = db.Column(db.Integer, primary_key=True)   # internal identifier
+    wallet_id = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
+    vc = db.Column(db.Text)
+    vc_format = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, default=datetime.now)
     exp = db.Column(db.DateTime)
 
@@ -193,7 +204,9 @@ def seed_wallet():
     if not Wallet.query.first():
         default_wallet = Wallet(
             user_id=1,
-            name="Wallet_for_all",
+            name="Wallet_for_demo",
+            optional_path="demo",
+            did="did:web:wallet4agent:demo"
         )
         db.session.add(default_wallet)
         db.session.commit()

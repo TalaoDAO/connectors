@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Identity, Attestations & Wallets for AI Agents • EUDI / OIDC4VP / MCP</title>
+  <title>EUDI Wallet MCP Server for AI Agents (Talao, eIDAS v2)</title>
 
   <!-- SEO / Social -->
-  <meta name="description" content="Give AI agents an identity, verified attestations, and a wallet. Expose wallet verification and claims to agents via the Model Context Protocol (MCP) with EUDI + OIDC4VP." />
-  <meta property="og:title" content="Identity, Attestations & Wallets for AI Agents" />
-  <meta property="og:description" content="In regulated environments, AI agents need identity to exchange information and act with humans and legal entities. Bridge EUDI wallets to agents using MCP + OIDC4VP." />
+  <meta name="description" content="Expose OIDC4VP wallet verification to AI agents via the Model Context Protocol (MCP). Pull-based flow, works with EUDI-compliant wallets like Talao." />
+  <meta property="og:title" content="MCP server for data wallet" />
+  <meta property="og:description" content="Let AI agents authenticate users with their EUDI-compliant wallet (e.g., Talao) using MCP + OIDC4VP (pull model)." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
 
@@ -28,7 +28,6 @@
       --ring: rgba(14,165,176,.35);
       --code-bg: #0b1220;
       --code-fg: #e5f7ff;
-      --ok: #065f66;
     }
     *{ box-sizing: border-box; }
     body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color:var(--text); background:var(--bg); }
@@ -41,9 +40,17 @@
 
     /* --- HERO / SECTIONS --- */
     .hero{ text-align:center; padding: 5rem 1.5rem 4rem; background: linear-gradient(180deg, #ffffff 0%, #eef8f8 100%); }
+    .hero-image {
+      max-width: 800px;
+      width: 90%;
+      height: auto;
+      border-radius: 20px;
+      margin-bottom: 2rem;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    }
     .badge{ display:inline-block; padding:.35rem .6rem; border-radius:999px; background: #e6fbff; color:#036b77; font-weight:600; letter-spacing:.2px; }
     .main-title{ font-family: 'Orbitron', ui-sans-serif, system-ui; font-size: clamp(2.1rem, 4vw, 3.25rem); margin:.75rem 0; color:#082a2f; }
-    .subtitle{ font-size: clamp(1rem, 2.2vw, 1.15rem); color:var(--muted); max-width: 920px; margin: 0 auto 1.25rem; }
+    .subtitle{ font-size: clamp(1rem, 2.2vw, 1.15rem); color:var(--muted); max-width: 880px; margin: 0 auto 1.25rem; }
     .cta{ margin-top: 1.5rem; display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap; }
     .btn{ display:inline-block; padding:.8rem 1.2rem; border-radius: 10px; font-weight:700; text-decoration:none; border:1px solid transparent; cursor:pointer; }
     .btn.primary{ background: var(--accent); color:#fff; transition: transform .15s, box-shadow .25s; }
@@ -60,7 +67,6 @@
     .card p{ margin:0; color:#3d4a57; font-size:.98rem; }
     .card .actions{ margin-top: .9rem; display:flex; gap:.5rem; flex-wrap:wrap; }
 
-    .two-col{ display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; align-items:start; }
     .how{ display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; counter-reset: step; }
     .how .step{ background:#ffffff; border:1px solid #e5e7eb; border-radius: 14px; padding: 1rem 1.1rem; }
     .how .step h4::before{ counter-increment: step; content: counter(step) ". "; color: var(--accent); }
@@ -73,10 +79,9 @@
     .cta-bottom{ text-align:center; padding: 2.5rem 1rem 3.25rem; }
     .flashes{ max-width: 900px; margin: .75rem auto 0; padding: .5rem 1rem; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius: 8px; }
 
+    .two-col{ display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; align-items:start; }
     .note{ font-size:.95rem; color:#5b6470; }
     .kbd{ background:#eef7f8; padding:.15rem .45rem; border-radius:6px; border:1px solid #cde9ee; }
-
-    .pill-list{ display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center; }
   </style>
 
   <script type="application/ld+json">
@@ -101,8 +106,8 @@
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Any",
         "url": "https://wallet-connectors.com/",
-        "description": "MCP Server to connect EUDI wallets to AI Agents using OIDC4VP (pull model), aligned with eIDAS v2.",
-        "keywords": "AI Agent identity, attestations, agent wallet, EUDI, eIDAS v2, OIDC4VP, verifiable credentials, MCP"
+        "description": "MCP Server to connect EUDI wallets (e.g., Talao) to AI Agents using OIDC4VP (pull model), aligned with eIDAS v2.",
+        "keywords": "EUDI wallet, AI Agent, MCP Server, Talao, eIDAS v2, OIDC4VP, verifiable credentials"
       }
     ]
   }
@@ -111,13 +116,14 @@
 </head>
 <body>
 
-  <!-- HEADER -->
+  <!-- HEADER — keep parity with shared menu/header include -->
   <header>
     <div class="logo">
-      <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET4AGENT.COM</a></strong>
+      <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET-CONNECTORS.COM</a></strong>
     </div>
     <nav>
        <a href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
+       <a href="/documentation/use_cases">Use Cases</a>
        <a href="/register" >Register / Sign-In</a>
     </nav>
   </header>
@@ -133,248 +139,80 @@
   {% endwith %}
 
   <main id="content" role="main" aria-label="MCP server homepage">
-    <!-- HERO -->
     <section class="hero" aria-labelledby="hero-title">
-      <span class="badge">AI Agent • Identity • Attestations • Wallets</span>
+      <img src="static/img/hero.png" 
+           alt="AI identity management illustration" 
+           class="hero-image" />
+      <br>
+      <span class="badge">A2A • MCP • DIDs • Verifiable Credentials • OIDC4VC</span>
       <h1 id="hero-title" class="main-title">We provide Identity, Attestations and Wallets to AI Agents</h1>
-      <p class="subtitle">In regulated environments, AI agents must prove <em>who they are</em> and exchange verified information with <strong>individuals</strong> and <strong>legal entities</strong>. We provide <strong>compliant tools</strong> to AI agents via the <strong>Model Context Protocol</strong> so agents can request, verify and use claims—safely.</p>
-      <div class="pill-list" aria-label="Capabilities">
-        <span class="chip">Decentralized Identifiers (DIDs)</span>
-        <span class="chip">Verifiable Credentials</span>
-        <span class="chip">Data Wallets </span>
-        <span class="chip">MCP tools</span>
-        <span class="chip">OIDC4VC stack</span>
-      </div>
+      <p class="subtitle">AI Agents can now authenticate and act on behalf of natural persons, legal persons or other AI Agents with their <strong>own-Identity, attestations and mandates</strong>. This server exposes issuer, holder and verifier capabilities via the <strong>Model Context Protocol</strong>.</p>
       <div class="cta" role="group" aria-label="Primary actions">
         <a class="btn primary" href="/mcp/info">MCP info</a>
-        <a class="btn secondary" href="#use-cases">Use cases</a>
-        <a class="btn secondary" href="#quickstart">Quick start</a>
+   <!--     <a class="btn secondary" href="#approach">Our global approach</a>
+        <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>  -->
       </div>
     </section>
 
-    <!-- WHY / INTRODUCTION -->
-    <section id="why" class="section" aria-labelledby="why-title">
-      <h2 id="why-title">Why do AI agents need identity?</h2>
+   
+
+    
+
+    <!-- NEW: Global approach & offer -->
+    <section id="approach" class="section" aria-labelledby="approach-title">
+      <h2 id="approach-title">Our global approach: AI Agents are identities</h2>
       <div class="two-col">
         <article class="card">
-          <h3>Trust in a regulated world</h3>
-          <p>Agents increasingly act on behalf of people and organizations: they schedule, purchase, sign, and access data. In sectors like finance, health, mobility or public services, actions must be tied to an <strong>accountable identity</strong> and <strong>verifiable attestations</strong> (age, role, mandate, risk level, etc.).</p>
-          <p class="note">EUDI + OIDC4VP allow wallets to present selective, privacy‑preserving claims. MCP makes these flows available to agents through simple tools.</p>
-        </article>
-        <article class="card">
-          <h3>Interoperable by design</h3>
+          <h3>One identity model for everyone</h3>
+          <p>We consider <strong>AI Agents as first-class identities</strong>, just like <em>natural persons</em> and <em>legal entities</em>. Every identity can hold a wallet, receive credentials, present proofs, and exercise <em>mandates</em> (delegations) within policy.</p>
           <ul>
-            <li>Works with <span class="chip">data wallets</span> such as <a href="https://www.talao.io/talao-wallet/">Talao</a>.</li>
-            <li>Pull‑based verifier flow (<strong>OIDC4VP</strong>), exposed over <strong>MCP</strong>.</li>
-            <li>Fits <strong>App‑to‑Agent</strong> and <strong>Human‑in‑the‑loop</strong> experiences.</li>
+            <li><strong>Issuance:</strong> grant identity, role, or mandate credentials to people, companies, and agents.</li>
+            <li><strong>Verification:</strong> request and verify proofs (e.g., profile, age, membership, compliance) with selective disclosure.</li>
+            <li><strong>Lifecycle:</strong> store, update, suspend, or revoke credentials with auditability.</li>
           </ul>
+          <p class="note">This unifies human–organization–agent interactions under W3C DIDs, Verifiable Credentials, and OIDC4VC flows.</p>
         </article>
-      </div>
-    </section>
 
-    <!-- WHAT / PLATFORM -->
-    <section class="section" aria-labelledby="what">
-      <h2 id="what">What you can do today</h2>
-      <div class="two-col">
-        <div class="card">
-          <h3>Connect wallets to agents</h3>
-          <p>Agents initiate a verifiable presentation, show a deep link / QR, then poll for verification and retrieve claims — all through <strong>MCP tools</strong>.</p>
+        <article class="card">
+          <h3>What you can do today</h3>
           <ul>
-            <li>Bridge <strong>wallets</strong> through an <strong>OIDC4VP verifier</strong> to AI agents.</li>
-            <li>Designed for <strong>App‑to‑Agent</strong> (A2A) workflows.</li>
+            <li><strong>Authenticate</strong> users, organizations, or other agents via wallet-based presentations.</li>
+            <li><strong>Delegate</strong> authority to agents with verifiable mandates for scoped tasks.</li>
+            <li><strong>Prove</strong> attributes and compliance with minimal disclosure and revocation checks.</li>
+            <li><strong>Interoperate</strong> across ecosystems and wallets thanks to standards alignment.</li>
           </ul>
-        </div>
-        <div class="card">
-          <h3>Available MCP tools</h3>
-          <ul>
-            <li><code>start_wallet_verification</code> — create an OIDC4VP request; returns <code>openid4vp://</code> deeplink and a QR (image block + structuredContent).</li>
-            <li><code>poll_wallet_verification</code> — check status (<em>pending</em>, <em>verified</em>, <em>denied</em>) and fetch claims.</li>
-            <li><code>revoke_wallet_flow</code> — acknowledge flow cleanup (TTL handled server‑side).</li>
-          </ul>
-          <p class="note">Calls use <code>Authorization: Bearer &lt;token&gt;</code> or <code>X-API-KEY</code>. For public tests, token/key equals the <code>verifier_id</code>.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- HOW IT WORKS -->
-    <section class="section" aria-labelledby="how">
-      <h2 id="how">How it works</h2>
-      <div class="how">
-        <div class="step">
-          <h4>Agent calls <code>start_wallet_verification</code></h4>
-          <p>The MCP client requests a presentation from a user wallet. The request scope is bound to the <code>verifier_id</code>.</p>
-        </div>
-        <div class="step">
-          <h4>User opens wallet</h4>
-          <p>The agent shows the QR or link. The user scans with their wallet and consents to share data.</p>
-        </div>
-        <div class="step">
-          <h4>Agent polls</h4>
-          <p>Agent calls <code>poll_wallet_verification</code> with <code>session_id</code> until status changes from <em>pending</em>.</p>
-        </div>
-        <div class="step">
-          <h4>Claims available</h4>
-          <p>When verified, the server returns verifiable data and metadata.</p>
-        </div>
+          <p class="note">Explore detailed scenarios in the <a href="/documentation/use_cases">Use Cases</a>.</p>
+        </article>
       </div>
 
-      <div class="card" style="margin-top:1rem;">
-        <h3>Demo verifiers → default scopes → returned data</h3>
-        <div class="two-col">
-          <div>
-            <ul>
-              <li><strong>0000</strong> → <code>wallet_identifier</code> → returns <code>wallet_identifier</code> (DID or JWK thumbprint)</li>
-              <br>
-              <li><strong>0001</strong> → <code>email</code> → returns <code>email_address</code> (<em>email</em>)</li>
-              <br>
-              <li><strong>0002</strong> → <code>over18</code> → returns boolean <code>over_18</code></li>
-              <br>
-              <li><strong>0003</strong> → <code>profile</code> → returns <code>family_name</code>, <code>given_name</code>, <code>birth_date</code></li>
-            </ul>
-          </div>
-          <div>
-<pre><code class="language-json"># Example poll payloads
-{ "status": "verified", "session_id": "...", "wallet_identifier": "did:jwk:..." }
-{ "status": "verified", "session_id": "...", "email_address": "user@example.com" }
-{ "status": "verified", "session_id": "...", "over_18": true }
-{ "status": "verified", "session_id": "...", "family_name": "DOE", "given_name": "John", "birth_date": "1990-01-01" }
-</code></pre>
-            <p class="note">Only the fields relevant to the selected demo verifier will be present.</p>
-          </div>
-        </div>
-      </div>
-    </section>
+      <div class="feature-grid" style="margin-top:1rem;">
+        <article class="card">
+          <h3>Authentication</h3>
+          <p>Verify identities for humans, companies, and agents; enable agent-to-service login via OIDC4VC.</p>
+        </article>
+        <article class="card">
+          <h3>Credentials & Delegations</h3>
+          <p>Issue roles, mandates, and identity credentials; manage storage and revocation.</p>
+        </article>
+        <article class="card">
+          <h3>Verification & Proofs</h3>
+          <p>Selective disclosure, continuous checks, and cross-domain validation.</p>
+        </article>
 
-    <!-- USE CASES -->
-    <section id="use-cases" class="section" aria-labelledby="use-cases-title">
-      <h2 id="use-cases-title">Use cases</h2>
-      <div class="feature-grid">
         <article class="card">
-          <h3>KYC/KYB agent handshakes</h3>
-          <p>An agent requests a wallet presentation to obtain a <em>wallet identifier</em> and basic identity claims (name, over‑18). The agent then customizes interaction and access based on verified attributes.</p>
-        </article>
-        <article class="card">
-          <h3>Role & mandate proof</h3>
-          <p>Before executing actions (purchase, booking, data access), the agent verifies that the user holds a role or mandate (e.g., company officer) and logs the presentation reference for auditability.</p>
-        </article>
-        <article class="card">
-          <h3>Age‑gated experiences</h3>
-          <p>For restricted services, the agent requests an <em>over‑18</em> attestation without learning the birth date—preserving privacy.</p>
-        </article>
-        <article class="card">
-          <h3>Verified contact loop</h3>
-          <p>Agents collect a <em>verified email</em> (or other claims) to follow up with users across channels while keeping raw tokens out of the agent context.</p>
-        </article>
-        <article class="card">
-          <h3>Access to sensitive APIs</h3>
-          <p>Gate downstream APIs (payments, health, mobility) with a short‑lived session that is unlocked only when the presentation is verified.</p>
-        </article>
-        <article class="card">
-          <h3>Audit & provenance</h3>
-          <p>Record the presentation status and derived claims so human operators can trace what the agent knew when it acted.</p>
+          <h3>Interoperability & Collaboration</h3>
+          <p>Plug agents into VC ecosystems and enable multi-agent workflows with verified roles.</p>
         </article>
       </div>
     </section>
 
-    <!-- QUICK START -->
-    <section id="quickstart" class="section" aria-labelledby="quickstart-title">
-      <h2 id="quickstart-title">Quick start</h2>
-      <p class="note">Use public test profiles: <code>verifier_id</code> ∈ { <strong>0000</strong>, <strong>0001</strong>, <strong>0002</strong>, <strong>0003</strong> }. The header token can be <code>Authorization: Bearer &lt;verifier_id&gt;</code> (or <code>X-API-KEY: &lt;verifier_id&gt;</code>). Each demo verifier has a default scope bound to it.</p>
+    <!-- Removed the Quick start (curl) section as tools are not ready for production -->
 
-      <div class="two-col">
-        <div class="card">
-          <h3>cURL (MCP JSON‑RPC)</h3>
-<pre><code class="language-bash"># 1) List tools
-curl -s https://wallet-connectors.com/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-
-# 2) Start verification (server can generate session_id)
-curl -s https://wallet-connectors.com/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-KEY: 0000' \
-  -d '{
-    "jsonrpc":"2.0",
-    "id":2,
-    "method":"tools/call",
-    "params":{
-      "name":"start_wallet_verification",
-      "arguments":{"verifier_id":"0000", "session_id": "user-1234"}
-    }
-  }'
-
-# 3) Poll (use the session_id from step 2)
-curl -s https://wallet-connectors.com/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-KEY: 0000' \
-  -d '{
-    "jsonrpc":"2.0",
-    "id":3,
-    "method":"tools/call",
-    "params":{
-      "name":"poll_wallet_verification",
-      "arguments":{"session_id":"user-1234"}
-    }
-  }'
-</code></pre>
-        </div>
-        <div class="card">
-          <h3>Python (agent side)</h3>
-<pre><code class="language-python">import json, requests
-MCP_URL = "https://wallet-connectors.com/mcp"
-HEADERS = {"Content-Type":"application/json", "X-API-KEY":"0000"}
-
-# 1) start verification
-payload = {
-  "jsonrpc":"2.0", "id":1, "method":"tools/call",
-  "params":{"name":"start_wallet_verification", "arguments":{"verifier_id":"0000","session_id":"user-1234"}}
-}
-start = requests.post(MCP_URL, headers=HEADERS, data=json.dumps(payload)).json()
-content = start["result"]["structuredContent"]
-print("Deep link:", content["deeplink_url"])  # show to user; also display QR from result.content[0]
-
-# 2) poll until verified
-poll = {
-  "jsonrpc":"2.0", "id":2, "method":"tools/call",
-  "params":{"name":"poll_wallet_verification", "arguments":{"session_id":"user-1234"}}
-}
-while True:
-    res = requests.post(MCP_URL, headers=HEADERS, data=json.dumps(poll)).json()
-    status = res["result"]["structuredContent"]["status"]
-    if status != "pending":
-        print(res["result"]["structuredContent"])  # claims here
-        break
-</code></pre>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:1rem;">
-        <h3>Understanding responses</h3>
-        <p>The MCP server returns <code>result.content</code> (array of blocks) and <code>result.structuredContent</code> (machine JSON).</p>
-<pre><code class="language-json">{
-  "result": {
-    "content": [
-      {"type":"image","data":"&lt;base64png&gt;","mimeType":"image/png"},
-      {"type":"text","text":"Scan the QR code or open wallet link: openid4vp://....."}
-    ],
-    "structuredContent": {
-      "status": "pending",
-      "session_id": "3e02ac7e-da66-4dd1-9abe-30348dcc728f",
-      "deeplink_url": "openid4vp://.....?request_uri=https://.../request_uri/abc",
-      "pull_url": "https://wallet-connectors.com/verifier/wallet/pull/3e02..."
-    }
-  }
-}
-</code></pre>
-      </div>
-    </section>
-
-    <!-- SECURITY & PRIVACY -->
     <section class="section" aria-labelledby="security">
       <h2 id="security">Security & privacy</h2>
       <div class="feature-grid">
         <article class="card">
-          <h3>Least‑privilege MCP</h3>
+          <h3>Least-privilege MCP</h3>
           <p>Only the start/poll/revoke actions are exposed to agents.</p>
         </article>
         <article class="card">
@@ -382,20 +220,18 @@ while True:
           <p>Raw tokens are <strong>not returned</strong>; the server exposes derived claims only.</p>
         </article>
         <article class="card">
-          <h3>TTL‑based cleanup</h3>
+          <h3>TTL-based cleanup</h3>
           <p>Flows expire automatically in the verifier backend (Redis TTL). No data are stored on servers.</p>
         </article>
       </div>
     </section>
 
-    <!-- CTA -->
     <section class="section cta-bottom" aria-labelledby="start">
-      <h2 id="start">Ready to give your agent a wallet & identity?</h2>
-      <p class="subtitle">Use the MCP tools above or see <code>/mcp/info</code> for server metadata.</p>
+      <h2 id="start">Ready to connect a wallet to your agent?</h2>
+      <p class="subtitle">See <code>/mcp/info</code> for server metadata and explore the Use Cases for what’s possible today.</p>
       <div class="cta">
-        <a class="btn secondary" href="/mcp/info">MCP tools</a>
-        <a class="btn secondary" href="/manifest.json">Manifest</a>
-        <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>
+       <!-- <a class="btn secondary" href="/mcp/info">MCP tools</a>
+        <a class="btn secondary" href="/manifest.json">Manifest</a>  -->
         <a class="btn secondary" href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
       </div>
     </section>
@@ -410,8 +246,8 @@ while True:
     "mainEntity":[
       {
         "@type":"Question",
-        "name":"What does this provide to AI agents?",
-        "acceptedAnswer":{"@type":"Answer","text":"Agents gain an identity (e.g., DID), access to verifiable attestations via EUDI wallets, and simple MCP tools to request, verify and consume claims using OIDC4VP."}
+        "name":"What is an MCP Server for EUDI wallets?",
+        "acceptedAnswer":{"@type":"Answer","text":"A Model Context Protocol server that lets an AI Agent start and poll OIDC4VP verifications with an EUDI wallet (e.g., Talao) using a pull model, aligned with eIDAS v2."}
       },
       {
         "@type":"Question",
@@ -420,13 +256,8 @@ while True:
       },
       {
         "@type":"Question",
-        "name":"What data can my AI agent request?",
-        "acceptedAnswer":{"@type":"Answer","text":"Each demo verifier has a default scope: 0000→wallet_identifier, 0001→email, 0002→over18, 0003→profile. Register custom Presentation Definitions for other claims (e.g., phone)."}
-      },
-      {
-        "@type":"Question",
-        "name":"Is it aligned with eIDAS v2?",
-        "acceptedAnswer":{"@type":"Answer","text":"Yes. The flow is designed to respect PID handling and OIDC4VP patterns aligned with eIDAS v2 guidance."}
+        "name":"How do you treat AI Agents in this model?",
+        "acceptedAnswer":{"@type":"Answer","text":"AI Agents are treated as first-class identities, just like natural persons and legal entities. They can hold wallets, receive credentials, present verifiable proofs, and act under mandates/delegations, with lifecycle management (issuance, verification, storage, revocation)."}
       }
     ]
   }

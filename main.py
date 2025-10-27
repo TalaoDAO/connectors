@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import timedelta
 
-from flask import Flask, redirect, request, render_template_string, current_app
+from flask import Flask, redirect, request, render_template_string, current_app, Response
 #from flask_mobility import Mobility
 from flask_session import Session
 from flask_qrcode import QRcode
@@ -10,6 +10,8 @@ from flask_login import LoginManager
 import redis
 import markdown
 import env
+import json
+from db_model import Wallet
 
 # Your modules
 from utils import message
@@ -37,7 +39,7 @@ from routes.credential import crud_credential, select_credential
 
 from routes.status_list import statuslist
 
-from apis import issuer_api,  signin_api, verifier_api, verifier_mcp
+from apis import issuer_api,  signin_api, verifier_api, mcp_server
 
 
 # ---- default constants (overridable via env) ----
@@ -156,7 +158,7 @@ def create_app() -> Flask:
     
     issuer_api.init_app(app)     # your issuer API (Swagger/RESTX)
     verifier_api.init_app(app) 
-    verifier_mcp.init_app(app)
+    mcp_server.init_app(app)
     signin_api.init_app(app)
     
     home.init_app(app)
@@ -219,8 +221,19 @@ def create_app() -> Flask:
 
         html = markdown.markdown(content, extensions=["fenced_code"])
         return render_template_string(html)
-    return app
 
+    # .well-known DID API
+    @app.get('/<optional_path>/did.json')
+    def well_known_did(optional_path):
+        wallet = Wallet.query.filter(Wallet.optional_path == optional_path).one_or_none()
+        did_document = json.loads(wallet.did_document)
+        headers = {
+            "Content-Type": "application/did+ld+json",
+            "Cache-Control": "no-cache"
+        }
+        return Response(json.dumps(did_document), headers=headers)
+    
+    return app
 
 # ---- Dev entrypoint: `python app.py` ----
 if __name__ == "__main__":

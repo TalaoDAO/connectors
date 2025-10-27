@@ -26,7 +26,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 
 # --------- Tool implementations ---------
-def call_start_wallet_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
+def call_start_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
     verifier_api_start = config["VERIFIER_API_START"]
     pull_status_base = config["PULL_STATUS_BASE"]
     public_base_url = config["PUBLIC_BASE_URL"]
@@ -92,7 +92,7 @@ def call_start_wallet_verification(arguments: Dict[str, Any], verifier_api_key: 
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
 
-def call_poll_wallet_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
+def call_poll_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
     pull_status_base = config["PULL_STATUS_BASE"]
     session_id = arguments.get("session_id")
     if not session_id:
@@ -137,7 +137,7 @@ def call_poll_wallet_verification(arguments: Dict[str, Any], verifier_api_key: O
 
     return _ok_content(text_blocks, structured=structured)
 
-def call_revoke_wallet_flow(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_revoke_verification_flow(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     session_id = arguments.get("session_id")
     if not session_id:
         return _ok_content(
