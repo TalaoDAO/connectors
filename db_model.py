@@ -202,11 +202,18 @@ class VerifiableCredential(db.Model):
 
 def seed_wallet():
     if not Wallet.query.first():
+        try:
+            with open('keys.json') as f:
+                keys = json.load(f)
+            jwk = keys.get("credentials")[0]["public_key"]
+        except Exception:
+            return
         default_wallet = Wallet(
             user_id=1,
             name="Wallet_for_demo",
             optional_path="demo",
-            did="did:web:wallet4agent:demo"
+            did="did:web:wallet4agent:demo",
+            did_document=create_did_document("did:web:wallet4agent:demo", jwk, "https://wallet4agent.com/")
         )
         db.session.add(default_wallet)
         db.session.commit()
@@ -425,3 +432,40 @@ def seed_user():
         db.session.add(default_user)
         
         db.session.commit()
+
+
+def create_did_document(did, jwk, agent_card_url) -> str:
+    document = {
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            {
+                "@id": "https://w3id.org/security#publicKeyJwk",
+                "@type": "@json"
+            }
+        ],
+        "id": did,
+        "verificationMethod": [ 
+            {
+                "id": did + "#key-1",
+                "type": "JsonWebKey2020",
+                "controller": did,
+                "publicKeyJwk": jwk
+            }
+        ],
+        "authentication" : [
+            did + "#key-1"
+        ],
+        "assertionMethod" : [
+            did + "#key-1"
+        ]
+    }
+    if agent_card_url:
+        document["service"] = []
+        document["service"].append(
+            {
+                "id": "#a2a",
+                "type": "A2AService",
+                "serviceEndpoint": agent_card_url
+            }
+        )
+    return json.dumps(document)

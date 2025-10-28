@@ -39,7 +39,7 @@ def call_open_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
         
         # add alg for DID Document only
         public_jwk_json["alg"] = "ES256"
-        did_document = _create_did_document(agent_did, public_jwk_json, agent_card_url=agent_card_url)
+        did_document = create_did_document(agent_did, public_jwk_json, agent_card_url=agent_card_url)
         this_wallet = Wallet(
             user_id=1,
             optional_path=optional_path,
@@ -55,7 +55,7 @@ def call_open_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def _create_did_document(did, jwk, agent_card_url=False):
+def create_did_document(did, jwk, agent_card_url=False):
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
