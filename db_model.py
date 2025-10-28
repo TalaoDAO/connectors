@@ -212,8 +212,8 @@ def seed_wallet():
             user_id=1,
             name="Wallet_for_demo",
             optional_path="demo",
-            did="did:web:wallet4agent:demo",
-            did_document=create_did_document("did:web:wallet4agent:demo", jwk, "https://wallet4agent.com/")
+            did="did:web:wallet4agent.com:demo",
+            did_document=create_did_document("did:web:wallet4agent.com:demo", jwk, "https://wallet4agent.com/")
         )
         db.session.add(default_wallet)
         db.session.commit()
