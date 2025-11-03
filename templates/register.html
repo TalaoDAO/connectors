@@ -102,6 +102,7 @@
       You can use an account using Google or GitHub for general access. <br>
       However, <strong>only the Talao Wallet</strong> includes a full KYC process, enabling the use of <strong>Qualified Electronic Signatures (QES)</strong> under eIDAS.
     </p>
+ 
 
     <form action="/register/auth/google" method="post">
       <button class="button google">Continue with Google</button>
@@ -113,10 +114,10 @@
       <button class="button wallet">Continue with a wallet</button>
     </form>
     {% if mode.myenv == "local" %}
-    <form action="/register/test" method="post">
-      <button class="button test">Test</button>
-    </form>
+    
      <form action="/register/admin" method="post">
+      <input hidden value="{{session_id}}", name="session_id">
+      <input hidden value="{{optional_path}}", name="optional_path">
       <button class="button test">Admin</button>
     </form>
    

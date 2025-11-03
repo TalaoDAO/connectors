@@ -48,7 +48,7 @@
       margin-bottom: 2rem;
       box-shadow: 0 6px 20px rgba(0,0,0,0.08);
     }
-    .badge{ display:inline-block; padding:.35rem .6rem; border-radius:999px; background: #e6fbff; color:#036b77; font-weight:600; letter-spacing:.2px; }
+    .badge{ display:inline-block; padding:.35rem .6rem; border-radius:999px; background: #e6fbff; color: #036b77; font-weight:600; letter-spacing:.2px; }
     .main-title{ font-family: 'Orbitron', ui-sans-serif, system-ui; font-size: clamp(2.1rem, 4vw, 3.25rem); margin:.75rem 0; color:#082a2f; }
     .subtitle{ font-size: clamp(1rem, 2.2vw, 1.15rem); color:var(--muted); max-width: 880px; margin: 0 auto 1.25rem; }
     .cta{ margin-top: 1.5rem; display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap; }
@@ -82,6 +82,12 @@
     .two-col{ display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; align-items:start; }
     .note{ font-size:.95rem; color:#5b6470; }
     .kbd{ background:#eef7f8; padding:.15rem .45rem; border-radius:6px; border:1px solid #cde9ee; }
+
+    /* Tools section */
+    .tool-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .tool-card .meta{ font-size:.9rem; color:#56606d; margin:.25rem 0 .5rem; }
+    .kvl{ margin:.35rem 0 0; padding:0; list-style:none; }
+    .kvl li{ margin:.15rem 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New"; font-size:.92rem; }
   </style>
 
   <script type="application/ld+json">
@@ -124,7 +130,6 @@
     <nav>
        <a href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
        <a href="/documentation/use_cases">Use Cases</a>
-       <a href="/register" >Register / Sign-In</a>
     </nav>
   </header>
 
@@ -149,16 +154,13 @@
       <p class="subtitle">AI Agents can now authenticate and act on behalf of natural persons, legal persons or other AI Agents with their <strong>own-Identity, attestations and mandates</strong>. This server exposes issuer, holder and verifier capabilities via the <strong>Model Context Protocol</strong>.</p>
       <div class="cta" role="group" aria-label="Primary actions">
         <a class="btn primary" href="/mcp/info">MCP info</a>
-   <!--     <a class="btn secondary" href="#approach">Our global approach</a>
-        <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>  -->
+        <a class="btn secondary" href="#tools">MCP tools</a>
+        <!-- <a class="btn secondary" href="#approach">Our global approach</a> -->
+        <!-- <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>  -->
       </div>
     </section>
 
-   
-
-    
-
-    <!-- NEW: Global approach & offer -->
+    <!-- Global approach & offer -->
     <section id="approach" class="section" aria-labelledby="approach-title">
       <h2 id="approach-title">Our global approach: AI Agents are identities</h2>
       <div class="two-col">
@@ -206,7 +208,90 @@
       </div>
     </section>
 
-    <!-- Removed the Quick start (curl) section as tools are not ready for production -->
+    <!-- NEW: MCP Tools available to agents -->
+    <section id="tools" class="section" aria-labelledby="tools-title">
+      <h2 id="tools-title">Available MCP tools</h2>
+      <p class="subtitle" style="text-align:center; max-width: 900px; margin: 0 auto 1.25rem;">
+        These tools are exposed through the Model Context Protocol (MCP) interface for agents. See <code>/mcp/info</code> and <code>/manifest.json</code> for machine‑readable metadata.
+      </p>
+
+      <div class="tool-grid">
+        <!-- request_attestation -->
+        <article class="card tool-card" aria-labelledby="tool-reqatt">
+          <h3 id="tool-reqatt">request_attestation</h3>
+          <div class="meta">Request the credential which is offered and store it in the wallet.</div>
+          <details>
+            <summary><strong>Inputs</strong> (JSON Schema)</summary>
+            <pre><code>{
+  "type": "object",
+  "properties": {
+    "credential_offer": {"type": "string", "description": "OIDC4VCI credential offer"},
+    "agent_id": {"type": "string", "description": "Agent DID (e.g., did:web:wallet4agent:demo)"}
+  },
+  "required": ["agent_id", "credential_offer"]
+}</code></pre>
+          </details>
+          <div class="actions">
+            <a class="btn secondary" href="/mcp/info">View MCP info</a>
+            <a class="btn secondary" href="/manifest.json">Manifest</a>
+          </div>
+        </article>
+
+        <!-- create_identity -->
+        <article class="card tool-card" aria-labelledby="tool-createid">
+          <h3 id="tool-createid">create_identity</h3>
+          <div class="meta">Generate a DID for the agent and create a new wallet to store agent attestations.</div>
+          <details>
+            <summary><strong>Inputs</strong> (JSON Schema)</summary>
+            <pre><code>{
+  "type": "object",
+  "properties": {
+    "did_method": {"type": "string", "enum": ["did:jwk", "did:web"], "description": "Optional DID method"},
+    "agentcard_url": {"type": "string", "description": "Optional AgentCard URL"},
+    "always_human_in_the_loop": {"type": "boolean"},
+    "owner_identity_provider": {"type": "string", "enum": ["Google", "Github", "Data Wallet", "Test"]},
+    "owner_login": {"type": "string", "description": "email/login/DID for owner"},
+    "name": {"type": "string", "description": "Name of the wallet"}
+  },
+  "required": ["owner_identity_provider"]
+}</code></pre>
+          </details>
+          <div class="actions">
+            <a class="btn secondary" href="/mcp/info">View MCP info</a>
+            <a class="btn secondary" href="/manifest.json">Manifest</a>
+          </div>
+        </article>
+      </div>
+
+      <div class="card" style="margin-top:1rem;">
+        <h3>Sample tool calls</h3>
+        <div class="two-col">
+          <div>
+            <h4 style="margin:.25rem 0 .5rem;">create_identity</h4>
+            <pre><code>{
+  "name": "create_identity",
+  "arguments": {
+    "did_method": "did:web",
+    "owner_identity_provider": "Test",
+    "owner_login": "did:web:wallet4agent:demo",
+    "name": "My Agent"
+  }
+}</code></pre>
+          </div>
+          <div>
+            <h4 style="margin:.25rem 0 .5rem;">request_attestation</h4>
+            <pre><code>{
+  "name": "request_attestation",
+  "arguments": {
+    "agent_id": "did:web:wallet4agent:demo",
+    "credential_offer": "https://issuer.example/credential-offer?..."
+  }
+}</code></pre>
+          </div>
+        </div>
+        <p class="note">Actual endpoints and parameters depend on your issuer and environment. Check <code>/mcp/info</code> for the live contract.</p>
+      </div>
+    </section>
 
     <section class="section" aria-labelledby="security">
       <h2 id="security">Security & privacy</h2>
@@ -230,8 +315,8 @@
       <h2 id="start">Ready to connect a wallet to your agent?</h2>
       <p class="subtitle">See <code>/mcp/info</code> for server metadata and explore the Use Cases for what’s possible today.</p>
       <div class="cta">
-       <!-- <a class="btn secondary" href="/mcp/info">MCP tools</a>
-        <a class="btn secondary" href="/manifest.json">Manifest</a>  -->
+        <a class="btn secondary" href="/mcp/info">MCP tools</a>
+        <a class="btn secondary" href="/manifest.json">Manifest</a>
         <a class="btn secondary" href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
       </div>
     </section>

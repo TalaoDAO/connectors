@@ -25,7 +25,7 @@ from db_model import (
 from routes import (
     home, register, menu, user_profile,
     did_document, online_test,
-    log
+    log, wallet
 )
 
 
@@ -126,7 +126,7 @@ def create_app() -> Flask:
             seed_signin_for_wallet_registration(mode)
             #seed_issuer_for_testing(mode)
             seed_verifier_for_demo(mode)
-            seed_wallet()
+            seed_wallet(mode)
 
     # ---- Flask-Login ----
     login_manager = LoginManager()
@@ -168,7 +168,8 @@ def create_app() -> Flask:
     log.init_audit_logging(app)
     
     statuslist.init_app(app)
-        
+    
+    wallet.init_app(app)
     # ---- Error handlers ----
     @app.errorhandler(403)
     def page_abort(e):

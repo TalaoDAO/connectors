@@ -6,6 +6,7 @@ import json
 from utils.kms import encrypt_json
 from utils import oidc4vc
 from sqlalchemy import CheckConstraint, Enum, UniqueConstraint, Index
+from utils import deterministic_jwk
 
 db = SQLAlchemy()
 
@@ -182,40 +183,87 @@ class Credential(db.Model):
 class Wallet(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    token = db.Column(db.Text)
+    workload_id = db.Column(db.String(64))
     description = db.Column(db.Text)
-    name = db.Column(db.Text)
     optional_path = db.Column(db.String(64))
+    owner_identity_provider = db.Column(db.String(64))
+    owner_login = db.Column(db.String(64))
+    name = db.Column(db.String(64))
     did = db.Column(db.Text)
     did_document = db.Column(db.Text)
+    always_human_in_the_loop = db.Column(db.Boolean, default=False)
+    url = db.Column(db.String(256))
+    callback = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, default=datetime.now)
     exp = db.Column(db.DateTime)
     
     
-class VerifiableCredential(db.Model):
+class Attestation(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
-    wallet_id = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
+    wallet_did = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
     vc = db.Column(db.Text)
+    issuer = db.Column(db.Text)
     vc_format = db.Column(db.String(64))
+    vct = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, default=datetime.now)
     exp = db.Column(db.DateTime)
 
 
-def seed_wallet():
+def seed_wallet(mode):
     if not Wallet.query.first():
-        try:
-            with open('keys.json') as f:
-                keys = json.load(f)
-            jwk = keys.get("credentials")[0]["public_key"]
-        except Exception:
-            return
+        jwk_1 = deterministic_jwk.jwk_p256_from_passphrase("did:web:wallet4agent.com:demo#key-1")
+        jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase("did:web:wallet4agent.com:demo#key-2")
+        jwk_1.pop("d", None)
+        jwk_2.pop("d", None)
+        jwk_1["alg"] = "ES256"
+        jwk_2["alg"] = "EdDSA"
         default_wallet = Wallet(
             user_id=1,
+            token="0000",
             name="Wallet_for_demo",
+            workload_id="spiffe://wallet4agent.com/demo",
             optional_path="demo",
+            always_human_in_the_loop=True,
             did="did:web:wallet4agent.com:demo",
-            did_document=create_did_document("did:web:wallet4agent.com:demo", jwk, "https://wallet4agent.com/")
+            url=mode.server + "demo",
+            owner_identity_provider="google",
+            owner_login="thierry.thevenet@talao.io",
+            callback=mode.server + "demo/callback",
+            did_document=create_did_document("did:web:wallet4agent.com:demo", jwk_1, jwk_2, "https://wallet4agent.com/")
         )
         db.session.add(default_wallet)
+        default_wallet = Wallet(
+            user_id=1,
+            token="0000",
+            name="Wallet_for_demo",
+            workload_id="spiffe://wallet4agent.com/demo_google",
+            optional_path="demo_google",
+            always_human_in_the_loop=True,
+            did="did:web:wallet4agent.com:demo_google",
+            url=mode.server + "demo_google",
+            owner_identity_provider="google",
+            owner_login="thierry.thevenet@talao.io",
+            callback=mode.server + "demo_google/callback",
+            did_document=create_did_document("did:web:wallet4agent.com:demo_google", jwk_1, jwk_2, "https://wallet4agent.com/")
+        )
+        db.session.add(default_wallet)
+        
+        default_wallet_3 = Wallet(
+            user_id=1,
+            token="0000",
+            name="Wallet 3_for_demo",
+            workload_id="spiffe://wallet4agent.com/demo_wallet",
+            optional_path="demo_wallet",
+            always_human_in_the_loop=True,
+            did="did:web:wallet4agent.com:demo_wallet",
+            url=mode.server + "demo_wallet",
+            owner_identity_provider="wallet",
+            owner_login="did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9",
+            callback=mode.server + "demo_google/callback",
+            did_document=create_did_document("did:web:wallet4agent.com:demo_wallet", jwk_1, jwk_2, "https://wallet4agent.com/")
+        )
+        db.session.add(default_wallet_3)
         db.session.commit()
 
 
@@ -430,11 +478,20 @@ def seed_user():
             profile_picture="default_picture.jpeg",
         )
         db.session.add(default_user)
+        default_user = User(
+            registration="initialisation",
+            name="android_talao",
+            role="user",
+            login="did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9",
+            subscription="free",
+            profile_picture="default_picture.jpeg",
+        )
+        db.session.add(default_user)
         
         db.session.commit()
 
 
-def create_did_document(did, jwk, agent_card_url) -> str:
+def create_did_document(did, jwk_1, jwk_2,  agent_card_url) -> str:
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -449,14 +506,22 @@ def create_did_document(did, jwk, agent_card_url) -> str:
                 "id": did + "#key-1",
                 "type": "JsonWebKey2020",
                 "controller": did,
-                "publicKeyJwk": jwk
+                "publicKeyJwk": jwk_1
+            },
+            {
+                "id": did + "#key-1",
+                "type": "JsonWebKey2020",
+                "controller": did,
+                "publicKeyJwk": jwk_2
             }
         ],
         "authentication" : [
-            did + "#key-1"
+            did + "#key-1",
+            did + "#key-2"
         ],
         "assertionMethod" : [
-            did + "#key-1"
+            did + "#key-1",
+            did + "#key-2"
         ]
     }
     if agent_card_url:

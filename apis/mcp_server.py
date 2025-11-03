@@ -8,8 +8,8 @@ import requests
 from flask import request, jsonify, current_app, make_response
 from db_model import Verifier
 from utils.kms import decrypt_json
-from tools import verifier as verifier_tools
-from tools import wallet as wallet_tools
+from tools import verifier_tools
+from tools import wallet_tools
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
@@ -43,7 +43,9 @@ def init_app(app):
             "VERIFIER_API_START": current_app.config["MODE"].server + "verifier/wallet/start",
             "PULL_STATUS_BASE": current_app.config["MODE"].server + "verifier/wallet/pull",
             "PUBLIC_BASE_URL": "https://wallet4agent.com",
-            "REDIS": current_app.config["REDIS"]
+            "REDIS": current_app.config["REDIS"],
+            "MODE": current_app.config["MODE"],
+            "SERVER": current_app.config["MODE"].server
         }
         return config
     
@@ -116,86 +118,12 @@ def init_app(app):
 
     # --------- Tool catalog ---------
     def _tools_list() -> Dict[str, Any]:
-        return {
-            "tools": [
-                {
-                    "name": "open_wallet",
-                    "description": "Open the Agent wallet if it exists. If not create a new one with and generate a Decentralized Identifier (DID).",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "agent_id": {
-                                "type": "string",
-                                "description": "Optional Agent Decentralized Identifier (DID). A new DID and wallet are created if no agent_id is provided"
-                            },
-                            "did_method": {
-                                "type": "string",
-                                "description": "Optional DID method to be used if no agent_id is provided (did:jwk or did:web by default).",
-                                "enum": ["did:jwk", "did:web"]
-                            },
-                            "agentcard_url": {
-                                "type": "string",
-                                "description": "The AgentCard URL is required if no agent_id is provided."
-                            }
-                        },
-                        "required": []
-                    }
-                },
-                {
-                    "name": "get_supported_verification_scopes",
-                    "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                },
-                {
-                    "name": "start_verification",
-                    "description": "Create a wallet request as a QR code image or deeplink.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "verifier_id": {
-                                "type": "string",
-                                "description": "Verifier identifier."
-                            },
-                            "session_id": {
-                                "type": "string",
-                                "description": "Optional caller-provided session id."
-                            }
-                        },
-                        "required": ["verifier_id"]
-                    }
-                },
-                {
-                    "name": "poll_verification",
-                    "description": "Poll current status for a session; returns structured status and redacted wallet_data.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        },
-                        "required": ["session_id"]
-                    }
-                },
-                {
-                    "name": "revoke_verification_flow",
-                    "description": "Acknowledge cleanup for a session id (back-end TTL handles actual expiration).",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string"
-                            }
-                        },
-                        "required": ["session_id"]
-                    }
-                }
-            ]
-        }
+        tools_list = {"tools": []}
+        #tools_list["tools"].extend(verifier_tools.tools)
+        tools_list["tools"].extend(wallet_tools.tools)
+        print(tools_list)
+        return tools_list
+
 
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
@@ -257,11 +185,14 @@ def init_app(app):
             name = params.get("name")
             arguments = params.get("arguments") or {}
             api_key = _bearer_or_api_key()
-            if not api_key:
-                return jsonify({"jsonrpc":"2.0","id":req_id,
+            
+            def check_api_key():
+                if not api_key:
+                    return jsonify({"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing token"}})
             
             if name == "get_supported_verification_scopes":
+                check_api_key()
                 out = _ok_content([{"type":"text","text":"Scopes and profiles"}],
                         structured={
                             "profiles": {
@@ -296,17 +227,25 @@ def init_app(app):
                     out = verifier_tools.call_start_verification(arguments, api_key, config())
             
             elif name == "poll_verification":
+                check_api_key()
                 out = verifier_tools.call_poll_verification(arguments, api_key, config())
             
             elif name == "revoke_verification_flow":
+                check_api_key()
                 out = verifier_tools.call_revoke_verification_flow(arguments, config())
             
-            elif name == "open_wallet":
-                if not arguments.get("agent_id") and not arguments.get("agentcard_url"):
-                    return {"jsonrpc":"2.0","id":req_id,
-                        "error":{"code":-32001,"message":"Unauthorized: missing agentcard url or agent_id"}}
-                out = wallet_tools.call_open_wallet(arguments, config)
+            elif name == "create_identity":
+                out = wallet_tools.call_create_identity(arguments, api_key, config())
             
+            elif name == "request_attestation":
+                if not arguments.get("credential_offer"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: missing credential_offer"}}
+                if not arguments.get("agent_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: missing agent_id"}}
+                out = wallet_tools.call_request_attestation(arguments, api_key, config())
+
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})
             
