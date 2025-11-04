@@ -268,13 +268,14 @@ def credential_offer(optional_path):
 
 # route to request user consent then store the VC
 def user_consent():
+    decision = request.form.get('decision')
+    if decision == "reject":
+        message = "Attestation has been rejected"
+        return render_template("wallet/session_screen.html", message=message, title= "Well done!") 
     red = current_app.config["REDIS"]
     attestation = request.form.get("sd_jwt_vc")
     session_id = request.form.get("session_id")
     public_url = request.form.get("publish_scope") or None
-    print("attestation = ", attestation)
-    print("session_id = ", session_id)
-    print("publish = ", public_url)
     session_config = json.loads(red.get(session_id).decode())
     store(attestation, session_config)
     if public_url == "public":

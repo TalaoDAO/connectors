@@ -58,9 +58,8 @@
   </div>
   <div class="nav-group">
     <nav>
-      <a href="/documentation/sd_jwt_consent" target="_blank" rel="noopener">Explain ?</a>
+      <a href="/documentation/user_consent" target="_blank" rel="noopener">Explain ?</a>
     </nav>
-    {% include "account.html" %}
   </div>
 </header>
 
@@ -133,7 +132,13 @@
     <div class="section-card" style="margin-bottom:1rem;">
       <label style="display:block; font-weight:600; margin-bottom:.5rem;">Your decision</label>
       <div class="btn-row">
-        <button id="btnReject" class="btn btn-reject" type="button">Reject</button>
+        <button id="btnReject" class="btn btn-cancel" type="submit"
+            onclick="document.getElementById('decision').value='reject';
+                    document.getElementById('publish').value='false';
+                    document.getElementById('publishBlock').style.display='none';">
+            Reject
+          </button>
+
         <button id="btnAccept" class="btn btn-accept" type="button">Accept</button>
       </div>
       <div id="publishBlock" style="display:none; margin-top:1rem;">
@@ -152,7 +157,13 @@
 
     <div class="btn-row">
       <button id="submitBtn" class="btn btn-accept" type="submit" disabled>Submit</button>
-      <button class="btn btn-reject" type="button" id="cancelBtn" onclick="history.back()">Cancel</button>
+      <button id="btnCancel" class="btn btn-cancel" type="submit"
+        onclick="document.getElementById('decision').value='reject';
+                document.getElementById('publish').value='false';
+                document.getElementById('publishBlock').style.display='none';">
+        Cancel
+      </button>
+
     </div>
   </form>
 </div>
@@ -296,7 +307,7 @@ const b64u = {
 
     // Fill quick facts
     document.getElementById('issuer').value = payload.iss || '';
-    document.getElementById('subject').value = payload.cnf.kid  || payload.cnf || '';
+    document.getElementById('subject').value = (payload?.cnf?.kid) ?? (payload?.cnf ? JSON.stringify(payload.cnf) : (payload?.sub ?? ''));
     document.getElementById('issued').value = payload.iat ? tsToISO(payload.iat) : '';
     document.getElementById('expires').value = payload.exp ? tsToISO(payload.exp) : '';
 
@@ -324,13 +335,7 @@ const b64u = {
     const publish = document.getElementById('publish');
     const publishBlock = document.getElementById('publishBlock');
     const submitBtn = document.getElementById('submitBtn');
-
-    document.getElementById('btnReject').addEventListener('click', () => {
-      decision.value = 'reject';
-      publish.value = 'false';
-      publishBlock.style.display = 'none';
-      submitBtn.disabled = false;
-    });
+    
 
     document.getElementById('btnAccept').addEventListener('click', () => {
       decision.value = 'accept';

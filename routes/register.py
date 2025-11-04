@@ -275,17 +275,16 @@ def register_admin():
     optional_path = request.form.get("optional_path")
     if session_id and optional_path:
         logout_user()
-        # sign in user
-        user = User.query.filter_by(name="admin").first()
+        user = User.query.filter_by(email="thierry.thevenet@talao.io").first()
         login_user(user)
-        logging.info("user is now authenticated")
+        logging.info("admin is now authenticated")
         return redirect("/" + optional_path + "/credential_offer?session_id=" + session_id)
     
     # standard registration
     else:
         mode = current_app.config["MODE"]
         logout_user()
-        user = User.query.filter_by(name="admin").first()
+        user = User.query.filter_by(email="thierry.thevenet@talao.io").first()
         if mode.myenv == 'local':
             login_user(user)
         return redirect(ENTRY)
