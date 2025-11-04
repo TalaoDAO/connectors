@@ -1,137 +1,63 @@
 <!DOCTYPE html>
-<!-- secret_access_denied.html -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Access Denied – CONNECTORS</title>
-  <!-- Google-like font -->
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <title>{{ title or 'Session Status' }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Match user_consent.html -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
   <style>
-    :root {
-      --google-blue: #1a73e8;
-      --google-blue-dark: #1558b0;
-      --surface: #ffffff;
-      --border: #e3e3e3;
-      --text: #202124;
-      --subtext: #5f6368;
-      --bg: #f8f9fa;
-    }
-
-    * { box-sizing: border-box; }
-
-    html, body {
-      height: 100%;
-    }
-
-    body {
-      margin: 0;
-      display: grid;
-      place-items: center;
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Arial, sans-serif;
-    }
-
-    .card {
-      width: 100%;
-      max-width: 420px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 6px 24px rgba(0,0,0,0.08);
-      overflow: hidden;
-      text-align: center;
-    }
-
-    .card-header {
-      padding: 1.5rem 1rem 0.75rem;
-    }
-
-    .app-mark {
-      width: 40px;
-      height: 40px;
-      margin: 0 auto 0.5rem;
-      border-radius: 10px;
-      background: var(--google-blue);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-weight: 700;
-      font-size: 1.2rem;
-    }
-
-    .title {
-      font-size: 1.25rem;
-      font-weight: 700;
-      margin: 0.5rem 0 0;
-    }
-
-    .subtitle {
-      color: var(--subtext);
-      font-size: .95rem;
-      margin: 0.25rem 0 1.25rem;
-    }
-
-    .primary-btn {
-      appearance: none;
-      border: none;
-      cursor: pointer;
-      text-decoration: none;
-      width: 100%;
-      text-align: center;
-      padding: .85rem 1rem;
-      background: var(--google-blue);
-      color: #fff;
-      font-weight: 600;
-      border-radius: 8px;
-      transition: background .2s ease, transform .02s ease;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: .5rem;
-      font-size: .95rem;
-    }
-
-    .primary-btn:hover { background: var(--google-blue-dark); }
-    .primary-btn:active { transform: translateY(1px); }
-
-    .card-footer {
-      padding: 0.75rem;
-      border-top: 1px solid var(--border);
-      color: var(--subtext);
-      font-size: .8rem;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root { --surface:#1f1f1f; --border:#2a2a2a; --text:#e8eaed; --subtext:#9aa0a6; --bg:#0f1113; }
-    }
+    :root { --card-bg:#fff; --muted:#666; --ring:rgba(0,0,0,.06); }
+    body { background:#f7f7fb; margin:0; }
+    .container { max-width: 900px; margin: 3rem auto; background: var(--card-bg); padding: 2rem; border-radius: 14px; box-shadow: 0 2px 12px var(--ring); }
+    h1 { color: var(--primary); text-align: center; margin-top: 0; }
+    .lead { color: var(--muted); text-align: center; margin: .25rem 0 1.25rem; }
+    .btn-row { display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap; margin-top:1rem; }
+    .btn { border:none; padding:.75rem 1rem; border-radius:10px; font-weight:700; cursor:pointer; }
+    .btn-primary { background: var(--accent); color:#fff; }
+    .btn-secondary { background:#fff; border:1px solid #ddd; }
+    .section-card { background:#fafafa; border:1px solid #eee; border-radius:12px; padding:1rem; }
+    .hint { color:var(--muted); font-size:.9rem; text-align:center; }
   </style>
 </head>
 <body>
-  <main class="card" role="alertdialog" aria-labelledby="dialog-title">
-    <header class="card-header">
-      <div class="app-mark">C</div>
-      <h1 class="title" id="dialog-title">{{title}}</h1>
-      <p class="subtitle">{{ message }}</p>
-    </header>
 
-    <section class="card-body" style="padding: 1.25rem;">
-  <a href="/" class="primary-btn">Home</a>
-</section>
+<!-- Match header from user_consent.html -->
+<header>
+  <div class="logo">
+    <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET4AGENT.COM</a></strong>
+  </div>
+  <div class="nav-group">
+    <nav>
+      <a href="/documentation/sd_jwt_consent" target="_blank" rel="noopener">Explain ?</a>
+    </nav>
+    {% include "account.html" %}
+  </div>
+</header>
 
+<div class="container">
+  <h1>{{ title or 'Session Status' }}</h1>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <p class="lead">{{ messages[-1] }}</p>
+    {% else %}
+      <p class="lead">{{ message }}</p>
+    {% endif %}
+  {% endwith %}
 
+  <div class="section-card">
+    <div class="hint">
+      You can safely close this tab, go back, or return to the home page.
+    </div>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="/">Home</a>
+      <button class="btn btn-secondary" type="button" onclick="history.back()">Back</button>
+    </div>
+  </div>
+</div>
 
-    <footer class="card-footer">
-      © 2025 CONNECTORS — Web3 Digital Wallet
-    </footer>
-  </main>
+{% include "footer.html" %}
 
-  <script>
-    function goBack() {
-      window.history.back();
-    }
-  </script>
 </body>
 </html>
