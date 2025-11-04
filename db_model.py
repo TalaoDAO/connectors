@@ -245,7 +245,20 @@ def seed_wallet(mode):
             did_document=create_did_document("did:web:wallet4agent.com:demo_google", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet)
-        
+        default_wallet = Wallet(
+            token="0000",
+            name="Wallet_with_github_identity_provider",
+            workload_id="spiffe://wallet4agent.com/demo_github",
+            optional_path="demo_github",
+            always_human_in_the_loop=True,
+            did="did:web:wallet4agent.com:demo_github",
+            url=mode.server + "demo_github",
+            owner_identity_provider="github",
+            owner_login="ThierryThevenet",
+            callback=mode.server + "demo_github/callback",
+            did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+        )
+        db.session.add(default_wallet)
         default_wallet_3 = Wallet(
             token="0000",
             name="Wallet_for_demo",
@@ -437,10 +450,10 @@ def seed_user():
     if not User.query.first():
         
         default_user = User(
-            email="contact@talao.io",
+            email="thierry.thevenet@talao.io",
             created_at=datetime.now(timezone.utc),
             registration="initialisation",
-            name="admin",
+            name="Thierry Thevenet",
             role="admin",
             organization="Web3 Digital Wallet",
             country="FR",
@@ -451,9 +464,9 @@ def seed_user():
         
         default_user = User(
             email="contact@talao.io",
-            created_at=datetime.now(timezone.utc),
             registration="initialisation",
             name="test",
+            login="ThierryThevenet",
             organization="Web3 Digital Wallet",
             country="FR",
             subscription="free",
@@ -464,7 +477,6 @@ def seed_user():
         
         default_user = User(
             email="contact@talao.io",
-            created_at=datetime.now(timezone.utc),
             registration="initialisation",
             name="test_paid",
             role="user",
