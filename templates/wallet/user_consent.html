@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Attestation Consent - CONNECTORS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+  <style>
+    :root {
+      --card-bg: #fff;
+      --muted: #666;
+      --ring: rgba(0,0,0,.06);
+    }
+    body { background: #f7f7fb; }
+    .container { max-width: 900px; margin: 3rem auto; background: var(--card-bg); padding: 2rem; border-radius: 14px; box-shadow: 0 2px 12px var(--ring); }
+    h1 { color: var(--primary); text-align: center; margin-top: 0; }
+    .lead { color: var(--muted); text-align: center; margin-top: .25rem; }
+    .kv { display: grid; grid-template-columns: 220px 1fr; gap: .75rem 1rem; align-items: center; }
+    .kv + .kv { margin-top: .5rem; }
+    .kv .label { color: var(--label); font-weight: 600; }
+    .kv .value { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+
+    .section-card { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 1rem; }
+    .hint { color: var(--muted); font-size: .9rem; }
+    .json-view { width: 100%; min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .92rem; padding: .75rem; border-radius: 10px; border: 1px solid #e3e3e3; background: #fcfcfc; white-space: pre; overflow: auto; }
+
+    .toggle-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .toggle-btn { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border-radius: 8px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; width: fit-content; font-weight: 600; }
+    .toggle-btn:hover { background: #f2f2f2; }
+    .chevron { transition: transform .2s ease; display: inline-block; }
+    .panel { display: none; padding: 1rem; border: 1px dashed #e3e3e3; border-radius: 10px; background: #fcfcfc; }
+    .panel.show { display: block; }
+
+    .btn-row { display: flex; gap: .75rem; flex-wrap: wrap; }
+    .btn { border: none; padding: .75rem 1rem; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    .btn-accept { background: var(--accent); color: #fff; }
+    .btn-reject { background: #fff; border: 1px solid #ddd; }
+    .btn-copy { border: 1px solid #ddd; background: #fff; padding: .4rem .65rem; border-radius: 8px; cursor: pointer; }
+
+    .choice-row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .choice { display: flex; align-items: center; gap: .5rem; border: 1px solid #e8e8e8; background: #fcfcfc; padding: .75rem; border-radius: 10px; }
+    .choice input { transform: translateY(1px); }
+
+    details.summary { margin-top: 1rem; }
+
+    .badge { display:inline-block; font-size:.75rem; padding:.1rem .4rem; border-radius:6px; border:1px solid #e2e2e2; background:#fff; }
+    .badge.ok { border-color: #9bd19b; }
+    .badge.warn { border-color: #e7b16a; }
+
+    textarea[readonly], input[readonly] { cursor:text; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET-CONNECTORS.COM</a></strong>
+  </div>
+  <div class="nav-group">
+    <nav>
+      <a href="/">Home</a>
+      <a href="/documentation/sd_jwt_consent" target="_blank" rel="noopener">Explain ?</a>
+    </nav>
+    {% include "account.html" %}
+  </div>
+</header>
+
+<div class="container">
+  <h1>{{ title or 'Consent to Accept & Publish Attestation' }}</h1>
+  <p class="lead">Review the selectively disclosed claims of the SD-JWT Verifiable Credential, then choose to accept or reject. If you accept, you can publish it publicly or keep it private.</p>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="flashes">
+        {% for message in messages %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <form id="consentForm" action = "/user/consent" method="POST" enctype="multipart/form-data">
+    <!-- The server passes the SD-JWT VC string here -->
+    <textarea id="sdJwtInput" name="sd_jwt_vc" hidden>{{ sd_jwt_vc }}</textarea>
+    <input name="session_id" hidden value="{{session_id }}">
+
+    <div class="section-card" style="margin-bottom:1rem;">
+      <div class="kv">
+        <div class="label">Issuer</div>
+        <div class="value"><input id="issuer" type="text" value="" readonly></div>
+      </div>
+      <div class="kv">
+        <div class="label">Subject (holder)</div>
+        <div class="value"><input id="subject" type="text" value="" readonly></div>
+      </div>
+      <div class="kv">
+        <div class="label">Issued at</div>
+        <div class="value"><input id="issued" type="text" value="" readonly></div>
+        </div>
+        <div class="kv">
+        <div class="label">Expires at</div>
+        <div class="value"><input id="expires" type="text" value="" readonly></div>
+        </div>
+
+      
+    </div>
+
+    <label><strong>Human‑readable payload (disclosures applied)</strong></label>
+    <pre id="humanPayload" class="json-view" aria-live="polite">Parsing…</pre>
+    <div class="hint">Only the payload claims are shown. Signatures are not displayed. Disclosed values are merged into their claim names; undisclosed digests are omitted.</div>
+
+    <div class="toggle-row" role="toolbar" aria-label="Technical details">
+      <button type="button" class="toggle-btn" id="btn-raw" aria-expanded="false" aria-controls="panel-raw"><span class="chevron">▸</span> Technical details</button>
+    </div>
+
+    <div id="panel-raw" class="panel" role="region" aria-label="Technical details">
+      <div class="kv">
+        <div class="label">Raw SD-JWT size</div>
+        <div class="value"><input id="rawSize" type="text" value="" readonly> <button class="btn-copy" type="button" data-copy="#sdJwtInput">Copy</button></div>
+      </div>
+      <div class="kv">
+        <div class="label">JWT header</div>
+        <div class="value"><textarea id="jwtHeader" readonly class="json-view" style="min-height:100px"></textarea></div>
+      </div>
+      <div class="kv">
+        <div class="label">JWT payload (raw)</div>
+        <div class="value"><textarea id="jwtPayloadRaw" readonly class="json-view" style="min-height:140px"></textarea></div>
+      </div>
+    </div>
+
+    <hr style="margin:1.25rem 0; border:none; border-top:1px solid #eee;"/>
+
+    <div class="section-card" style="margin-bottom:1rem;">
+      <label style="display:block; font-weight:600; margin-bottom:.5rem;">Your decision</label>
+      <div class="btn-row">
+        <button id="btnReject" class="btn btn-reject" type="button">Reject</button>
+        <button id="btnAccept" class="btn btn-accept" type="button">Accept</button>
+      </div>
+      <div id="publishBlock" style="display:none; margin-top:1rem;">
+        <div class="choice-row">
+          <label class="choice"><input type="radio" name="publish_scope" value="private" checked> Keep in the agent wallet (private)</label>
+          <label class="choice"><input type="radio" name="publish_scope" value="public"> Publish to DID Document (public)</label>
+        </div>
+        <div class="hint" style="margin-top:.5rem;">Choosing <em>public</em> means the attestation may be publicly discoverable. The full SD-JWT string is stored regardless, according to your policy.</div>
+      </div>
+    </div>
+
+    <!-- Hidden outputs the backend expects -->
+    <input type="hidden" id="decision" name="decision" value="" />
+    <input type="hidden" id="publish" name="publish" value="false" />
+    <input type="hidden" id="payload_applied_json" name="payload_applied_json" value="{}" />
+
+    <div class="btn-row">
+      <button id="submitBtn" class="btn btn-accept" type="submit" disabled>Submit</button>
+      <button class="btn btn-reject" type="button" id="cancelBtn" onclick="history.back()">Cancel</button>
+    </div>
+  </form>
+</div>
+
+{% include "footer.html" %}
+
+<script>
+  // --- Utilities -----------------------------------------------------------
+const b64u = {
+  pad: (s) => s + "===".slice((s.length + 3) % 4),
+  toBytes: (s) => {
+    const base64 = b64u.pad(s.replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  },
+  fromBytes: (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
+  decodeJSON: (s) => JSON.parse(new TextDecoder().decode(b64u.toBytes(s)))
+};
+
+
+  function pretty(obj){ return JSON.stringify(obj, null, 2); }
+  function tsToISO(ts){ if(!ts) return ''; try { return new Date(ts*1000).toISOString(); } catch { return String(ts); } }
+
+  function isJwt(str){ return typeof str === 'string' && str.split('.').length === 3; }
+
+  function parseCombinedSdJwt(input){
+    // The combined format joins: SD-JWT JWS ~ disclosures... ~ optional KB-JWT
+    const parts = (input||'').split('~').filter(Boolean);
+    const jws = parts.find(isJwt) || '';
+    const others = parts.filter(p => p !== jws);
+    const kb = others.find(isJwt);
+    const disclosures = others.filter(p => !isJwt(p));
+    return { jws, disclosures, kb };
+  }
+
+  async function sha256(u8){
+    const buf = await crypto.subtle.digest('SHA-256', u8);
+    return new Uint8Array(buf);
+  }
+
+  // Compute digest per SD-JWT spec: hash of disclosure bytes, then base64url
+  async function disclosureDigest(disclosureStr){
+    const bytes = b64u.toBytes(disclosureStr);
+    const h = await sha256(bytes);
+    return b64u.fromBytes(h);
+  }
+
+  // Apply disclosures: each disclosure is b64u(JSON array [salt, name, value])
+  function applyDisclosure(root, arr){
+    // arr = [salt, name, value] or [salt, name, object]
+    const [, name, value] = arr;
+    if (typeof name !== 'string') return;
+    root[name] = value;
+  }
+
+  // Walk payload to collect all _sd digests by path (simple view)
+  function collectDigests(obj, path = []){
+    const out = new Set();
+    if (!obj || typeof obj !== 'object') return out;
+    if (Array.isArray(obj._sd)) obj._sd.forEach(d => out.add(d));
+    for (const [k,v] of Object.entries(obj)){
+      if (v && typeof v === 'object'){
+        const sub = collectDigests(v, path.concat(k));
+        sub.forEach(d => out.add(d));
+      }
+    }
+    return out;
+  }
+
+  async function buildHumanPayload(payload, disclosures){
+    // Start with a clean object including non-selectively-disclosed top-level claims except _sd and digests
+    const base = {};
+    for (const [k,v] of Object.entries(payload)){
+      if (k === '_sd' || k === '_sd_alg' || k === 'cnf') continue;
+      if (typeof v !== 'object') base[k] = v; // copy primitive top-level claims
+    }
+
+    const digestSet = collectDigests(payload);
+    // Plain JWT or SD-JWT without disclosures/_sd -> show full payload (minus housekeeping)
+    if (digestSet.size === 0 && (!disclosures || disclosures.length === 0)) {
+        const clone = JSON.parse(JSON.stringify(payload));
+        delete clone._sd;
+        delete clone._sd_alg;
+        delete clone.cnf;
+        return { applied: clone, verified: {} };
+    }
+    const verified = {};
+
+    for (const d of disclosures){
+      try {
+        const arr = b64u.decodeJSON(d); // [salt, name, value]
+        // verify membership if digest present
+        const dig = await disclosureDigest(d);
+        const ok = digestSet.has(dig);
+        applyDisclosure(base, arr);
+        verified[arr[1]] = ok ? 'ok' : 'warn';
+      } catch(e){ console.warn('Bad disclosure', e); }
+    }
+
+    return { applied: base, verified };
+  }
+
+  function setupToggle(btnId, panelId){
+    const btn = document.getElementById(btnId);
+    const panel = document.getElementById(panelId);
+    if (!btn || !panel) return;
+    const chev = btn.querySelector('.chevron');
+    btn.addEventListener('click', () => {
+      const open = !panel.classList.contains('show');
+      panel.classList.toggle('show', open);
+      btn.setAttribute('aria-expanded', String(open));
+      if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+    });
+  }
+
+  function copyFrom(sel){
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.select?.();
+    const val = el.value || el.textContent;
+    navigator.clipboard.writeText(val);
+  }
+
+  // --- Page controller -----------------------------------------------------
+  document.addEventListener('DOMContentLoaded', async () => {
+    setupToggle('btn-raw','panel-raw');
+    document.querySelectorAll('.btn-copy').forEach(btn => btn.addEventListener('click', e => copyFrom(e.currentTarget.dataset.copy)));
+
+    const sdCombined = (document.getElementById('sdJwtInput').value || '').trim();
+    const rawSize = new Blob([sdCombined]).size;
+    document.getElementById('rawSize').value = rawSize + ' bytes';
+
+    const { jws, disclosures, kb } = parseCombinedSdJwt(sdCombined);
+    if (!jws){
+      document.getElementById('humanPayload').textContent = 'No SD-JWT detected.';
+      return;
+    }
+
+    const [hdrB64, plB64] = jws.split('.');
+    const header = b64u.decodeJSON(hdrB64);
+    const payload = b64u.decodeJSON(plB64);
+
+    // Fill quick facts
+    document.getElementById('issuer').value = payload.iss || '';
+    document.getElementById('subject').value = payload.cnf.kid  || payload.cnf || '';
+    document.getElementById('issued').value = payload.iat ? tsToISO(payload.iat) : '';
+    document.getElementById('expires').value = payload.exp ? tsToISO(payload.exp) : '';
+
+    // Render raw tech
+    document.getElementById('jwtHeader').value = pretty(header);
+    document.getElementById('jwtPayloadRaw').value = pretty(payload);
+
+    // Build human-readable applied payload
+    const { applied, verified } = await buildHumanPayload(payload, disclosures);
+    document.getElementById('humanPayload').textContent = pretty(applied);
+    document.getElementById('payload_applied_json').value = JSON.stringify(applied);
+
+    // Show verification hints per known keys if present
+    // Add small legend after the viewer
+    const keys = Object.keys(verified);
+    if (keys.length){
+      const badgeLegend = document.createElement('div');
+      badgeLegend.className = 'hint';
+      badgeLegend.innerHTML = keys.map(k => `<span class="badge ${verified[k]}">${k}: ${verified[k]==='ok'?'verified inclusion':'not in digest set'}</span>`).join(' ');
+      document.getElementById('humanPayload').after(badgeLegend);
+    }
+
+    // Decision flow
+    const decision = document.getElementById('decision');
+    const publish = document.getElementById('publish');
+    const publishBlock = document.getElementById('publishBlock');
+    const submitBtn = document.getElementById('submitBtn');
+
+    document.getElementById('btnReject').addEventListener('click', () => {
+      decision.value = 'reject';
+      publish.value = 'false';
+      publishBlock.style.display = 'none';
+      submitBtn.disabled = false;
+    });
+
+    document.getElementById('btnAccept').addEventListener('click', () => {
+      decision.value = 'accept';
+      publishBlock.style.display = 'block';
+      submitBtn.disabled = false;
+    });
+
+    document.querySelectorAll('input[name="publish_scope"]').forEach(r => r.addEventListener('change', (e) => {
+      publish.value = (e.target.value === 'public') ? 'true' : 'false';
+    }));
+  });
+</script>
+</body>
+</html>

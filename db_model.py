@@ -182,7 +182,6 @@ class Credential(db.Model):
 
 class Wallet(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     token = db.Column(db.Text)
     workload_id = db.Column(db.String(64))
     description = db.Column(db.Text)
@@ -192,7 +191,7 @@ class Wallet(db.Model):
     name = db.Column(db.String(64))
     did = db.Column(db.Text)
     did_document = db.Column(db.Text)
-    always_human_in_the_loop = db.Column(db.Boolean, default=False)
+    always_human_in_the_loop = db.Column(db.Boolean, default=True)
     url = db.Column(db.String(256))
     callback = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, default=datetime.now)
@@ -219,24 +218,22 @@ def seed_wallet(mode):
         jwk_1["alg"] = "ES256"
         jwk_2["alg"] = "EdDSA"
         default_wallet = Wallet(
-            user_id=1,
             token="0000",
-            name="Wallet_for_demo",
+            name="Wallet_for_demo_with_test",
             workload_id="spiffe://wallet4agent.com/demo",
             optional_path="demo",
             always_human_in_the_loop=True,
             did="did:web:wallet4agent.com:demo",
             url=mode.server + "demo",
-            owner_identity_provider="google",
+            owner_identity_provider="test",
             owner_login="thierry.thevenet@talao.io",
             callback=mode.server + "demo/callback",
-            did_document=create_did_document("did:web:wallet4agent.com:demo", jwk_1, jwk_2, "https://wallet4agent.com/")
+            did_document=create_did_document("did:web:wallet4agent.com:demo", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet)
         default_wallet = Wallet(
-            user_id=1,
             token="0000",
-            name="Wallet_for_demo",
+            name="Wallet_with_google_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_google",
             optional_path="demo_google",
             always_human_in_the_loop=True,
@@ -245,14 +242,13 @@ def seed_wallet(mode):
             owner_identity_provider="google",
             owner_login="thierry.thevenet@talao.io",
             callback=mode.server + "demo_google/callback",
-            did_document=create_did_document("did:web:wallet4agent.com:demo_google", jwk_1, jwk_2, "https://wallet4agent.com/")
+            did_document=create_did_document("did:web:wallet4agent.com:demo_google", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet)
         
         default_wallet_3 = Wallet(
-            user_id=1,
             token="0000",
-            name="Wallet 3_for_demo",
+            name="Wallet_for_demo",
             workload_id="spiffe://wallet4agent.com/demo_wallet",
             optional_path="demo_wallet",
             always_human_in_the_loop=True,
@@ -261,7 +257,7 @@ def seed_wallet(mode):
             owner_identity_provider="wallet",
             owner_login="did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9",
             callback=mode.server + "demo_google/callback",
-            did_document=create_did_document("did:web:wallet4agent.com:demo_wallet", jwk_1, jwk_2, "https://wallet4agent.com/")
+            did_document=create_did_document("did:web:wallet4agent.com:demo_wallet", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet_3)
         db.session.commit()
@@ -491,7 +487,7 @@ def seed_user():
         db.session.commit()
 
 
-def create_did_document(did, jwk_1, jwk_2,  agent_card_url) -> str:
+def create_did_document(did, jwk_1, jwk_2,  a2a_url) -> str:
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -524,13 +520,13 @@ def create_did_document(did, jwk_1, jwk_2,  agent_card_url) -> str:
             did + "#key-2"
         ]
     }
-    if agent_card_url:
+    if a2a_url:
         document["service"] = []
         document["service"].append(
             {
                 "id": "#a2a",
                 "type": "A2AService",
-                "serviceEndpoint": agent_card_url
+                "serviceEndpoint": a2a_url
             }
         )
     return json.dumps(document)

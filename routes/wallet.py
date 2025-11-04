@@ -45,6 +45,9 @@ def init_app(app):
     app.add_url_rule('/<optional_path>/credential_offer', view_func=credential_offer, methods=['GET'])
     app.add_url_rule('/<optional_path>/callback', view_func=callback, methods=['GET', 'POST'])
     app.add_url_rule('/<optional_path>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
+    
+    app.add_url_rule('/user/consent', view_func=user_consent, methods=['GET', 'POST'])
+    
     return
 
 def get_configuration():
@@ -206,13 +209,13 @@ def credential_offer(optional_path):
             redirect_uri = build_authorization_request(session_config, red)
             # send authorization request to issuer
             return redirect(redirect_uri)
+        
+        # the user is logged, it is a pre authorized code flow and we ask user for consent 
         else:
-            result, text = code_flow(session_config)
-            # TODO request user consent for storage
+            sd_jwt_vc, text = code_flow(session_config)
             logout_user()
-            if result:
-                message = "Attestation has been issued and stored in the wallet " + session_config["wallet_did"]
-                return render_template("wallet/session_screen.html", message=message, title="Congrats !")
+            if sd_jwt_vc:
+                return render_template("wallet/user_consent.html", sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
             else:
                 return render_template("wallet/session_screen.html", message=text, title="Issuance Failure")
     
@@ -245,7 +248,7 @@ def credential_offer(optional_path):
     if not session_config:
         return render_template("wallet/session_screen.html", message=text, title="Access Denied")
     
-    # if user in the loop, redirect user to resgisration
+    # if user in the loop, redirect user to regisration
     if session_config["always_human_in_the_loop"]:
         session_id = secrets.token_hex(16)
         red.setex(session_id, 1000, json.dumps(session_config))
@@ -261,6 +264,24 @@ def credential_offer(optional_path):
     else:
         message = "Grant type not supported"
         return render_template("wallet/session_screen.html", message=message, title= "Issuance Failure")
+
+
+# route to request user consent then store the VC
+def user_consent():
+    red = current_app.config["REDIS"]
+    attestation = request.form.get("sd_jwt_vc")
+    session_id = request.form.get("session_id")
+    public_url = request.form.get("publish_scope") or None
+    print("attestation = ", attestation)
+    print("session_id = ", session_id)
+    print("publish = ", public_url)
+    session_config = json.loads(red.get(session_id).decode())
+    store(attestation, session_config)
+    if public_url == "public":
+        message = "Attestation has been stored an published"
+    else:
+        message = "Attestation has been stored"
+    return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
 
 
 def build_authorization_request(session_config, red) -> str:
@@ -288,17 +309,23 @@ def callback(optional_path):
     red = current_app.config["REDIS"]
     try:
         code = request.args['code']
-        state = request.args.get('state', "")
-        session_config = json.loads(red.get(state).decode())
+        session_id = request.args.get('state', "")
+        session_config = json.loads(red.get(session_id).decode())
     except Exception:
-        return jsonify({"error":"callback issue"})
+        return jsonify({"error": "callback issue"})
     
     # update session config with code from AS
     session_config["code"] = code
-    logout_user()
-    code_flow(session_config)
-    # TODO request user consent for storage
-    return redirect("/")
+    logout_user()    
+    sd_jwt_vc, text = code_flow(session_config)
+    if not sd_jwt_vc:
+        return render_template("wallet/session_screen.html", message=text, title="Issuance Failure")
+    return render_template(
+        "wallet/user_consent.html",
+        sd_jwt_vc=sd_jwt_vc,
+        title="Consent to Accept & Publish Attestation",
+        session_id=session_id
+    )
 
 
 def token_request(session_config):
@@ -413,7 +440,7 @@ def code_flow(session_config):
         logging.warning('credential endpoint error return code = %s', result)
         return None, result.get("error_description")
     
-    # get the first the credential
+    # get the first the credential only
     cred = None
     if isinstance(result, dict):
         if "credentials" in result and result["credentials"]:
@@ -424,9 +451,7 @@ def code_flow(session_config):
         return None, "credential missing in response"
         
     logging.info("credential endpoint response = %s", result)    
-    # TODO move the storage after consent
-    result, text = store(cred, session_config)
-    return cred, "text"
+    return cred, "ok"
 
 
 def store(cred, session_config):

@@ -68,7 +68,7 @@ def register():
     elif wallet.owner_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
     
-    return render_template("register.html", mode=mode, title="Register", session_id=session_id, optional_path=optional_path)
+    return render_template("register.html", mode=mode, title="Authenticate", session_id=session_id, optional_path=optional_path)
 
 
 def login_with_google():

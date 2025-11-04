@@ -127,7 +127,6 @@ def call_create_identity(arguments: Dict[str, Any], api_key: str, config: dict) 
         
     token = secrets.token_hex(16)
     wallet = Wallet(
-        user_id=1,
         token=token,
         workload_id="spiffe://wallet4agent.com/" + optional_path,
         optional_path=optional_path,
@@ -140,19 +139,24 @@ def call_create_identity(arguments: Dict[str, Any], api_key: str, config: dict) 
         callback=config["SERVER"] + optional_path + "/callback"
     )
     if arguments.get("owner_identity_provider") == "google":
-        user = User.query.filter_by(email=owner_login).first()
-        owner_email = owner_login
-        owner_login = ""
+        email = owner_login
+        login = email
+        user = User.query.filter_by(email=email).first()
     elif arguments.get("owner_identity_provider") == "github":
         user = User.query.filter_by(email=owner_login).first()
-        owner_email = ""
+        email = ""
+        login = owner_login
+    elif arguments.get("owner_identity_provider") == "wallet":
+        login = owner_login
+        user = User.query.filter_by(login=owner_login).first()
+        email = ""
     else:
-        owner_email = ""
-        owner_login = ""
+        email = ""
+        login = owner_login
     if not user:
         user = User(
-            email=owner_email,
-            login=owner_login,
+            email=email,
+            login=login,
             registration="wallet_creation",
             subscription="free",
             profile_picture="default_picture.jpeg",
