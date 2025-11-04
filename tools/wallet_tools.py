@@ -29,7 +29,7 @@ tools = [
     },
     {
         "name": "verify",
-        "description": "Verify an Agent identity through attestations",
+        "description": "Verify an Agent identity through its attestations",
         "inputSchema": {
             "type": "object",
             "properties": {

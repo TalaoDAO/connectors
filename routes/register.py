@@ -100,12 +100,13 @@ def register_google_callback(db):
     userinfo = requests.get(uri, headers=headers, data=body).json()
     user = User.query.filter_by(email=userinfo.get("email")).first()
     if user:
-        session_config = json.loads(red.get("state").decode())
+        session_config = json.loads(red.get(session_id).decode())
         if userinfo.get("email") == session_config["owner_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
             return redirect("/" + session_config["optional_path"] + "/credential_offer?session_id=" + session_id)
+    logging.warning("user not found in register.py")
     return redirect("/")
     
     # not used
@@ -138,26 +139,28 @@ def register_github_callback(db):
     red = current_app.config["REDIS"]
     code = request.args.get("code")
     session_id = request.args.get("state")
+    data = {
+            "client_id": GITHUB_CLIENT_ID,
+            "client_secret": GITHUB_CLIENT_SECRET,
+            "code": code
+    }
 
     token_resp = requests.post(
         "https://github.com/login/oauth/access_token",
         headers={"Accept": "application/json"},
-        data={
-            "client_id": GITHUB_CLIENT_ID,
-            "client_secret": GITHUB_CLIENT_SECRET,
-            "code": code
-        }
-    ).json()
+        timeout=10,
+        data=data).json()
     headers = {'Authorization': f'token {token_resp.get("access_token")}'}
     userinfo = requests.get("https://api.github.com/user", headers=headers).json()
     user = User.query.filter_by(login=userinfo.get("login")).first()
     if user:
-        session_config = json.loads(red.get("state").decode())
+        session_config = json.loads(red.get(session_id).decode())
         if userinfo.get("login") == session_config["owner_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
             return redirect("/" + session_config["optional_path"] + "/credential_offer?session_id=" + session_id)
+    logging.warning("user is not found in register.py")
     return redirect("/")
     
     new_user = User(
@@ -242,12 +245,8 @@ def register_wallet_callback(db):
     logging.info("userinfo response = %s", json.dumps(userinfo, indent=2))
 
     sub = userinfo.get("sub")
-    if not sub:
-        flash("❌ Wallet verification failed: missing 'sub' in userinfo.")
-        return redirect("/")
 
     user = User.query.filter_by(login=sub).first()
-    print("user name = ", user.name)
     if user:
         session_config = json.loads(red.get(session_id).decode())
         print("session config = ", session_config["owner_login"])
@@ -256,6 +255,8 @@ def register_wallet_callback(db):
             login_user(user)
             logging.info("owner is now authenticated")
             return redirect("/" + session_config["optional_path"] + "/credential_offer?session_id=" + session_id)
+    
+    logging.warning("user is not found in register.py")
     return redirect("/")
   
 
