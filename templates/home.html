@@ -3,16 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EUDI Wallet MCP Server for AI Agents (Talao, eIDAS v2)</title>
+  <title>Wallet4Agent — Trust and Identity for AI Agents</title>
 
-  <!-- SEO / Social -->
-  <meta name="description" content="Expose OIDC4VP wallet verification to AI agents via the Model Context Protocol (MCP). Pull-based flow, works with EUDI-compliant wallets like Talao." />
-  <meta property="og:title" content="MCP server for data wallet" />
-  <meta property="og:description" content="Let AI agents authenticate users with their EUDI-compliant wallet (e.g., Talao) using MCP + OIDC4VP (pull model)." />
+  <meta name="description" content="Wallet4Agent provides decentralized and regulated identity tools for AI Agents, Companies, and Users. Powered by an MCP Server using DIDs and Verifiable Credentials." />
+  <meta property="og:title" content="Wallet4Agent — Identity and Trust for AI Agents" />
+  <meta property="og:description" content="Enable AI Agents to use decentralized identifiers (DIDs), Verifiable Credentials, and OIDC4VC to build a verifiable and trusted Agentic Web." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
 
-  <!-- Fonts / Shared header styles (same as menu.html) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
@@ -26,327 +24,140 @@
       --muted: #6b7280;
       --accent: #0ea5b0;
       --ring: rgba(14,165,176,.35);
-      --code-bg: #0b1220;
-      --code-fg: #e5f7ff;
     }
-    *{ box-sizing: border-box; }
-    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color:var(--text); background:var(--bg); }
+    body{ margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial; color:var(--text); background:var(--bg); }
     a{ color: var(--accent); text-decoration: none; }
-    a:focus, button:focus{ outline: 3px solid var(--ring); outline-offset: 2px; }
-    code,kbd,samp{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: .95em; }
-    pre{ background: var(--code-bg); color: var(--code-fg); border-radius: 12px; padding: 1rem 1.1rem; overflow:auto; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
-    .copy{ border: 1px solid #cde9ee; background:#fff; padding: .5rem .75rem; border-radius: 8px; font-weight:600; cursor: pointer; }
-    .chip{ display:inline-flex; align-items:center; gap:.4rem; background:#ecfeff; color:#065f66; padding:.35rem .6rem; border-radius:999px; border:1px solid #c8f1f5; font-weight:600; }
-
-    /* --- HERO / SECTIONS --- */
-    .hero{ text-align:center; padding: 5rem 1.5rem 4rem; background: linear-gradient(180deg, #ffffff 0%, #eef8f8 100%); }
-    .hero-image {
-      max-width: 800px;
-      width: 90%;
-      height: auto;
-      border-radius: 20px;
-      margin-bottom: 2rem;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-    }
-    .badge{ display:inline-block; padding:.35rem .6rem; border-radius:999px; background: #e6fbff; color: #036b77; font-weight:600; letter-spacing:.2px; }
-    .main-title{ font-family: 'Orbitron', ui-sans-serif, system-ui; font-size: clamp(2.1rem, 4vw, 3.25rem); margin:.75rem 0; color:#082a2f; }
-    .subtitle{ font-size: clamp(1rem, 2.2vw, 1.15rem); color:var(--muted); max-width: 880px; margin: 0 auto 1.25rem; }
-    .cta{ margin-top: 1.5rem; display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap; }
-    .btn{ display:inline-block; padding:.8rem 1.2rem; border-radius: 10px; font-weight:700; text-decoration:none; border:1px solid transparent; cursor:pointer; }
-    .btn.primary{ background: var(--accent); color:#fff; transition: transform .15s, box-shadow .25s; }
-    .btn.primary:hover{ transform: translateY(-2px); box-shadow: 0 8px 24px rgba(14,165,176,.22); }
-    .btn.secondary{ background:#fff; border-color:#cfe7ec; color:#064b53; }
-
-    .section{ max-width:1200px; margin: 3rem auto; padding: 0 1rem; }
-    .section h2{ text-align:center; font-size: clamp(1.5rem, 3vw, 2.25rem); margin-bottom: 1.25rem; color:#082a2f; }
-
-    .feature-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; }
-    .card{ background:var(--card); border:1px solid #e5e7eb; border-radius: 16px; padding: 1.2rem 1.25rem 1.35rem; box-shadow: 0 1px 3px rgba(0,0,0,.04); transition: transform .18s, box-shadow .18s; }
-    .card:hover{ transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0,0,0,.10); }
+    header, footer { background: #fff; }
+    .hero{ text-align:center; padding:5rem 1.5rem 4rem; background: linear-gradient(180deg,#ffffff 0%,#eef8f8 100%); }
+    .hero-image{ max-width:800px; width:90%; height:auto; border-radius:20px; margin-bottom:2rem; box-shadow:0 6px 20px rgba(0,0,0,0.08); }
+    .badge{ display:inline-block; padding:.35rem .6rem; border-radius:999px; background:#e6fbff; color:#036b77; font-weight:600; }
+    .main-title{ font-family:'Orbitron',ui-sans-serif; font-size:clamp(2.1rem,4vw,3.25rem); margin:.75rem 0; color:#082a2f; }
+    .subtitle{ font-size:clamp(1rem,2.2vw,1.15rem); color:var(--muted); max-width:880px; margin:0 auto 1.25rem; }
+    .section{ max-width:1200px; margin:3rem auto; padding:0 1rem; }
+    .section h2{ text-align:center; font-size:clamp(1.5rem,3vw,2.25rem); margin-bottom:1.25rem; color:#082a2f; }
+    .card{ background:var(--card); border:1px solid #e5e7eb; border-radius:16px; padding:1.2rem 1.25rem 1.35rem; box-shadow:0 1px 3px rgba(0,0,0,.04); transition:transform .18s,box-shadow .18s; }
+    .card:hover{ transform:translateY(-4px); box-shadow:0 10px 25px rgba(0,0,0,.10); }
+    .feature-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1.25rem; }
     .card h3{ margin:.25rem 0 .5rem; color:#082a2f; font-size:1.12rem; }
     .card p{ margin:0; color:#3d4a57; font-size:.98rem; }
-    .card .actions{ margin-top: .9rem; display:flex; gap:.5rem; flex-wrap:wrap; }
-
-    .how{ display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; counter-reset: step; }
-    .how .step{ background:#ffffff; border:1px solid #e5e7eb; border-radius: 14px; padding: 1rem 1.1rem; }
-    .how .step h4::before{ counter-increment: step; content: counter(step) ". "; color: var(--accent); }
-    .how .step h4{ margin:.25rem 0 .5rem; }
-    .how .step p{ margin:0; color:#4b5563; }
-
-    .logos{ display:flex; gap:1.25rem; flex-wrap:wrap; justify-content:center; align-items:center; opacity:.95; }
-    .logos .chip{ margin:.25rem; }
-
-    .cta-bottom{ text-align:center; padding: 2.5rem 1rem 3.25rem; }
-    .flashes{ max-width: 900px; margin: .75rem auto 0; padding: .5rem 1rem; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius: 8px; }
-
-    .two-col{ display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; align-items:start; }
-    .note{ font-size:.95rem; color:#5b6470; }
-    .kbd{ background:#eef7f8; padding:.15rem .45rem; border-radius:6px; border:1px solid #cde9ee; }
-
-    /* Tools section */
-    .tool-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
-    .tool-card .meta{ font-size:.9rem; color:#56606d; margin:.25rem 0 .5rem; }
-    .kvl{ margin:.35rem 0 0; padding:0; list-style:none; }
-    .kvl li{ margin:.15rem 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New"; font-size:.92rem; }
+    .tech-list{ list-style:disc; padding-left:1.25rem; color:#3d4a57; font-size:1rem; line-height:1.55; }
   </style>
-
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "Organization",
-        "name": "Wallet Connectors",
-        "url": "https://wallet-connectors.com/",
-        "sameAs": ["https://www.talao.io/"],
-        "logo": "https://wallet-connectors.com/static/logo.png"
-      },
-      {
-        "@type": "WebSite",
-        "name": "Wallet Connectors",
-        "url": "https://wallet-connectors.com/"
-      },
-      {
-        "@type": "SoftwareApplication",
-        "name": "EUDI Wallet MCP Server",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Any",
-        "url": "https://wallet-connectors.com/",
-        "description": "MCP Server to connect EUDI wallets (e.g., Talao) to AI Agents using OIDC4VP (pull model), aligned with eIDAS v2.",
-        "keywords": "EUDI wallet, AI Agent, MCP Server, Talao, eIDAS v2, OIDC4VP, verifiable credentials"
-      }
-    ]
-  }
-  </script>
-
 </head>
 <body>
 
-  <!-- HEADER — keep parity with shared menu/header include -->
   <header>
     <div class="logo">
-      <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET4AGENT.COM</a></strong>
+      <strong><a href="/" style="color: var(--accent); text-decoration: none;">WALLET4AGENT.COM</a></strong>
     </div>
     <nav>
-       <a href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
-       <a href="/documentation/use_cases">Use Cases</a>
+      <a href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
+      <a href="/documentation/use_cases">Use Cases</a>
     </nav>
   </header>
 
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="flashes" role="status">
-        {% for message in messages %}
-          <p>{{ message }}</p>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
-
-  <main id="content" role="main" aria-label="MCP server homepage">
-    <section class="hero" aria-labelledby="hero-title">
-      <img src="static/img/hero.png" 
-           alt="AI identity management illustration" 
-           class="hero-image" />
-      <br>
-      <span class="badge">A2A • MCP • DIDs • Verifiable Credentials • OIDC4VC</span>
-      <h1 id="hero-title" class="main-title">We provide Identity, Attestations and Wallets to AI Agents</h1>
-      <p class="subtitle">AI Agents can now authenticate and act on behalf of natural persons, legal persons or other AI Agents with their <strong>own-Identity, attestations and mandates</strong>. This server exposes issuer, holder and verifier capabilities via the <strong>Model Context Protocol</strong>.</p>
-      <div class="cta" role="group" aria-label="Primary actions">
-        <a class="btn primary" href="/mcp/info">MCP info</a>
-        <a class="btn secondary" href="#tools">MCP tools</a>
-        <!-- <a class="btn secondary" href="#approach">Our global approach</a> -->
-        <!-- <a class="btn secondary" href="/documentation/verifier_agents_mcp">Read docs</a>  -->
-      </div>
-    </section>
-
-    <!-- Global approach & offer -->
-    <section id="approach" class="section" aria-labelledby="approach-title">
-      <h2 id="approach-title">Our global approach: AI Agents are identities</h2>
-      <div class="two-col">
-        <article class="card">
-          <h3>One identity model for everyone</h3>
-          <p>We consider <strong>AI Agents as first-class identities</strong>, just like <em>natural persons</em> and <em>legal entities</em>. Every identity can hold a wallet, receive credentials, present proofs, and exercise <em>mandates</em> (delegations) within policy.</p>
-          <ul>
-            <li><strong>Issuance:</strong> grant identity, role, or mandate credentials to people, companies, and agents.</li>
-            <li><strong>Verification:</strong> request and verify proofs (e.g., profile, age, membership, compliance) with selective disclosure.</li>
-            <li><strong>Lifecycle:</strong> store, update, suspend, or revoke credentials with auditability.</li>
-          </ul>
-          <p class="note">This unifies human–organization–agent interactions under W3C DIDs, Verifiable Credentials, and OIDC4VC flows.</p>
-        </article>
-
-        <article class="card">
-          <h3>What you can do today</h3>
-          <ul>
-            <li><strong>Authenticate</strong> users, organizations, or other agents via wallet-based presentations.</li>
-            <li><strong>Delegate</strong> authority to agents with verifiable mandates for scoped tasks.</li>
-            <li><strong>Prove</strong> attributes and compliance with minimal disclosure and revocation checks.</li>
-            <li><strong>Interoperate</strong> across ecosystems and wallets thanks to standards alignment.</li>
-          </ul>
-          <p class="note">Explore detailed scenarios in the <a href="/documentation/use_cases">Use Cases</a>.</p>
-        </article>
-      </div>
-
-      <div class="feature-grid" style="margin-top:1rem;">
-        <article class="card">
-          <h3>Authentication</h3>
-          <p>Verify identities for humans, companies, and agents; enable agent-to-service login via OIDC4VC.</p>
-        </article>
-        <article class="card">
-          <h3>Credentials & Delegations</h3>
-          <p>Issue roles, mandates, and identity credentials; manage storage and revocation.</p>
-        </article>
-        <article class="card">
-          <h3>Verification & Proofs</h3>
-          <p>Selective disclosure, continuous checks, and cross-domain validation.</p>
-        </article>
-
-        <article class="card">
-          <h3>Interoperability & Collaboration</h3>
-          <p>Plug agents into VC ecosystems and enable multi-agent workflows with verified roles.</p>
-        </article>
-      </div>
-    </section>
-
-    <!-- NEW: MCP Tools available to agents -->
-    <section id="tools" class="section" aria-labelledby="tools-title">
-      <h2 id="tools-title">Available MCP tools</h2>
-      <p class="subtitle" style="text-align:center; max-width: 900px; margin: 0 auto 1.25rem;">
-        These tools are exposed through the Model Context Protocol (MCP) interface for agents. See <code>/mcp/info</code> and <code>/manifest.json</code> for machine‑readable metadata.
+  <main id="content">
+    <section class="hero">
+      <img src="static/img/hero.png" alt="AI identity management illustration" class="hero-image" />
+      <span class="badge">A2A • MCP • DIDs • Verifiable Credentials</span>
+      <h1 class="main-title">Identity and Trust for the Agentic Web</h1>
+      <p class="subtitle">
+        <strong>Wallet4Agent</strong> connects AI Agents, organizations, and individuals through verifiable digital identities.
+        It bridges decentralized identity standards with regulated ecosystems, ensuring that every interaction
+        between humans, organizations, and AI Agents can be <strong>trusted, auditable, and verifiable by design</strong>.
       </p>
-
-      <div class="tool-grid">
-        <!-- request_attestation -->
-        <article class="card tool-card" aria-labelledby="tool-reqatt">
-          <h3 id="tool-reqatt">request_attestation</h3>
-          <div class="meta">Request the credential which is offered and store it in the wallet.</div>
-          <details>
-            <summary><strong>Inputs</strong> (JSON Schema)</summary>
-            <pre><code>{
-  "type": "object",
-  "properties": {
-    "credential_offer": {"type": "string", "description": "OIDC4VCI credential offer"},
-    "agent_id": {"type": "string", "description": "Agent DID (e.g., did:web:wallet4agent:demo)"}
-  },
-  "required": ["agent_id", "credential_offer"]
-}</code></pre>
-          </details>
-          <div class="actions">
-            <a class="btn secondary" href="/mcp/info">View MCP info</a>
-            <a class="btn secondary" href="/manifest.json">Manifest</a>
-          </div>
-        </article>
-
-        <!-- create_identity -->
-        <article class="card tool-card" aria-labelledby="tool-createid">
-          <h3 id="tool-createid">create_identity</h3>
-          <div class="meta">Generate a DID for the agent and create a new wallet to store agent attestations.</div>
-          <details>
-            <summary><strong>Inputs</strong> (JSON Schema)</summary>
-            <pre><code>{
-  "type": "object",
-  "properties": {
-    "did_method": {"type": "string", "enum": ["did:jwk", "did:web"], "description": "Optional DID method"},
-    "agentcard_url": {"type": "string", "description": "Optional AgentCard URL"},
-    "always_human_in_the_loop": {"type": "boolean"},
-    "owner_identity_provider": {"type": "string", "enum": ["Google", "Github", "Data Wallet", "Test"]},
-    "owner_login": {"type": "string", "description": "email/login/DID for owner"},
-    "name": {"type": "string", "description": "Name of the wallet"}
-  },
-  "required": ["owner_identity_provider"]
-}</code></pre>
-          </details>
-          <div class="actions">
-            <a class="btn secondary" href="/mcp/info">View MCP info</a>
-            <a class="btn secondary" href="/manifest.json">Manifest</a>
-          </div>
-        </article>
-      </div>
-
-      <div class="card" style="margin-top:1rem;">
-        <h3>Sample tool calls</h3>
-        <div class="two-col">
-          <div>
-            <h4 style="margin:.25rem 0 .5rem;">create_identity</h4>
-            <pre><code>{
-  "name": "create_identity",
-  "arguments": {
-    "did_method": "did:web",
-    "owner_identity_provider": "Test",
-    "owner_login": "did:web:wallet4agent:demo",
-    "name": "My Agent"
-  }
-}</code></pre>
-          </div>
-          <div>
-            <h4 style="margin:.25rem 0 .5rem;">request_attestation</h4>
-            <pre><code>{
-  "name": "request_attestation",
-  "arguments": {
-    "agent_id": "did:web:wallet4agent:demo",
-    "credential_offer": "https://issuer.example/credential-offer?..."
-  }
-}</code></pre>
-          </div>
-        </div>
-        <p class="note">Actual endpoints and parameters depend on your issuer and environment. Check <code>/mcp/info</code> for the live contract.</p>
+      <div class="cta">
+        <a class="btn primary" href="/mcp/info">MCP Info</a>
+        <a class="btn secondary" href="/documentation/use_cases">Use Cases</a>
       </div>
     </section>
 
-    <section class="section" aria-labelledby="security">
-      <h2 id="security">Security & privacy</h2>
+    <section class="section">
+      <h2>Enabling Trust in the Agentic Web</h2>
+      <p style="text-align:center; max-width:850px; margin:0 auto;">
+        AI Agents are becoming active participants in digital ecosystems — signing transactions, exchanging data,
+        and making autonomous decisions. <strong>Wallet4Agent</strong> enables this evolution by giving agents
+        a decentralized identity (DID), verifiable credentials, and policy-based authorizations that comply with both
+        decentralized and regulated identity frameworks.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>How Different Actors Use Wallet4Agent</h2>
       <div class="feature-grid">
         <article class="card">
-          <h3>Least-privilege MCP</h3>
-          <p>Only the start/poll/revoke actions are exposed to agents.</p>
+          <h3>Developers</h3>
+          <p>
+            Create decentralized identities for AI Agents. Each agent gets its own DID and wallet capable of holding
+            and presenting verifiable credentials that describe its identity, capabilities, and provenance.
+          </p>
         </article>
+
         <article class="card">
-          <h3>Token redaction</h3>
-          <p>Raw tokens are <strong>not returned</strong>; the server exposes derived claims only.</p>
+          <h3>Companies & Organizations</h3>
+          <p>
+            Issue digital certificates and attestations to AI Agents and sign them with your own identifiers
+            (DIDs or X.509 certificates). Build verifiable trust frameworks between internal agents, partners,
+            and clients with full auditability.
+          </p>
         </article>
+
         <article class="card">
-          <h3>TTL-based cleanup</h3>
-          <p>Flows expire automatically in the verifier backend (Redis TTL). No data are stored on servers.</p>
+          <h3>Users</h3>
+          <p>
+            Authenticate seamlessly with your <strong>driving license in the U.S.</strong> or <strong>EUDI wallet in the EU</strong>.
+            Manage your data and consent transparently while interacting with verified AI Agents and organizations.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>AI Agents</h3>
+          <p>
+            Verify other agents’ credentials through their DIDs and Linked VPs. Sign actions and proofs with your own identity
+            to establish trust-based A2A (Agent-to-Agent) communications across open ecosystems.
+          </p>
         </article>
       </div>
     </section>
 
-    <section class="section cta-bottom" aria-labelledby="start">
-      <h2 id="start">Ready to connect a wallet to your agent?</h2>
-      <p class="subtitle">See <code>/mcp/info</code> for server metadata and explore the Use Cases for what’s possible today.</p>
+    <section class="section">
+      <h2>A Verifiable-by-Default Infrastructure</h2>
+      <p>
+        By combining decentralized identity, open protocols, and verifiable credentials,
+        Wallet4Agent creates a new trust foundation for the Agentic Web.
+        Every interaction can be independently verified, ensuring security, transparency,
+        and compliance with digital-identity regulations such as <strong>eIDAS v2</strong> and the upcoming AI governance frameworks.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Technology Stack</h2>
+      <p>
+        All capabilities of Wallet4Agent are powered by a dedicated <strong>MCP Server</strong> that manages identity,
+        verification, and credential issuance for AI Agents, companies, and users.
+      </p>
+      <ul class="tech-list">
+        <li><strong>Verifiable Credentials:</strong> Supports both <em>SD-JWT VC</em> (IETF, selective disclosure) and <em>W3C Verifiable Credentials (JSON-LD)</em>.</li>
+        <li><strong>Protocols:</strong> Implements <em>OIDC4VCI</em> for credential issuance and <em>OpenID4VP</em> for presentation and verification.</li>
+        <li><strong>Decentralized Identifiers:</strong> Uses <em>DIDs</em> (e.g., did:web, did:jwk) to establish unique agent and organization identities.</li>
+        <li><strong>Linked Verifiable Presentations (Linked VP):</strong> Enables agents to present credentials through the DID Document endpoint, simplifying trust establishment.</li>
+        <li><strong>MCP Integration:</strong> All services are exposed via the <em>Model Context Protocol</em> (MCP) — providing a programmable interface for agents to issue, verify, and manage credentials directly.</li>
+      </ul>
+    </section>
+
+    <section class="section" style="text-align:center;">
+      <h2>Get Involved</h2>
+      <p>
+        Wallet4Agent is in its early stage and evolving fast with the W3C, DIF, and IETF communities.
+        Join us to shape the standards-compliant identity infrastructure for AI Agents.
+      </p>
       <div class="cta">
-        <a class="btn secondary" href="/mcp/info">MCP tools</a>
-        <a class="btn secondary" href="/manifest.json">Manifest</a>
-        <a class="btn secondary" href="https://qhf0siml406.typeform.com/to/PdULRDIV">Contact</a>
+        <a class="btn primary" href="/contact">Contact our team</a>
+        <a class="btn secondary" href="/docs">Read the docs</a>
+        <a class="btn secondary" href="/early-access">Join early access</a>
       </div>
     </section>
   </main>
 
   {% include "footer.html" %}
-
-  <script type="application/ld+json">
-  {
-    "@context":"https://schema.org",
-    "@type":"FAQPage",
-    "mainEntity":[
-      {
-        "@type":"Question",
-        "name":"What is an MCP Server for EUDI wallets?",
-        "acceptedAnswer":{"@type":"Answer","text":"A Model Context Protocol server that lets an AI Agent start and poll OIDC4VP verifications with an EUDI wallet (e.g., Talao) using a pull model, aligned with eIDAS v2."}
-      },
-      {
-        "@type":"Question",
-        "name":"Which wallets are supported?",
-        "acceptedAnswer":{"@type":"Answer","text":"Any EUDI-compliant wallet; tested profiles include Talao and DIIP-style flows for OIDC4VP draft 20 and draft 25."}
-      },
-      {
-        "@type":"Question",
-        "name":"How do you treat AI Agents in this model?",
-        "acceptedAnswer":{"@type":"Answer","text":"AI Agents are treated as first-class identities, just like natural persons and legal entities. They can hold wallets, receive credentials, present verifiable proofs, and act under mandates/delegations, with lifecycle management (issuance, verification, storage, revocation)."}
-      }
-    ]
-  }
-  </script>
-
 </body>
 </html>

@@ -1,117 +1,96 @@
-# 🧠 Identity Wallet as MCP Server for AI Agents — Core Use Cases 1.0
+# Use Cases
 
-This document outlines the **primary use cases** of the **MCP Server**, which provides identity, attestations, and wallet services to **AI Agents** in a trusted ecosystem..  
-
-The server enables the issuance, verification, storage, and presentation of **Verifiable Credentials (VCs)** through **decentralized identifiers (DIDs)**, following **Identity Wallet** and **OIDC4VC** standards.
-
----
-
-## 🔐 Identity & Authentication
-
-**Use Case #0 — Verify user identity via an Identity Wallet**  
-An AI Agent or relying service uses the MCP Server to verify a **user’s decentralized identity** through a verifiable presentation from their compliant wallet.
-
-**Use Case #1 — Verify organizational (legal entity) identity**  
-The MCP Server validates a company’s credential (e.g., Legal Entity Identifier or EU business registration) to establish **trusted machine-to-organization communication**.
-
-**Use Case #2 — Verify another AI Agent’s identity**  
-When two AI Agents interact, each uses the MCP Server to **authenticate the other** based on verifiable credentials issued under decentralized identifiers (DIDs).
-
-**Use Case #3 — AI Agent authenticates to a relying party via the MCP Server**  
-An AI Agent uses the MCP Server’s OIDC4VC endpoint to authenticate itself to a relying party or API service by presenting verifiable credentials from its wallet.
+This page expands on the home overview. It explains **how each party** uses Wallet4Agent to build a **verifiable-by-default** environment for the Agentic Web.  
+All capabilities are delivered by our **MCP server**, which exposes identity and trust tools to AI Agents at runtime and provides admin interfaces for organizations.
 
 ---
 
-## 🧾 Credential Issuance & Delegations
+## For Developers (Agent Builders)
 
-**Use Case #4 — Issue a verifiable credential (identity, role, or mandate)**  
-The MCP Server issues VCs to AI Agents, users, or organizations — such as identity credentials, delegation tokens, or proof-of-role credentials — signed by a recognized issuer.
+- **Provision a decentralized identity** for each AI Agent (DID such as `did:web` or `did:jwk`).  
+- **Receive and store Verifiable Credentials (VCs)** in the agent’s wallet using **OIDC4VCI** (issuance).  
+- **Publish a Linked Verifiable Presentation (Linked VP)** in the DID Document so peers can auto-discover proofs.  
+- **Define trust policies** (who is trusted to issue what, revocation handling) and attach them to agent workflows.  
+- **Operate with selective disclosure** using **SD‑JWT VCs**, and interoperate with **W3C JSON‑LD VCs** where required.  
+- **Instrument audit logs** (signed receipts) to trace presentations and key lifecycle events.
 
-**Use Case #5 — Manage and store issued credentials**  
-The MCP Server provides a secure storage interface (linked to a wallet) for issued credentials, ensuring accessibility and cryptographic integrity for both AI and human holders.
-
-**Use Case #6 — Revoke or update existing credentials**  
-An issuer can use the MCP Server to **revoke, suspend, or modify** a previously issued credential, broadcasting the change to verifiers and linked wallets.
-
----
-
-## 🧩 Verification & Proof Presentation
-
-**Use Case #7 — Verify a credential from any holder**  
-A relying service or AI Agent sends a verifiable presentation (VP) to the MCP Server. The server checks signature validity, revocation status, and schema compliance before returning a verification result.
-
-**Use Case #8 — Request proof of attributes (selective disclosure)**  
-The MCP Server requests **specific attributes** (e.g., "age > 18", "member of consortium") from a holder’s wallet without revealing unrelated personal data.
-
-**Use Case #9 — Perform continuous verification of agent credentials**  
-For ongoing trust relationships, the MCP Server regularly verifies active credentials (mandates, compliance proofs, etc.) through automated MCP-based requests.
-
-**Use Case #10 — Validate cross-domain or cross-wallet proofs**  
-The MCP Server verifies credentials that originate from **different ecosystems** or **trust frameworks**, ensuring interoperability (e.g., between identity Wallet and private trust networks).
+**Typical developer journey**  
+1) Register the agent → 2) Create DID → 3) Obtain credentials via OIDC4VCI → 4) Publish Linked VP → 5) Configure policies → 6) Deploy.
 
 ---
 
-## 💬 Data Sharing, Attestations & Provenance
+## For Enterprises & Organizations
 
-**Use Case #11 — Store and share attestations with proof of origin**  
-The MCP Server acts as a trusted **attestation registry**, storing issued credentials (e.g., trust scores, certifications, policy proofs) and their associated metadata for retrieval and audit.
+- **Issue digital certificates/attestations to AI Agents**, signed with your organizational identifiers (DIDs or **X.509**).  
+- **Gate access** to APIs and data by requesting **OpenID4VP** presentations from agents or users.  
+- **Model roles & mandates** as verifiable credentials (e.g., “Procurement Bot”, “KYC‑cleared Agent”).  
+- **Demonstrate compliance** (e.g., ISO, sectoral rules) by issuing and verifying compliance VCs.  
+- **Revoke or rotate**: maintain status lists, key rotation, and policy updates across your agent fleet.  
+- **Interoperate across ecosystems** (partner networks, wallets, and public trust frameworks) through open standards.
 
-**Use Case #12 — Enable verifiable data exchange between agents**  
-Two AI Agents exchange data through the MCP Server, attaching verifiable proofs (e.g., source certification, timestamp, consent record) to ensure authenticity and provenance.
-
-**Use Case #13 — Issue derived attestations from validated credentials**  
-After verifying credentials from multiple issuers, the MCP Server can produce **derived credentials** (e.g., “trusted supplier” or “compliant participant”) based on verified inputs.
-
----
-
-## ⚙️ Governance, Consent & Compliance
-
-**Use Case #14 — Manage consent credentials**  
-The MCP Server supports the issuance and verification of **verifiable consent tokens**, allowing users to grant and revoke permissions for data processing or delegation.
-
-**Use Case #15 — Provide verifiable compliance proofs**  
-Organizations use the MCP Server to generate and verify credentials that prove compliance with frameworks like **AI Act**, **GDPR**, or **ISO standards**.
-
-**Use Case #16 — Maintain audit logs and verifiable transaction history**  
-The MCP Server produces cryptographically signed audit trails of credential issuance, verification, and presentation — enabling **accountability and traceability** across AI interactions.
+**Typical enterprise scenarios**  
+- Certify internal agents for production systems.  
+- Verify partner agents before granting API access.  
+- Replace static API keys with verifiable, time‑bounded credentials.  
+- Keep an auditable trail of agent actions and proofs.
 
 ---
 
-## 🧠 Advanced Integration & Interoperability
+## For Users & Citizens
 
-**Use Case #17 — Integrate AI agents into decentralized identity ecosystems**  
-Developers use the MCP Server as a backend component for agents to interact with wallets, W3C VC, and OIDC4VC-compatible ecosystems, enabling **cross-wallet interoperability**.
-
-**Use Case #18 — Enable multi-agent collaboration through verified roles**  
-The MCP Server issues role-based credentials to participating agents (e.g., “negotiator”, “executor”), facilitating **trusted cooperation** in decentralized workflows.
-
----
-
-## 🧩 Summary Table
-
-| # | Use Case | Category | Description |
-|:-:|-----------|-----------|-------------|
-| 0 | Verify user identity | Authentication | Verify human wallet identity via OIDC4VC |
-| 1 | Verify organization | Authentication | Validate legal entity credentials |
-| 2 | Verify AI Agent | Authentication | Authenticate another agent via DIDs |
-| 3 | Agent authenticates to relying party | Authentication | OIDC4VC-based AI-to-service login |
-| 4 | Issue verifiable credentials | Issuance | Create VCs for agents, users, or orgs |
-| 5 | Store issued credentials | Issuance | Manage and store credentials securely |
-| 6 | Revoke/update credentials | Issuance | Modify or revoke existing credentials |
-| 7 | Verify presented credentials | Verification | Check validity and revocation status |
-| 8 | Selective disclosure | Verification | Request partial proofs from wallet |
-| 9 | Continuous credential verification | Verification | Automate periodic proof checks |
-| 10 | Cross-domain proof validation | Verification | Handle multi-ecosystem credentials |
-| 11 | Store/share attestations | Data sharing | Register attestations with provenance |
-| 12 | Agent data exchange | Data sharing | Verify data authenticity between agents |
-| 13 | Issue derived attestations | Data sharing | Create synthesized trust credentials |
-| 14 | Manage consent credentials | Governance | Handle verifiable consent/revocation |
-| 15 | Compliance proofs | Governance | Verify AI or org compliance credentials |
-| 16 | Verifiable audit logs | Governance | Trace credential lifecycle activities |
-| 17 | Ecosystem integration | Interoperability | Connect AI agents to VC ecosystems |
-| 18 | Multi-agent collaboration | Workflow | Enable verified role-based collaboration |
+- **Authenticate with trusted digital wallets**: U.S. mobile/driver’s license or **EUDI wallet** in the EU.  
+- **Consent and privacy by design**: present only what is needed using **selective disclosure** (SD‑JWT).  
+- **Human‑to‑agent interactions** become verifiable (the agent proves who it is, who controls it, and what it is allowed to do).  
+- **Revoke consent** and inspect where and when credentials were presented.
 
 ---
 
-*Last updated: October 2025*  
+## For AI Agents (Runtime Behavior)
 
+- **Mutual authentication** with peers via DIDs; **auto‑fetch and verify Linked VPs** discovered in DID Documents.  
+- **Present credentials** on demand using **OpenID4VP** (verifier receives a VP token + presentation submission).  
+- **Verify other agents’ proofs** and apply local **trust policies** before exchanging data or actions.  
+- **Sign messages and actions** with the agent’s DID keys; log signed receipts for accountability.  
+- **Operate across regulated and decentralized ecosystems** without custom integrations, thanks to shared standards.
+
+**Typical agent exchanges**  
+- Agent ↔ Agent: DID discovery → fetch Linked VP → mutual verification → trusted session.  
+- Agent ↔ Service: verifier issues an OpenID4VP request → agent returns a VP with selective disclosure → access granted.
+
+---
+
+## For Verifiers, Partners & Platforms
+
+- **Discover proofs** via **Linked VP endpoints** from the counterparty’s DID Document (fast bootstrap).  
+- **Request interactive proofs** using **OpenID4VP** (presentation definitions / constraints).  
+- **Run continuous checks** for long‑lived relationships (expiry, revocation, issuer policy).  
+- **Federate trust** across multiple issuers and frameworks (public sector, industry consortia, private PKI).
+
+---
+
+## End‑to‑End Flows (at a glance)
+
+**Issuance (OIDC4VCI)**  
+- Issuer publishes metadata → Holder (agent or user) obtains token (pre‑authorized or auth code) →  
+  Holder proves key possession → Credential is issued (SD‑JWT VC or JSON‑LD VC) and stored in the wallet.
+
+**Presentation (OpenID4VP)**  
+- Verifier sends an authorization request with a presentation definition →  
+  Holder selects matching VCs (with selective disclosure if SD‑JWT) → returns a VP token → Verifier validates and authorizes.
+
+**Ambient trust (Linked VP + DIDs)**  
+- Parties resolve the DID → discover a Linked VP service endpoint → fetch and verify a signed VP → apply policy → proceed or deny.
+
+---
+
+## Technology Stack
+
+- **MCP Server**: provides all runtime tools to agents (sign, present, verify, policy, audit) and admin endpoints for organizations.  
+- **Verifiable Credentials**: **SD‑JWT VC** (IETF, selective disclosure) and **W3C Verifiable Credentials (JSON‑LD)**.  
+- **Protocols**: **OIDC4VCI** (issuance) and **OpenID4VP** (presentation) for cross‑ecosystem interoperability.  
+- **Decentralized Identifiers (DIDs)**: e.g., `did:web`, `did:jwk`, with **Linked Verifiable Presentations** for zero‑touch discovery and verification.  
+- **Audit & Governance**: signed receipts, revocation/status lists, key rotation, and policy‑driven access.
+
+---
+
+*Wallet4Agent is in early stage and evolves with W3C, DIF, and IETF communities. This document complements the home page for readers who want concrete use cases per party.*
