@@ -107,7 +107,7 @@ def init_app(app):
             }
         })
 
-   
+
     @app.get("/manifest.json")
     def manifest():
         file = json.load(open("manifest.json", "r"))
