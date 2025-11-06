@@ -1,10 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-  "name": "com.wallet-connectors/wallet-verifier-mcp",
-  "description": "MCP server for verifying EUDI/Talao wallet data via OIDC4VP (pull) for AI agents.",
-  "version": "1.1.0",
-  "homepage": "https://wallet-connectors.com/",
-  "documentation": "https://wallet-connectors.com/documentation/verifier_agents_mcp",
+  "name": "com.wallet4agent/mcp-server",
+  "description": "Wallet4Agent MCP server for decentralized and regulated identity: DIDs, Verifiable Credentials (SD-JWT VC & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, and Linked Verifiable Presentations — enabling trust and auditability for the Agentic Web.",
+  "version": "1.2.0",
+  "homepage": "https://wallet4agent.com/",
+  "documentation": "https://wallet4agent.com/documentation/use_cases",
   "repository": {
     "url": "https://github.com/TalaoDAO/connectors",
     "source": "github"
@@ -12,20 +12,29 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://wallet-connectors.com/mcp"
+      "url": "https://wallet4agent.com/mcp",
+      "auth": {
+        "type": "bearer",
+        "scheme": "Bearer",
+        "header": "Authorization",
+        "description": "Send Authorization: Bearer <token> when calling the MCP endpoint."
+      }
     }
   ],
   "keywords": [
-    "EUDI wallet",
-    "wallet",
-    "MCP Server",
-    "AI Agent",
-    "verifier",
-    "relying party",
+    "Wallet4Agent",
+    "Agentic Web",
+    "A2A",
+    "MCP",
     "DID",
-    "Talao",
+    "Verifiable Credentials",
+    "SD-JWT VC",
+    "JSON-LD",
+    "OIDC4VCI",
+    "OpenID4VP",
+    "Linked VP",
     "eIDAS v2",
-    "OIDC4VP",
-    "verifiable credentials"
+    "identity",
+    "trust"
   ]
 }

@@ -91,7 +91,7 @@ def init_app(app):
     @app.get("/mcp/healthz")
     def healthz():
         return jsonify({"ok": True})
-
+    
     @app.get("/mcp/info")
     def mcp_info():
         return jsonify({
@@ -99,9 +99,15 @@ def init_app(app):
             "version": SERVER_VERSION,
             "protocolVersion": PROTOCOL_VERSION,
             "endpoints": {"rpc": "/mcp"},
-            "auth": {"type": "api_key", "header": "X-API-KEY"}
+            "auth": {
+                "type": "bearer",
+                "scheme": "Bearer",
+                "header": "Authorization",
+                "description": "Use Authorization: Bearer <token> to authenticate"
+            }
         })
-    
+
+   
     @app.get("/manifest.json")
     def manifest():
         file = json.load(open("manifest.json", "r"))
