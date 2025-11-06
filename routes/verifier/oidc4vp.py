@@ -48,6 +48,10 @@ def get_verifier_key(verifier_id):
     return {"key": api_key} 
 """
 
+
+
+
+
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
 
@@ -352,8 +356,6 @@ async def verifier_response():
 
     # get data from nonce binding
     nonce = None
-    print("vp_token = ", vp_token)
-    print("id_token = ", id_token)
     if vp_token:
         logging.info("cnf in vp_token = %s",oidc4vc.get_payload_from_token(vp_token_list[0])['cnf'])
         nonce = oidc4vc.get_payload_from_token(vp_token_list[-1])['nonce']

@@ -8,7 +8,7 @@ import requests
 import qrcode
 
 
-tools = [
+tools_agent = [
     {
         "name": "get_supported_verification_scopes",
         "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",

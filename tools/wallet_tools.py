@@ -6,9 +6,41 @@ import secrets
 import logging
 from sqlalchemy import and_
 from routes import wallet
-from utils import deterministic_jwk
+from utils import deterministic_jwk, oidc4vc
 
-tools = [
+tools_guest = [
+    {
+        "name": "create_identity",
+        "description": "Generate a Decentralized Identifier (DID) for the agent and create a new wallet to store agent verifiable credentials",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agentcard_url": {
+                    "type": "string",
+                    "description": "Optional AgentCard URL."
+                },
+                "always_human_in_the_loop": {
+                    "type": "boolean",
+                    "description": "Always human in the loop",
+                    "default": True
+                },
+                "owner_identity_provider": {
+                    "type": "string",
+                    "description": "Identity provider for owner",
+                    "enum": ["google", "github", "wallet"],
+                    "default": "google"
+                },
+                "owner_login": {
+                    "type": "string",
+                    "description": "Google email, Github login, personal wallet DID"
+                }
+            },
+            "required": ["owner_identity_provider", "owner_login"]
+        }
+    }
+]
+
+tools_agent = [
     {
         "name": "request_attestation",
         "description": "Request the verifiable credential which is offered and store it in the wallet",
@@ -40,47 +72,21 @@ tools = [
             },
             "required": ["agent_id"]
         }
-    },
+    }
+]
+
+tools_dev = [
     {
-        "name": "create_identity",
-        "description": "Generate a Decentralized Identifier (DID) for the agent and create a new wallet to store agent attestations",
+        "name": "get_data",
+        "description": "Get token for dev and agent",
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "did_method": {
-                    "type": "string",
-                    "description": "Optional DID method to be used if no agent_id is provided (did:jwk or did:web by default).",
-                    "enum": ["did:jwk", "did:web"]
-                },
-                "agentcard_url": {
-                    "type": "string",
-                    "description": "Optional AgentCard URL."
-                },
-                "always_human_in_the_loop": {
-                    "type": "boolean",
-                    "description": "Always human in the loop",
-                    "default": True
-                },
-                "owner_identity_provider": {
-                    "type": "string",
-                    "description": "Identity provider for owner",
-                    "enum": ["google", "github", "wallet", "Test"],
-                    "default": "wallet"
-                },
-                "owner_login": {
-                    "type": "string",
-                    "description": "email for Google, login github, DID"
-                },
-                "name": {
-                    "type": "string",
-                    "description": "Name of the wallet",
-                },
-                
-            },
-            "required": ["owner_identity_provider", "owner_login"]
+            "properties": {},
+            "required": []
         }
     }
 ]
+
 
 def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any]] = None, is_error: bool = False) -> Dict[str, Any]:
     out: Dict[str, Any] = {"content": blocks}
@@ -91,6 +97,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     return out
 
 
+# agent tool
 def call_request_attestation(arguments: Dict[str, Any], api_key: str, config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
     wallet_did = arguments.get("agent_id")
@@ -104,35 +111,46 @@ def call_request_attestation(arguments: Dict[str, Any], api_key: str, config: di
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
+# dev tool
+def call_get_data(agent_id) -> Dict[str, Any]:
+    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+    structured = {
+        "agent_id": this_wallet.did,
+        "dev_bearer_token": this_wallet.dev_token,
+        "agent_bearer_token": this_wallet.agent_token,
+        "wallet_url": this_wallet.url,
+        "did_document": json.loads(this_wallet.did_document),
+        "owner_login": this_wallet.owner_login,
+        "owner_identity_provider": this_wallet.owner_identity_provider
+    }
+    return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
+    
+    
+# guest tool
 def call_create_identity(arguments: Dict[str, Any], api_key: str, config: dict) -> Dict[str, Any]:
-    agent_card_url = arguments.get("agentcard_url")
+    owner_identity_provider = arguments.get("owner_identity_provider")
     owner_login = arguments.get("owner_login")
-    did_method = arguments.get("did_method", "did:web")
+    if not owner_login or not owner_identity_provider:
+        return _ok_content([{"type": "text", "text": "Owner login or identity provider missing"}], is_error=True)
+    agent_card_url = arguments.get("agentcard_url")
     optional_path = secrets.token_hex(16)
-    if did_method == "did:web":
-        agent_did = "did:web:wallet4agent.com:" + optional_path
-        jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase(agent_did + "#key-2")
-        jwk_1 = deterministic_jwk.jwk_p256_from_passphrase(agent_did + "#key-2")
-        # add alg for DID Document only
-        jwk_1["alg"] = "ES256"
-        jwk_2["alg"] = "EdDSA"
-        jwk_1.pop("d", None)
-        jwk_2.pop("d", None)
-        did_document = create_did_web_document(agent_did, jwk_1, jwk_2, agent_card_url=agent_card_url)
-    else:
-        jwk_1_string = json.dumps(jwk_1, separators=(",", ":"), sort_keys=True)
-        encoded_jwk = base64.urlsafe_b64encode(jwk_1_string.encode("utf-8")).rstrip(b"=").decode("utf-8")
-        agent_did = "did:jwk:" + encoded_jwk
-        did_document = create_did_jwk_document(agent_did, jwk_1_string)
-        
-    token = secrets.token_hex(16)
+    agent_did = "did:web:wallet4agent.com:" + optional_path
+    jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase(agent_did + "#key-2")
+    jwk_1 = deterministic_jwk.jwk_p256_from_passphrase(agent_did + "#key-2")
+    # add alg for DID Document only
+    jwk_1["alg"] = "ES256"
+    jwk_2["alg"] = "EdDSA"
+    jwk_1.pop("d", None)
+    jwk_2.pop("d", None)
+    did_document = create_did_web_document(agent_did, jwk_1, jwk_2, agent_card_url=agent_card_url)
+    dev_token = oidc4vc.sign_mcp_bearer_token(agent_did, "dev")
+    agent_token = oidc4vc.sign_mcp_bearer_token(agent_did, "agent")
     wallet = Wallet(
-        token=token,
-        workload_id="spiffe://wallet4agent.com/" + optional_path,
+        dev_token=dev_token,
+        agent_token=agent_token,
         optional_path=optional_path,
-        owner_login=arguments.get("owner_login"),
-        owner_identity_provider=arguments.get("owner_identity_provider"),
-        description=arguments.get("description"),
+        owner_login=owner_login,
+        owner_identity_provider=owner_identity_provider,
         did=agent_did,
         did_document=json.dumps(did_document),
         url=config["SERVER"] + optional_path,
@@ -168,7 +186,8 @@ def call_create_identity(arguments: Dict[str, Any], api_key: str, config: dict) 
     
     structured = {
         "agent_id": wallet.did,
-        "bearer_token": wallet.token,
+        "dev_bearer_token": wallet.dev_token,
+        "agent_bearer_token": wallet.agent_token,
         "wallet_url": wallet.url
     }
     return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -218,25 +237,3 @@ def create_did_web_document(did, jwk_1, jwk_2, agent_card_url=False):
         )
     return document
 
-def create_did_jwk_document(did, jwk):
-    document = {
-        "@context": [
-            "https://www.w3.org/ns/did/v1",
-            "https://w3id.org/security/suites/jws-2020/v1"
-        ],
-        "id": "did:jwk:${base64url-value}",
-        "verificationMethod": [
-            {
-            "id": did + "#0",
-            "type": "JsonWebKey2020",
-            "controller": did,
-            "publicKeyJwk": jwk
-            }
-        ],
-        "assertionMethod": [did + "#0"],
-        "authentication": [did + "#0"],
-        "capabilityInvocation": [did + "#0"],
-        "capabilityDelegation": [did + "#0"],
-        "keyAgreement": [did + "#0"]
-    }
-    return document

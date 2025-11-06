@@ -58,6 +58,7 @@
   <main id="content">
     <section class="hero">
       <img src="static/img/hero.png" alt="AI identity management illustration" class="hero-image" />
+      <br>
       <span class="badge">A2A • MCP • DIDs • Verifiable Credentials</span>
       <h1 class="main-title">Identity and Trust for the Agentic Web</h1>
       <p class="subtitle">
@@ -66,9 +67,16 @@
         between humans, organizations, and AI Agents can be <strong>trusted, auditable, and verifiable by design</strong>.
       </p>
       <div class="cta">
-        <a class="btn primary" href="/mcp/info">MCP Info</a>
-        <a class="btn secondary" href="/documentation/use_cases">Use Cases</a>
+            <a class="btn primary" href="/mcp/info">MCP Info</a>
+          </div>
+            <div style="text-align:center; margin:2rem 0;">
+        <a href="#get-started" class="button" 
+          style="display:inline-block; background:#007bff; color:white; padding:0.75rem 1.5rem; 
+                  border-radius:0.5rem; text-decoration:none; font-weight:600; transition:background 0.2s;">
+          🚀 Get Started
+        </a>
       </div>
+
     </section>
 
     <section class="section">
@@ -80,6 +88,8 @@
         decentralized and regulated identity frameworks.
       </p>
     </section>
+
+
 
     <section class="section">
       <h2>How Different Actors Use Wallet4Agent</h2>
@@ -128,6 +138,58 @@
         and compliance with digital-identity regulations such as <strong>eIDAS v2</strong> and the upcoming AI governance frameworks.
       </p>
     </section>
+    <section class="section" id="personhood">
+      <h2>Personhood Model for AI Agents</h2>
+      <p style="text-align:center; max-width:900px; margin:0 auto 1rem;">
+        The <strong>Personhood Model</strong> treats an AI Agent as a <em>digital persona</em> with its own verifiable identity (DID),
+        credentials, and accountability — not just as a background application. This lets an agent <em>represent</em> its owner,
+        receive delegation, sign actions, and be independently audited and revoked.
+      </p>
+
+      <div class="feature-grid" style="margin-top:1rem;">
+        <article class="card">
+          <h3>What it Means</h3>
+          <p>
+            The agent has its own identifier and keys, can hold Verifiable Credentials (VCs), and can present proofs.
+            Requests it makes are signed by the agent itself, making its actions traceable and attributable.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>Why it Matters</h3>
+          <p>
+            Agents are autonomous and persistent. Treating them as subjects enables trust, audit, and interoperability
+            across organizations and ecosystems — the foundation of the <strong>Agentic Web</strong>.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>Delegation vs Permission</h3>
+          <p>
+            In regulated contexts (e.g., EU), delegation is often expressed <em>declaratively</em> as a VC “legal mandate” and stored in a wallet.
+            Operational permission is best enforced by <strong>certificates/capabilities</strong> (e.g., scoped, time‑bound rights).
+            Together, a mandate VC (who/why) + a capability certificate (what/when) provide both compliance and runtime safety.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>Beyond Deterministic Apps</h3>
+          <p>
+            Classic capability models assume a deterministic client. AI agents are <em>adaptive and probabilistic</em>.
+            Designing permission and oversight that respect this autonomy — while preserving accountability — is the real challenge.
+          </p>
+        </article>
+      </div>
+
+      <div style="text-align:center; margin-top:1rem;">
+        <a href="#get-started" class="button" 
+           style="display:inline-block; background:#0ea5b0; color:white; padding:0.7rem 1.2rem; border-radius:0.5rem; text-decoration:none; font-weight:600;">
+          Learn how to create an agent identity
+        </a>
+      </div>
+    </section>
+
+
 
     <section class="section">
       <h2>Technology Stack</h2>
@@ -156,6 +218,78 @@
         <a class="btn secondary" href="/early-access">Join early access</a>
       </div>
     </section>
+  
+    <section class="section" id="get-started">
+      <h2>Get Started</h2>
+      <p style="text-align:center; max-width:900px; margin:0 auto 1.25rem;">
+        It’s simple to spin up an identity for an agent. You can either <strong>call a public MCP tool (no bearer token required)</strong>
+        or use the <strong>MCP Inspector</strong> to try it interactively. The MCP server is available at
+        <a href="https://wallet4agent.com/mcp" target="_blank" rel="noopener">https://wallet4agent.com/mcp</a>.
+      </p>
+
+      <div class="feature-grid" style="margin-top:1rem;">
+        <article class="card">
+          <h3>Option A — JSON‑RPC call to <code>/mcp</code> (no auth)</h3>
+          <p style="margin-bottom:.75rem;">
+            Create an agent identity and wallet in one call. Provide your own credential (e.g., Google email or GitHub login) so you can
+            later manage the wallet’s lifecycle.
+          </p>
+          <p style="margin:.5rem 0 .35rem; font-weight:600;">Request</p>
+<pre style="overflow:auto; margin:0;"><code>curl -s https://wallet4agent.com/mcp   -H "Content-Type: application/json"   -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "create_identity",
+      "arguments": {
+        "owner_identity_provider": "google",   // one of: "google", "github", "wallet"
+        "owner_login": "dev@example.com",      // Google email, GitHub login, or DID
+        "agentcard_url": "https://example.com/agent-card" // optional
+      }
+    }
+  }'</code></pre>
+          <p style="margin:.5rem 0 .35rem; font-weight:600;">Successful response (excerpt)</p>
+<pre style="overflow:auto; margin:0;"><code>{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [{"type":"text","text":"New agent identifier and wallet created."}],
+    "structuredContent": {
+      "agent_id": "did:web:wallet4agent.com:&lt;id&gt;",
+      "dev_bearer_token": "&lt;token-for-you&gt;",
+      "agent_bearer_token": "&lt;token-for-agent&gt;",
+      "wallet_url": "https://wallet4agent.com/&lt;id&gt;"
+    }
+  },
+  "id": 1
+}</code></pre>
+          <p style="margin-top:.75rem;">
+            You’ll receive <strong>two bearer tokens</strong> right away — one for you as <em>developer</em> and one for the <em>agent</em>.
+            Use these to access role‑based tools and manage the wallet lifecycle (see code in <code>wallet_tools.py</code>).
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>Option B — Use the MCP Inspector</h3>
+          <p>
+            Point the inspector to <code>https://wallet4agent.com/mcp</code>, discover tools, and run
+            <code>create_identity</code> from the UI. Then, with your developer token, try
+            <code>get_data</code> to retrieve the agent’s DID, tokens, and wallet info.
+          </p>
+          <ul class="tech-list">
+            <li><strong>Guest flow:</strong> Call <code>create_identity</code> without a token.</li>
+            <li><strong>Dev flow:</strong> Use your <code>dev_bearer_token</code> to call <code>get_data</code>.</li>
+            <li><strong>Agent flow:</strong> With <code>agent_bearer_token</code>, request credentials via <code>request_attestation</code>.</li>
+          </ul>
+        </article>
+      </div>
+
+      <p style="text-align:center; max-width:900px; margin:1rem auto 0; color:var(--muted);">
+        Tool availability changes based on who calls the MCP server (guest, dev, or agent). The server advertises its
+        capabilities through standard MCP routes, and tools are enforced per role.
+      </p>
+    </section>
+
+
   </main>
 
   {% include "footer.html" %}

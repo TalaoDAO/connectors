@@ -8,8 +8,9 @@ import requests
 from flask import request, jsonify, current_app, make_response
 from db_model import Verifier
 from utils.kms import decrypt_json
-from tools import verifier_tools
-from tools import wallet_tools
+from tools import wallet_tools, verifier_tools
+from utils import oidc4vc
+import importlib
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
@@ -56,6 +57,22 @@ def init_app(app):
             return auth.split(" ", 1)[1].strip()
         return request.headers.get("X-API-KEY")
 
+    def get_role_and_agent_id() ->str:
+        bearer_token = _bearer_or_api_key()
+        try:
+            role = oidc4vc.get_payload_from_token(bearer_token).get("role")
+            agent_id = oidc4vc.get_payload_from_token(bearer_token).get("sub")
+            oidc4vc.verif_token(bearer_token)
+        except Exception as e:
+            logging.info("incorrect token = %s", str(e))
+            return jsonify({"jsonrpc":"2.0","id":req_id, "error":{"code":-32001,"message":"Unauthorized token"}})
+        if not role:
+            role = "guest"
+            agent_id = None
+        return role, agent_id 
+        
+    
+    
     def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any]] = None, is_error: bool = False) -> Dict[str, Any]:
         out: Dict[str, Any] = {"content": blocks}
         if structured is not None:
@@ -92,7 +109,16 @@ def init_app(app):
             
     @app.get("/mcp/tools_list")
     def mcp_tools_list():
-        return jsonify(_tools_list())
+        modules = ["tools.wallet_tools", "tools.verifier_tools"]
+        constants = ["tools_guest", "tools_dev", "tools_agent"]
+        tools_list = {"tools": []}
+        for module_name in modules:
+            module = importlib.import_module(module_name) 
+            for const in constants:
+                if hasattr(module, const):
+                    tools_list["tools"].extend(getattr(module, const))
+        return jsonify(tools_list)
+
 
     # --------- CORS for /mcp ---------
     def _add_cors(resp):
@@ -117,11 +143,15 @@ def init_app(app):
         return resp
 
     # --------- Tool catalog ---------
-    def _tools_list() -> Dict[str, Any]:
-        tools_list = {"tools": []}
+    def _tools_list(role) -> Dict[str, Any]:
+        tools_list = {"tools": []}   
         #tools_list["tools"].extend(verifier_tools.tools)
-        tools_list["tools"].extend(wallet_tools.tools)
-        print(tools_list)
+        if role == "guest":
+            tools_list["tools"].extend(wallet_tools.tool_guest)
+        if role == "dev":
+            tools_list["tools"].extend(wallet_tools.tools_dev)
+        if role == "agent":
+            tools_list["tools"].extend(verifier_tools.tools_agent)
         return tools_list
 
 
@@ -168,7 +198,10 @@ def init_app(app):
 
         # tools/list
         if method == "tools/list":
-            return jsonify({"jsonrpc": "2.0", "result": _tools_list(), "id": req_id})
+            role, agent_id = get_role_and_agent_id()
+            print("role = ",role)
+            return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
+                
     
         # trace and debug
         if method == "logging/setLevel":
@@ -186,10 +219,13 @@ def init_app(app):
             arguments = params.get("arguments") or {}
             api_key = _bearer_or_api_key()
             
+            role, agent_id = get_role_and_agent_id()
+            
             def check_api_key():
                 if not api_key:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing token"}})
+                
             
             if name == "get_supported_verification_scopes":
                 check_api_key()
@@ -235,7 +271,16 @@ def init_app(app):
                 out = verifier_tools.call_revoke_verification_flow(arguments, config())
             
             elif name == "create_identity":
+                if role == "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_create_identity(arguments, api_key, config())
+            
+            elif name == "get_data":
+                if role != "dev":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_get_data(agent_id)
             
             elif name == "request_attestation":
                 if not arguments.get("credential_offer"):

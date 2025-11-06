@@ -25,6 +25,9 @@ supported signature: https://ec.europa.eu/digital-building-blocks/wikis/display/
 
 """
 
+KEY = json.load(open("keys.json", "r"))["credentials"][0]
+
+
 
 RESOLVER_LIST = [
     'https://unires:test@unires.talao.co/1.0/identifiers/',
@@ -82,6 +85,24 @@ def alg(key):
     else:
         raise Exception("Key type not supported")
 
+
+def sign_mcp_bearer_token(sub, role):
+    signature_key = jwk.JWK(**KEY["key"])
+    header = {
+        "typ": "JWT",
+        "kid": KEY["verification_method"],
+        "alg": alg(KEY["key"])
+    }
+    now = int(datetime.timestamp(datetime.now()))
+    payload = {
+        "iss": KEY["did"],
+        "sub": sub,
+        "iat": now,
+        "role": role
+    }
+    token = jwt.JWT(header=header, claims=payload, algs=["ES256", "RS256", "EdDSA"])
+    token.make_signed_token(signature_key)
+    return token.serialize()
 
 
 def extract_first_san_dns_from_der_b64(cert_b64: str) -> str:
@@ -444,6 +465,8 @@ def verif_token(token: str):
 
 
 def get_payload_from_token(token) -> dict:
+    if not token:
+        return {}
     payload = token.split('.')[1]
     payload += "=" * ((4 - len(payload) % 4) % 4)  # solve the padding issue of the base64 python lib
     try:

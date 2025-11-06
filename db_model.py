@@ -182,13 +182,14 @@ class Credential(db.Model):
 
 class Wallet(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
-    token = db.Column(db.Text)
+    dev_token = db.Column(db.Text)
+    agent_token = db.Column(db.Text)
     workload_id = db.Column(db.String(64))
     description = db.Column(db.Text)
+    name = db.Column(db.Text)
     optional_path = db.Column(db.String(64), unique=True)
     owner_identity_provider = db.Column(db.String(64))
     owner_login = db.Column(db.String(64))
-    name = db.Column(db.String(64))
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
@@ -218,7 +219,8 @@ def seed_wallet(mode):
         jwk_1["alg"] = "ES256"
         jwk_2["alg"] = "EdDSA"
         default_wallet = Wallet(
-            token="0000",
+            dev_token="0000",
+            agent_token="0000",
             name="Wallet_for_demo_with_test",
             workload_id="spiffe://wallet4agent.com/demo",
             optional_path="demo",
@@ -232,7 +234,8 @@ def seed_wallet(mode):
         )
         db.session.add(default_wallet)
         default_wallet = Wallet(
-            token="0000",
+            dev_token="0000",
+            agent_token="0000",
             name="Wallet_with_google_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_google",
             optional_path="demo_google",
@@ -246,7 +249,8 @@ def seed_wallet(mode):
         )
         db.session.add(default_wallet)
         default_wallet = Wallet(
-            token="0000",
+            dev_token="0000",
+            agent_token="0000",
             name="Wallet_with_github_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_github",
             optional_path="demo_github",
@@ -260,7 +264,8 @@ def seed_wallet(mode):
         )
         db.session.add(default_wallet)
         default_wallet_3 = Wallet(
-            token="0000",
+            dev_token="0000",
+            agent_token="0000",
             name="Wallet_for_demo",
             workload_id="spiffe://wallet4agent.com/demo_wallet",
             optional_path="demo_wallet",
