@@ -1,11 +1,11 @@
-# Use Cases
+# How To
 
 This page expands on the home overview. It explains **how each party** uses Wallet4Agent to build a **verifiable-by-default** environment for the Agentic Web.  
 All capabilities are delivered by our **MCP server**, which exposes identity and trust tools to AI Agents at runtime and provides admin interfaces for organizations.
 
 ---
 
-## For Developers (Agent Builders)
+## For Agent Builders
 
 - **Provision a decentralized identity** for each AI Agent (DID such as `did:web` or `did:jwk`).  
 - **Receive and store Verifiable Credentials (VCs)** in the agent’s wallet using **OIDC4VCI** (issuance).  
@@ -19,7 +19,7 @@ All capabilities are delivered by our **MCP server**, which exposes identity and
 
 ---
 
-## For Enterprises & Organizations
+## For Partners as Enterprises & Organizations
 
 - **Issue digital certificates/attestations to AI Agents**, signed with your organizational identifiers (DIDs or **X.509**).  
 - **Gate access** to APIs and data by requesting **OpenID4VP** presentations from agents or users.  
@@ -36,7 +36,7 @@ All capabilities are delivered by our **MCP server**, which exposes identity and
 
 ---
 
-## For Users & Citizens
+## For Users of AI Agents
 
 - **Authenticate with trusted digital wallets**: U.S. mobile/driver’s license or **EUDI wallet** in the EU.  
 - **Consent and privacy by design**: present only what is needed using **selective disclosure** (SD‑JWT).  
@@ -59,15 +59,6 @@ All capabilities are delivered by our **MCP server**, which exposes identity and
 
 ---
 
-## For Verifiers, Partners & Platforms
-
-- **Discover proofs** via **Linked VP endpoints** from the counterparty’s DID Document (fast bootstrap).  
-- **Request interactive proofs** using **OpenID4VP** (presentation definitions / constraints).  
-- **Run continuous checks** for long‑lived relationships (expiry, revocation, issuer policy).  
-- **Federate trust** across multiple issuers and frameworks (public sector, industry consortia, private PKI).
-
----
-
 ## End‑to‑End Flows (at a glance)
 
 **Issuance (OIDC4VCI)**  
@@ -81,16 +72,5 @@ All capabilities are delivered by our **MCP server**, which exposes identity and
 **Ambient trust (Linked VP + DIDs)**  
 - Parties resolve the DID → discover a Linked VP service endpoint → fetch and verify a signed VP → apply policy → proceed or deny.
 
----
-
-## Technology Stack
-
-- **MCP Server**: provides all runtime tools to agents (sign, present, verify, policy, audit) and admin endpoints for organizations.  
-- **Verifiable Credentials**: **SD‑JWT VC** (IETF, selective disclosure) and **W3C Verifiable Credentials (JSON‑LD)**.  
-- **Protocols**: **OIDC4VCI** (issuance) and **OpenID4VP** (presentation) for cross‑ecosystem interoperability.  
-- **Decentralized Identifiers (DIDs)**: e.g., `did:web`, `did:jwk`, with **Linked Verifiable Presentations** for zero‑touch discovery and verification.  
-- **Audit & Governance**: signed receipts, revocation/status lists, key rotation, and policy‑driven access.
-
----
 
 *Wallet4Agent is in early stage and evolves with W3C, DIF, and IETF communities. This document complements the home page for readers who want concrete use cases per party.*
