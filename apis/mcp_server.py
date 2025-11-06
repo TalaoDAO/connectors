@@ -52,7 +52,6 @@ def init_app(app):
     
     def _bearer_or_api_key():
         auth = request.headers.get("Authorization", "")
-        print("auth = ", auth)
         if auth.lower().startswith("bearer "):
             return auth.split(" ", 1)[1].strip()
         return request.headers.get("X-API-KEY")
@@ -172,7 +171,7 @@ def init_app(app):
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
-        logging.info("header %s", request.headers)
+        logging.info("header = %s", request.headers)
         
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
@@ -213,7 +212,7 @@ def init_app(app):
         # tools/list
         if method == "tools/list":
             role, agent_id = get_role_and_agent_id()
-            print("role = ",role)
+            logging.info("role = %s",role)
             return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
                 
     
@@ -295,6 +294,18 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_data(agent_id, config())
+            
+            elif name == "list_attestations":
+                if role not in ["dev", "agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_list_attestations(agent_id, config())
+            
+            elif name == "display_attestation":
+                if role not in ["dev", "agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_display_attestation(arguments, config())
             
             elif name == "rotate_bearer_token":
                 if role != "dev":

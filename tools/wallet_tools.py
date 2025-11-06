@@ -6,7 +6,8 @@ import secrets
 import logging
 from sqlalchemy import and_
 from routes import wallet
-from utils import deterministic_jwk, oidc4vc
+from db_model import Attestation
+from utils import deterministic_jwk, oidc4vc, message
 import urllib
 
 tools_guest = [
@@ -73,7 +74,8 @@ tools_agent = [
             },
             "required": ["agent_id"]
         }
-    }
+    },
+    
 ]
 
 tools_dev = [
@@ -95,6 +97,29 @@ tools_dev = [
             "required": []
         }
     },
+    {
+        "name": "list_attestations",
+        "description": "List all attestations of the agent",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [""]
+        }
+    },
+    {
+        "name": "display_attestation",
+        "description": "Display the content of an attestation",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_id": {
+                    "type": "string",
+                    "description": "Attestation identifier.",
+                }
+            },
+            "required": ["attestation_id"]
+        }
+    },
     
 ]
 
@@ -106,6 +131,33 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     if is_error:
         out["isError"] = True
     return out
+
+def call_display_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+    # Query attestations linked to this wallet
+    attestation_id = arguments.get("attestation_id")
+    attestation = Attestation.query.filter_by(id=attestation_id).first()
+    structured = {"attestation": attestation.vc}
+    return _ok_content([{"type": "text", "text": "An attestations of the Agent"}], structured=structured)
+
+
+def call_list_attestations(wallet_did, config) -> Dict[str, Any]:
+    # Query attestations linked to this wallet
+    attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
+    wallet_attestations = []
+    for attestation in attestations_list:
+        validity = "active"
+        wallet_attestations.append(
+            {
+                "attestation_id": attestation.id,
+                "name": attestation.name,
+                "description": attestation.description,
+                "issuer": attestation.issuer,
+                "iat": attestation.created_at.isoformat() if attestation.created_at else None,
+                "validity": validity
+            }
+        )        
+    structured = {"attestations": wallet_attestations}
+    return _ok_content([{"type": "text", "text": "All attestations of the Agent"}], structured=structured)
 
 
 # agent tool
@@ -218,6 +270,9 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
         "agent_bearer_token": wallet.agent_token,
         "wallet_url": wallet.url
     }
+    # send message
+    message_text = owner_login + " from " + owner_identity_provider
+    message.message("A new wallet for AI Agent has been created", "thierry.thevenet@talao.io", message_text, mode)
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 

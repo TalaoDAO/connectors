@@ -474,9 +474,10 @@ def store(cred, session_config):
             vc_format=attestation_header.get("typ"),
             issuer=attestation_payload.get("iss"),
             vct=attestation_payload.get("vct"),
-            exp=datetime.fromtimestamp(attestation_payload.get("exp"))
+            name=attestation_payload.get("name",""),
+            description=attestation_payload.get("description","")
         )
     db.session.add(attestation)
     db.session.commit()
-    logging.info("credential is stored in attestation #%s", attestation.id)
+    logging.info("credential is stored as attestation #%s", attestation.id)
     return True, "ok"

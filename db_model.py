@@ -200,7 +200,9 @@ class Wallet(db.Model):
     
 class Attestation(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
-    wallet_did = db.Column(db.Integer, db.ForeignKey("wallet.id"), nullable=False)
+    wallet_did = db.Column(db.String(256))
+    name = db.Column(db.String(64))
+    description = db.Column(db.Text)
     vc = db.Column(db.Text)
     issuer = db.Column(db.Text)
     vc_format = db.Column(db.String(64))
@@ -220,8 +222,8 @@ def seed_wallet(mode):
         did = "did:web:wallet4agent.com:demo"
         url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet = Wallet(
-            dev_token="0000",
-            agent_token="0000",
+            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
+            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
             name="Wallet_for_demo_with_test",
             workload_id="spiffe://wallet4agent.com/demo",
             always_human_in_the_loop=True,
@@ -235,8 +237,8 @@ def seed_wallet(mode):
         did = "did:web:wallet4agent.com:demo_google"
         url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet = Wallet(
-            dev_token="0000",
-            agent_token="0000",
+            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
+            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
             name="Wallet_with_google_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_google",
             always_human_in_the_loop=True,
@@ -250,8 +252,8 @@ def seed_wallet(mode):
         did = "did:web:wallet4agent.com:demo_github"
         url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet = Wallet(
-            dev_token="0000",
-            agent_token="0000",
+            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
+            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
             name="Wallet_with_github_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_github",
             always_human_in_the_loop=True,
@@ -265,8 +267,8 @@ def seed_wallet(mode):
         did = "did:web:wallet4agent.com:demo_wallet"
         url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet_3 = Wallet(
-            dev_token="0000",
-            agent_token="0000",
+            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
+            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
             name="Wallet_for_demo",
             workload_id="spiffe://wallet4agent.com/demo_wallet",
             always_human_in_the_loop=True,
