@@ -7,6 +7,7 @@ from utils.kms import encrypt_json
 from utils import oidc4vc
 from sqlalchemy import CheckConstraint, Enum, UniqueConstraint, Index
 from utils import deterministic_jwk
+import urllib
 
 db = SQLAlchemy()
 
@@ -187,14 +188,12 @@ class Wallet(db.Model):
     workload_id = db.Column(db.String(64))
     description = db.Column(db.Text)
     name = db.Column(db.Text)
-    optional_path = db.Column(db.String(64), unique=True)
     owner_identity_provider = db.Column(db.String(64))
     owner_login = db.Column(db.String(64))
+    url = db.Column(db.Text)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
-    url = db.Column(db.String(256))
-    callback = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, default=datetime.now)
     exp = db.Column(db.DateTime)
     
@@ -218,64 +217,64 @@ def seed_wallet(mode):
         jwk_2.pop("d", None)
         jwk_1["alg"] = "ES256"
         jwk_2["alg"] = "EdDSA"
+        did = "did:web:wallet4agent.com:demo"
+        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet = Wallet(
             dev_token="0000",
             agent_token="0000",
             name="Wallet_for_demo_with_test",
             workload_id="spiffe://wallet4agent.com/demo",
-            optional_path="demo",
             always_human_in_the_loop=True,
-            did="did:web:wallet4agent.com:demo",
-            url=mode.server + "demo",
+            did=did,
+            url=url,
             owner_identity_provider="test",
             owner_login="thierry.thevenet@talao.io",
-            callback=mode.server + "demo/callback",
-            did_document=create_did_document("did:web:wallet4agent.com:demo", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document(did, jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet)
+        did = "did:web:wallet4agent.com:demo_google"
+        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet = Wallet(
             dev_token="0000",
             agent_token="0000",
             name="Wallet_with_google_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_google",
-            optional_path="demo_google",
             always_human_in_the_loop=True,
-            did="did:web:wallet4agent.com:demo_google",
-            url=mode.server + "demo_google",
+            did=did,
+            url=url,
             owner_identity_provider="google",
             owner_login="thierry.thevenet@talao.io",
-            callback=mode.server + "demo_google/callback",
-            did_document=create_did_document("did:web:wallet4agent.com:demo_google", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document(did, jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet)
+        did = "did:web:wallet4agent.com:demo_github"
+        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet = Wallet(
             dev_token="0000",
             agent_token="0000",
             name="Wallet_with_github_identity_provider",
             workload_id="spiffe://wallet4agent.com/demo_github",
-            optional_path="demo_github",
             always_human_in_the_loop=True,
-            did="did:web:wallet4agent.com:demo_github",
-            url=mode.server + "demo_github",
+            did=did,
+            url=url,
             owner_identity_provider="github",
             owner_login="ThierryThevenet",
-            callback=mode.server + "demo_github/callback",
             did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet)
+        did = "did:web:wallet4agent.com:demo_wallet"
+        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         default_wallet_3 = Wallet(
             dev_token="0000",
             agent_token="0000",
             name="Wallet_for_demo",
             workload_id="spiffe://wallet4agent.com/demo_wallet",
-            optional_path="demo_wallet",
             always_human_in_the_loop=True,
-            did="did:web:wallet4agent.com:demo_wallet",
-            url=mode.server + "demo_wallet",
+            did=did,
+            url=url,
             owner_identity_provider="wallet",
             owner_login="did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9",
-            callback=mode.server + "demo_google/callback",
-            did_document=create_did_document("did:web:wallet4agent.com:demo_wallet", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document(did, jwk_1, jwk_2, "https://wallet4agent.com/a2a")
         )
         db.session.add(default_wallet_3)
         db.session.commit()

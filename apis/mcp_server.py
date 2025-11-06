@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import logging
 import requests
 from flask import request, jsonify, current_app, make_response
-from db_model import Verifier
+from db_model import Verifier, Wallet
 from utils.kms import decrypt_json
 from tools import wallet_tools, verifier_tools
 from utils import oidc4vc
@@ -59,17 +59,25 @@ def init_app(app):
 
     def get_role_and_agent_id() ->str:
         bearer_token = _bearer_or_api_key()
+        if not bearer_token:
+            return "guest", None 
         try:
             role = oidc4vc.get_payload_from_token(bearer_token).get("role")
             agent_id = oidc4vc.get_payload_from_token(bearer_token).get("sub")
             oidc4vc.verif_token(bearer_token)
-        except Exception as e:
-            logging.info("incorrect token = %s", str(e))
-            return jsonify({"jsonrpc":"2.0","id":req_id, "error":{"code":-32001,"message":"Unauthorized token"}})
+        except Exception:
+            return "guest", None
         if not role:
-            role = "guest"
-            agent_id = None
-        return role, agent_id 
+            return "guest", None
+        
+        # check if token is still valid for this agent_id
+        this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+        if bearer_token == this_wallet.dev_token:
+            return "dev", agent_id
+        elif bearer_token == this_wallet.agent_token:
+            return "agent", agent_id
+        else:
+            return "guest", None
         
     
     
@@ -153,7 +161,7 @@ def init_app(app):
         tools_list = {"tools": []}   
         #tools_list["tools"].extend(verifier_tools.tools)
         if role == "guest":
-            tools_list["tools"].extend(wallet_tools.tool_guest)
+            tools_list["tools"].extend(wallet_tools.tools_guest)
         if role == "dev":
             tools_list["tools"].extend(wallet_tools.tools_dev)
         if role == "agent":
@@ -280,13 +288,19 @@ def init_app(app):
                 if role == "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_create_identity(arguments, api_key, config())
+                out = wallet_tools.call_create_identity(arguments, config())
             
-            elif name == "get_data":
+            elif name == "get_identity_data":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_data(agent_id)
+                out = wallet_tools.call_get_data(agent_id, config())
+            
+            elif name == "rotate_bearer_token":
+                if role != "dev":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_rotate_bearer_token(agent_id, config())
             
             elif name == "request_attestation":
                 if not arguments.get("credential_offer"):
@@ -295,7 +309,7 @@ def init_app(app):
                 if not arguments.get("agent_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing agent_id"}}
-                out = wallet_tools.call_request_attestation(arguments, api_key, config())
+                out = wallet_tools.call_request_attestation(arguments, config())
 
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})

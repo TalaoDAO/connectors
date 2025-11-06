@@ -42,9 +42,11 @@ VM = DID + "#0"
 
 def init_app(app):
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
-    app.add_url_rule('/<optional_path>/credential_offer', view_func=credential_offer, methods=['GET'])
-    app.add_url_rule('/<optional_path>/callback', view_func=callback, methods=['GET', 'POST'])
-    app.add_url_rule('/<optional_path>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
+    app.add_url_rule('/<wallet_did>/credential_offer', view_func=credential_offer, methods=['GET'])
+    app.add_url_rule('/callback', view_func=callback, methods=['GET', 'POST'])
+    
+    app.add_url_rule('/did/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
+    app.add_url_rule('/.well-known/openid-configuration/did/<wallet_did>', view_func=web_wallet_openid_configuration, methods=['GET'])
     
     app.add_url_rule('/user/consent', view_func=user_consent, methods=['GET', 'POST'])
     
@@ -55,10 +57,10 @@ def get_configuration():
     return json.loads(f.read())
 
 
-def web_wallet_openid_configuration(optional_path):
+def web_wallet_openid_configuration(wallet_did):
     mode = current_app.config["MODE"]
     config = {
-        "credential_offer_endpoint": mode.server + optional_path + "/credential_offer"   
+        "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer"   
     }
     return jsonify(config)
 
@@ -154,9 +156,8 @@ def build_session_config(agent_id: str, credential_offer: str):
         "code": code,
         "issuer_state": issuer_state,
         "wallet_did": this_wallet.did,
-        "wallet_callback": this_wallet.callback,
+        "wallet_url": this_wallet.url,
         "owner_login": this_wallet.owner_login,
-        "optional_path": this_wallet.optional_path,
         "always_human_in_the_loop": this_wallet.always_human_in_the_loop
     }
     
@@ -174,23 +175,25 @@ def build_session_config(agent_id: str, credential_offer: str):
 
 
 # for MCP tools
-def wallet(agent_id, credential_offer):
+def wallet(agent_id, credential_offer, mode):
     session_config, text = build_session_config(agent_id, credential_offer)
     if not session_config:
         return None, text
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
-        attestation, text = code_flow(session_config)
+        attestation, text = code_flow(session_config, mode)
         return attestation, text
     else:
         return None, "this grant type is not supported here"
 
-# standard route and credential offer endpoint
+# standard route to home
 def wallet_route():
     return render_template("home.html")
     
     
-def credential_offer(optional_path):
+# credntial offer endpoint
+def credential_offer(wallet_did):
     red = current_app.config["REDIS"]
+    mode = current_app.config["MODE"]
     # if user is logged (user in the loop)
     if current_user.is_authenticated:
         logging.info("user is now logged")
@@ -206,13 +209,13 @@ def credential_offer(optional_path):
             return render_template("wallet/session_screen.html", message=message, title="Access Denied")
         session_config = json.loads(raw.decode())
         if session_config["grant_type"] == "authorization_code":
-            redirect_uri = build_authorization_request(session_config, red)
+            redirect_uri = build_authorization_request(session_config, red, mode)
             # send authorization request to issuer
             return redirect(redirect_uri)
         
         # the user is logged, it is a pre authorized code flow and we ask user for consent 
         else:
-            sd_jwt_vc, text = code_flow(session_config)
+            sd_jwt_vc, text = code_flow(session_config, mode)
             logout_user()
             if sd_jwt_vc:
                 return render_template("wallet/user_consent.html", sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
@@ -239,7 +242,7 @@ def credential_offer(optional_path):
         return render_template("wallet/session_screen.html", message=message, title="Issuance Failure")
             
     # build session config and store it in memory for next call to the same endpoint
-    wallet = Wallet.query.filter(Wallet.optional_path == optional_path).one_or_none()
+    wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
@@ -252,11 +255,11 @@ def credential_offer(optional_path):
     if session_config["always_human_in_the_loop"]:
         session_id = secrets.token_hex(16)
         red.setex(session_id, 1000, json.dumps(session_config))
-        return redirect("/register?session_id=" + session_id + "&optional_path=" + optional_path)
+        return redirect("/register?session_id=" + session_id)
     
     # no user in the loop, Start the pre authorized code flow only
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
-        attestation, text = code_flow(session_config)
+        attestation, text = code_flow(session_config, mode)
         if attestation:
             message = "Attestation has been issued"
             return render_template("wallet/session_screen.html", message=message, title= "Congrats !")        
@@ -285,13 +288,13 @@ def user_consent():
     return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
 
 
-def build_authorization_request(session_config, red) -> str:
+def build_authorization_request(session_config, red, mode) -> str:
     authorization_endpoint = session_config['authorization_endpoint']
     code_verifier, code_challenge = pkce.generate_pkce_pair()
     state = secrets.token_urlsafe(32)
 
     data = {
-        "redirect_uri": session_config["wallet_callback"],
+        "redirect_uri": mode.server + "callback",
         "client_id": session_config["wallet_did"],
         "scope": session_config["scope"],
         "response_type": "code",
@@ -305,9 +308,10 @@ def build_authorization_request(session_config, red) -> str:
 
 
 # callback du wallet for authorization code flow
-def callback(optional_path):
+def callback():
     logging.info('This is an authorized code flow')
     red = current_app.config["REDIS"]
+    mode = current_app.config["MODE"]
     try:
         code = request.args['code']
         session_id = request.args.get('state', "")
@@ -318,7 +322,7 @@ def callback(optional_path):
     # update session config with code from AS
     session_config["code"] = code
     logout_user()    
-    sd_jwt_vc, text = code_flow(session_config)
+    sd_jwt_vc, text = code_flow(session_config, mode)
     if not sd_jwt_vc:
         return render_template("wallet/session_screen.html", message=text, title="Issuance Failure")
     return render_template(
@@ -329,7 +333,7 @@ def callback(optional_path):
     )
 
 
-def token_request(session_config):
+def token_request(session_config, mode):
     token_endpoint = session_config['token_endpoint']
     grant_type = session_config["grant_type"]
 
@@ -341,7 +345,7 @@ def token_request(session_config):
         data.update({
             "code": session_config["code"],
             "code_verifier": session_config["code_verifier"],
-            "redirect_uri": session_config["wallet_callback"]
+            "redirect_uri": mode.server + "callback"
         })
     else:
         return None, "grant type is unknown"
@@ -405,9 +409,9 @@ def build_proof_of_key_ownership(session_config, nonce):
 
 
 # process code flow
-def code_flow(session_config):
+def code_flow(session_config, mode):
     # access token request
-    token_endpoint_response, text = token_request(session_config)
+    token_endpoint_response, text = token_request(session_config, mode)
     logging.info('token endpoint response = %s', token_endpoint_response)
     
     if not token_endpoint_response:

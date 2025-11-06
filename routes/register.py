@@ -8,6 +8,7 @@ import logging
 from requests.exceptions import RequestException, HTTPError
 from utils.kms import encrypt_json, decrypt_json
 from utils import message
+import urllib
 
 ngrok =  "https://c8e7a2920835.ngrok.app"
 
@@ -54,9 +55,14 @@ def init_app(app, db):
 # entry pooint
 def register():
     session_id = request.args.get("session_id", "")
-    optional_path = request.args.get("optional_path")
+    red = current_app.config["REDIS"]
+    try:
+        session_config = json.loads(red.get(session_id).decode())
+    except Exception:
+        message = "Session expired"
+        return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
     mode = current_app.config["MODE"]
-    wallet = Wallet.query.filter(Wallet.optional_path == optional_path).one_or_none()
+    wallet = Wallet.query.filter(Wallet.did == session_config["wallet_did"]).one_or_none()
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
@@ -68,7 +74,7 @@ def register():
     elif wallet.owner_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
     
-    return render_template("register.html", mode=mode, title="Authenticate", session_id=session_id, optional_path=optional_path)
+    return render_template("register.html", mode=mode, title="Authenticate", session_id=session_id)
 
 
 def login_with_google():
@@ -100,13 +106,17 @@ def register_google_callback(db):
     userinfo = requests.get(uri, headers=headers, data=body).json()
     user = User.query.filter_by(email=userinfo.get("email")).first()
     if user:
-        session_config = json.loads(red.get(session_id).decode())
         if userinfo.get("email") == session_config["owner_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
-            return redirect("/" + session_config["optional_path"] + "/credential_offer?session_id=" + session_id)
-    logging.warning("user not found in register.py")
+            session_config = json.loads(red.get(session_id).decode())
+            did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
+            return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
+        else:
+            logging.warning("user is not authorized for this session")
+            return redirect("/")
+    logging.warning("user not found in DB")
     return redirect("/")
     
     # not used
@@ -126,7 +136,6 @@ def register_google_callback(db):
         logging.warning("message() failed: %s", x)
     login_user(new_user)
     return redirect(ENTRY)
-
 
 
 def login_with_github():
@@ -154,13 +163,18 @@ def register_github_callback(db):
     userinfo = requests.get("https://api.github.com/user", headers=headers).json()
     user = User.query.filter_by(login=userinfo.get("login")).first()
     if user:
-        session_config = json.loads(red.get(session_id).decode())
         if userinfo.get("login") == session_config["owner_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
-            return redirect("/" + session_config["optional_path"] + "/credential_offer?session_id=" + session_id)
-    logging.warning("user is not found in register.py")
+            session_config = json.loads(red.get(session_id).decode())
+            did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
+            return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
+        else:
+            logging.warning("user is not authorized for this session")
+            return redirect("/")
+    
+    logging.warning("user is not found in DB")
     return redirect("/")
     
     new_user = User(
@@ -240,25 +254,26 @@ def register_wallet_callback(db):
     # 3) Call the userinfo endpoint with the access token
     uri, headers, _ = talao_client.add_token(userinfo_endpoint)
     ui_resp = requests.get(uri, headers=headers, timeout=10)
-
     userinfo = ui_resp.json()
     logging.info("userinfo response = %s", json.dumps(userinfo, indent=2))
-
     sub = userinfo.get("sub")
 
+    # chek if user exists and 
     user = User.query.filter_by(login=sub).first()
     if user:
         session_config = json.loads(red.get(session_id).decode())
-        print("session config = ", session_config["owner_login"])
+        # check if user is authorized for this session
         if sub == session_config["owner_login"]:
             logout_user()
             login_user(user)
-            logging.info("owner is now authenticated")
-            return redirect("/" + session_config["optional_path"] + "/credential_offer?session_id=" + session_id)
-    
-    logging.warning("user is not found in register.py")
+            logging.info("dev of the agent is now authenticated")
+            did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
+            return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
+        else:
+            logging.warning("user is not authorized for this session")
+            return redirect("/")
+    logging.warning("user is not found in DB")
     return redirect("/")
-  
 
 
 def register_test():
@@ -272,13 +287,15 @@ def register_test():
 
 def register_admin():
     session_id = request.form.get("session_id", "")
-    optional_path = request.form.get("optional_path")
-    if session_id and optional_path:
+    if session_id:
+        red = current_app.config["REDIS"]
         logout_user()
         user = User.query.filter_by(email="thierry.thevenet@talao.io").first()
         login_user(user)
         logging.info("admin is now authenticated")
-        return redirect("/" + optional_path + "/credential_offer?session_id=" + session_id)
+        session_config = json.loads(red.get(session_id).decode())
+        did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
+        return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
     
     # standard registration
     else:

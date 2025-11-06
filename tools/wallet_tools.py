@@ -7,6 +7,7 @@ import logging
 from sqlalchemy import and_
 from routes import wallet
 from utils import deterministic_jwk, oidc4vc
+import urllib
 
 tools_guest = [
     {
@@ -77,14 +78,24 @@ tools_agent = [
 
 tools_dev = [
     {
-        "name": "get_data",
-        "description": "Get token for dev and agent",
+        "name": "get_identity_data",
+        "description": "Get all information about an agent identity",
         "inputSchema": {
             "type": "object",
             "properties": {},
             "required": []
         }
-    }
+    },
+    {
+        "name": "rotate_bearer_token",
+        "description": "Get all information about an agent identity",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    
 ]
 
 
@@ -98,10 +109,11 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 
 # agent tool
-def call_request_attestation(arguments: Dict[str, Any], api_key: str, config: dict) -> Dict[str, Any]:
+def call_request_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
     wallet_did = arguments.get("agent_id")
-    attestation, text = wallet.wallet(wallet_did, credential_offer)
+    mode = config["MODE"]
+    attestation, text = wallet.wallet(wallet_did, credential_offer, mode)
     if not attestation:
         return _ok_content([{"type": "text", "text": text}], is_error=True)     
     structured = {
@@ -112,31 +124,49 @@ def call_request_attestation(arguments: Dict[str, Any], api_key: str, config: di
 
 
 # dev tool
-def call_get_data(agent_id) -> Dict[str, Any]:
+def call_get_data(agent_id, config) -> Dict[str, Any]:
+    mode = config["MODE"]
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
     structured = {
         "agent_id": this_wallet.did,
         "dev_bearer_token": this_wallet.dev_token,
         "agent_bearer_token": this_wallet.agent_token,
-        "wallet_url": this_wallet.url,
+        "wallet_url": mode.server + "did/" + urllib.parse.quote(this_wallet.did, safe=""),
         "did_document": json.loads(this_wallet.did_document),
         "owner_login": this_wallet.owner_login,
         "owner_identity_provider": this_wallet.owner_identity_provider
     }
     return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
     
+
+def call_rotate_bearer_token(agent_id, config) -> Dict[str, Any]:
+    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+    dev_token = oidc4vc.sign_mcp_bearer_token(agent_id, "dev")
+    agent_token = oidc4vc.sign_mcp_bearer_token(agent_id, "agent")
+    this_wallet.dev_token = dev_token
+    this_wallet.agent_token = agent_token
+    db.session.commit()
+    text = "New token available"
+    structured = {
+        "agent_id": this_wallet.did,
+        "dev_bearer_token": dev_token,
+        "agent_bearer_token": agent_token,
+        "wallet_url": this_wallet.url
+    }
+    return _ok_content([{"type": "text", "text": text}], structured=structured)
+    
     
 # guest tool
-def call_create_identity(arguments: Dict[str, Any], api_key: str, config: dict) -> Dict[str, Any]:
+def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+    mode = config["MODE"]
     owner_identity_provider = arguments.get("owner_identity_provider")
     owner_login = arguments.get("owner_login")
     if not owner_login or not owner_identity_provider:
         return _ok_content([{"type": "text", "text": "Owner login or identity provider missing"}], is_error=True)
     agent_card_url = arguments.get("agentcard_url")
-    optional_path = secrets.token_hex(16)
-    agent_did = "did:web:wallet4agent.com:" + optional_path
+    agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
     jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase(agent_did + "#key-2")
-    jwk_1 = deterministic_jwk.jwk_p256_from_passphrase(agent_did + "#key-2")
+    jwk_1 = deterministic_jwk.jwk_p256_from_passphrase(agent_did + "#key-1")
     # add alg for DID Document only
     jwk_1["alg"] = "ES256"
     jwk_2["alg"] = "EdDSA"
@@ -148,13 +178,11 @@ def call_create_identity(arguments: Dict[str, Any], api_key: str, config: dict) 
     wallet = Wallet(
         dev_token=dev_token,
         agent_token=agent_token,
-        optional_path=optional_path,
         owner_login=owner_login,
         owner_identity_provider=owner_identity_provider,
         did=agent_did,
         did_document=json.dumps(did_document),
-        url=config["SERVER"] + optional_path,
-        callback=config["SERVER"] + optional_path + "/callback"
+        url=mode.server + "did/" + urllib.parse.quote(agent_did, safe="")
     )
     if arguments.get("owner_identity_provider") == "google":
         email = owner_login

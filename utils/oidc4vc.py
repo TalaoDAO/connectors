@@ -477,6 +477,8 @@ def get_payload_from_token(token) -> dict:
 
 
 def get_header_from_token(token):
+    if not token:
+        return {}
     header = token.split('.')[0]
     header += "=" * ((4 - len(header) % 4) % 4)  # solve the padding issue of the base64 python lib
     try:
