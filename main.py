@@ -226,7 +226,8 @@ def create_app() -> Flask:
     # .well-known DID API
     @app.get('/<optional_path>/did.json')
     def well_known_did(optional_path):
-        wallet = Wallet.query.filter(Wallet.optional_path == optional_path).one_or_none()
+        wallet_did = "did:web:wallet4agent.com:" + optional_path
+        wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
         did_document = json.loads(wallet.did_document)
         headers = {
             "Content-Type": "application/did+ld+json",
