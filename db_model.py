@@ -209,6 +209,7 @@ class Attestation(db.Model):
     vct = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, default=datetime.now)
     exp = db.Column(db.DateTime)
+    published = db.Column(db.Boolean, default=False)
 
 
 def seed_wallet(mode):
@@ -220,7 +221,8 @@ def seed_wallet(mode):
         jwk_1["alg"] = "ES256"
         jwk_2["alg"] = "EdDSA"
         did = "did:web:wallet4agent.com:demo"
-        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        url = mode.server + "did/" + did
         default_wallet = Wallet(
             dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
             agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
@@ -231,11 +233,12 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="test",
             owner_login="thierry.thevenet@talao.io",
-            did_document=create_did_document(did, jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document(did, jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet)
         did = "did:web:wallet4agent.com:demo_google"
-        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        url = mode.server + "did/" + did
         default_wallet = Wallet(
             dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
             agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
@@ -246,11 +249,12 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="google",
             owner_login="thierry.thevenet@talao.io",
-            did_document=create_did_document(did, jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document(did, jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet)
         did = "did:web:wallet4agent.com:demo_github"
-        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        url = mode.server + "did/" + did
         default_wallet = Wallet(
             dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
             agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
@@ -261,11 +265,12 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="github",
             owner_login="ThierryThevenet",
-            did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet)
         did = "did:web:wallet4agent.com:demo_wallet"
-        url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
+        url = mode.server + "did/" + did
         default_wallet_3 = Wallet(
             dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
             agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
@@ -276,7 +281,7 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="wallet",
             owner_login="did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9",
-            did_document=create_did_document(did, jwk_1, jwk_2, "https://wallet4agent.com/a2a")
+            did_document=create_did_document(did, jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet_3)
         db.session.commit()
@@ -505,7 +510,7 @@ def seed_user():
         db.session.commit()
 
 
-def create_did_document(did, jwk_1, jwk_2,  a2a_url) -> str:
+def create_did_document(did, jwk_1, jwk_2, url) -> str:
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -536,15 +541,13 @@ def create_did_document(did, jwk_1, jwk_2,  a2a_url) -> str:
         "assertionMethod" : [
             did + "#key-1",
             did + "#key-2"
+        ],
+        "service": [
+            {
+                "id": did + "#oidc4vp",
+                "type": "OIDC4VP",
+                "serviceEndpoint": url
+            }  
         ]
     }
-    if a2a_url:
-        document["service"] = []
-        document["service"].append(
-            {
-                "id": "#a2a",
-                "type": "A2AService",
-                "serviceEndpoint": a2a_url
-            }
-        )
     return json.dumps(document)

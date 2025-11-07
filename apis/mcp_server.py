@@ -287,6 +287,9 @@ def init_app(app):
                 if role == "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("owner_login"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: owner_login missing "}}        
                 out = wallet_tools.call_create_identity(arguments, config())
             
             elif name == "get_identity_data":
@@ -302,6 +305,9 @@ def init_app(app):
                 out = wallet_tools.call_list_attestations(agent_id, config())
             
             elif name == "display_attestation":
+                if not arguments.get("attestation_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: attestation_id missing "}}       
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
@@ -311,7 +317,7 @@ def init_app(app):
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_rotate_bearer_token(agent_id, config())
+                out = wallet_tools.call_rotate_bearer_token(arguments, agent_id, config())
             
             elif name == "request_attestation":
                 if not arguments.get("credential_offer"):

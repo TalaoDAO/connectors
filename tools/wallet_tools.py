@@ -90,10 +90,17 @@ tools_dev = [
     },
     {
         "name": "rotate_bearer_token",
-        "description": "Get all information about an agent identity",
+        "description": "Rotate one of the bearer tokens",
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "description": "Choose the token to rotate",
+                    "enum": ["agent", "dev"],
+                    "default": "dev"
+                }
+            },
             "required": []
         }
     },
@@ -191,18 +198,18 @@ def call_get_data(agent_id, config) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
     
 
-def call_rotate_bearer_token(agent_id, config) -> Dict[str, Any]:
+def call_rotate_bearer_token(arguments, agent_id, config) -> Dict[str, Any]:
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
-    dev_token = oidc4vc.sign_mcp_bearer_token(agent_id, "dev")
-    agent_token = oidc4vc.sign_mcp_bearer_token(agent_id, "agent")
-    this_wallet.dev_token = dev_token
-    this_wallet.agent_token = agent_token
+    if arguments.get("role") == "dev":
+        this_wallet.dev_token = oidc4vc.sign_mcp_bearer_token(agent_id, "dev")
+    else:
+        this_wallet.agent_token = oidc4vc.sign_mcp_bearer_token(agent_id, "agent")
     db.session.commit()
     text = "New token available"
     structured = {
         "agent_id": this_wallet.did,
-        "dev_bearer_token": dev_token,
-        "agent_bearer_token": agent_token,
+        "dev_bearer_token": this_wallet.dev_token,
+        "agent_bearer_token": this_wallet.agent_token,
         "wallet_url": this_wallet.url
     }
     return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -213,8 +220,6 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
     mode = config["MODE"]
     owner_identity_provider = arguments.get("owner_identity_provider")
     owner_login = arguments.get("owner_login")
-    if not owner_login or not owner_identity_provider:
-        return _ok_content([{"type": "text", "text": "Owner login or identity provider missing"}], is_error=True)
     agent_card_url = arguments.get("agentcard_url")
     agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
     jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase(agent_did + "#key-2")
@@ -224,7 +229,9 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
     jwk_2["alg"] = "EdDSA"
     jwk_1.pop("d", None)
     jwk_2.pop("d", None)
-    did_document = create_did_web_document(agent_did, jwk_1, jwk_2, agent_card_url=agent_card_url)
+    url = mode.server + "did/" + urllib.parse.quote(agent_did, safe="")
+    url = mode.server + "did/" + agent_did
+    did_document = create_did_web_document(agent_did, jwk_1, jwk_2, url, agent_card_url=agent_card_url)
     dev_token = oidc4vc.sign_mcp_bearer_token(agent_did, "dev")
     agent_token = oidc4vc.sign_mcp_bearer_token(agent_did, "agent")
     wallet = Wallet(
@@ -234,7 +241,7 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
         owner_identity_provider=owner_identity_provider,
         did=agent_did,
         did_document=json.dumps(did_document),
-        url=mode.server + "did/" + urllib.parse.quote(agent_did, safe="")
+        url=url
     )
     if arguments.get("owner_identity_provider") == "google":
         email = owner_login
@@ -276,7 +283,7 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def create_did_web_document(did, jwk_1, jwk_2, agent_card_url=False):
+def create_did_web_document(did, jwk_1, jwk_2, url, agent_card_url=False):
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -307,13 +314,19 @@ def create_did_web_document(did, jwk_1, jwk_2, agent_card_url=False):
         "assertionMethod" : [
             did + "#key-1",
             did + "#key-2"
+        ],
+        "service": [
+            {
+                "id": did + "#oidc4vp",
+                "type": "OIDC4VP",
+                "serviceEndpoint": url
+            }  
         ]
     }
     if agent_card_url:
-        document["service"] = []
         document["service"].append(
             {
-                "id": "#a2a",
+                "id": did + "#a2a",
                 "type": "A2AService",
                 "serviceEndpoint": agent_card_url
             }

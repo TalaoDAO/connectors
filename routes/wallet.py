@@ -259,13 +259,15 @@ def credential_offer(wallet_did):
     
     # no user in the loop, Start the pre authorized code flow only
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
-        attestation, text = code_flow(session_config, mode)
+        attestation, message = code_flow(session_config, mode)
         if attestation:
-            message = "Attestation has been issued"
-            return render_template("wallet/session_screen.html", message=message, title= "Congrats !")        
-        return render_template("wallet/session_screen.html", message=text, title= "Issuance failed")
+            # store attestation but do not publish it
+            result, message = store(attestation, session_config, published=False)
+            if result:
+                return render_template("wallet/session_screen.html", message=message, title="Congrats !")
+        return render_template("wallet/session_screen.html", message=message, title="Issuance failed")
     else:
-        message = "Grant type not supported"
+        message = "Grant type not supported when user is not in the loop"
         return render_template("wallet/session_screen.html", message=message, title= "Issuance Failure")
 
 
@@ -280,10 +282,11 @@ def user_consent():
     session_id = request.form.get("session_id")
     public_url = request.form.get("publish_scope") or None
     session_config = json.loads(red.get(session_id).decode())
-    store(attestation, session_config)
     if public_url == "public":
+        store(attestation, session_config, published=True)
         message = "Attestation has been stored an published"
     else:
+        store(attestation, session_config, published=False)
         message = "Attestation has been stored"
     return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
 
@@ -459,15 +462,15 @@ def code_flow(session_config, mode):
     return cred, "ok"
 
 
-def store(cred, session_config):
+def store(cred, session_config, published=False):
     # store attestation
-    vcsd = cred.split("~")
+    vcsd = cred.split("~") 
     vcsd_jwt = vcsd[0]
     try:
         attestation_header = oidc4vc.get_header_from_token(vcsd_jwt)
         attestation_payload = oidc4vc.get_payload_from_token(vcsd_jwt)
     except Exception:
-        return None, "attestation is in an incorrect format"
+        return None, "Attestation is in an incorrect format and cannot be stored"
     attestation = Attestation(
             wallet_did=session_config["wallet_did"],
             vc=cred,
@@ -475,9 +478,10 @@ def store(cred, session_config):
             issuer=attestation_payload.get("iss"),
             vct=attestation_payload.get("vct"),
             name=attestation_payload.get("name",""),
-            description=attestation_payload.get("description","")
+            description=attestation_payload.get("description",""),
+            published=published
         )
     db.session.add(attestation)
     db.session.commit()
     logging.info("credential is stored as attestation #%s", attestation.id)
-    return True, "ok"
+    return True, "Attestation has been stored"
