@@ -105,12 +105,12 @@ def register_google_callback(db):
     uri, headers, body = google_client.add_token(userinfo_endpoint)
     userinfo = requests.get(uri, headers=headers, data=body).json()
     user = User.query.filter_by(email=userinfo.get("email")).first()
+    session_config = json.loads(red.get(session_id).decode())
     if user:
         if userinfo.get("email") == session_config["owner_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
-            session_config = json.loads(red.get(session_id).decode())
             did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
             return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
         else:
@@ -162,12 +162,12 @@ def register_github_callback(db):
     headers = {'Authorization': f'token {token_resp.get("access_token")}'}
     userinfo = requests.get("https://api.github.com/user", headers=headers).json()
     user = User.query.filter_by(login=userinfo.get("login")).first()
+    session_config = json.loads(red.get(session_id).decode())
     if user:
         if userinfo.get("login") == session_config["owner_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
-            session_config = json.loads(red.get(session_id).decode())
             did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
             return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
         else:
