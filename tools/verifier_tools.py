@@ -4,13 +4,13 @@ import base64
 import uuid
 from typing import Any, Dict, List, Optional
 import logging
-import requests
 import qrcode
+from routes.verifier import oidc4vp
 
 
 tools_agent = [
     {
-        "name": "get_supported_verification_scopes",
+        "name": "get_supported_user_verification_scopes",
         "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",
         "inputSchema": {
             "type": "object",
@@ -19,39 +19,26 @@ tools_agent = [
         }
     },
     {
-        "name": "start_verification",
+        "name": "start_user_verification",
         "description": "Create a wallet request as a QR code image or deeplink.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "verifier_id": {
+                "scope": {
                     "type": "string",
-                    "description": "Verifier identifier."
+                    "description": "Scope to verify."
                 },
                 "session_id": {
                     "type": "string",
                     "description": "Optional caller-provided session id."
                 }
             },
-            "required": ["verifier_id"]
+            "required": ["scope"]
         }
     },
     {
-        "name": "poll_verification",
+        "name": "poll_user_verification",
         "description": "Poll current status for a session; returns structured status and redacted wallet_data.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "session_id": {
-                    "type": "string"
-                }
-            },
-            "required": ["session_id"]
-        }
-    },
-    {
-        "name": "revoke_verification_flow",
-        "description": "Acknowledge cleanup for a session id (back-end TTL handles actual expiration).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -82,12 +69,13 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 
 # --------- Tool implementations ---------
-def call_start_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
-    verifier_api_start = config["VERIFIER_API_START"]
+def call_start_user_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
     pull_status_base = config["PULL_STATUS_BASE"]
     public_base_url = config["PUBLIC_BASE_URL"]
+    red = config["REDIS"]
+    mode = config["MODE"]
 
-    verifier_id = arguments.get("verifier_id")
+    verifier_id = arguments.get("scope")
     
     # scope is now unique by verifier_id
     scope_for_demo = {
@@ -101,33 +89,8 @@ def call_start_verification(arguments: Dict[str, Any], verifier_api_key: Optiona
     # optional session_id
     session_id = arguments.get("session_id") or str(uuid.uuid4())
         
-    payload = {"verifier_id": verifier_id, "session_id": session_id, "scope": scope}
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-API-KEY": verifier_api_key
-    }
-    try:
-        r = requests.post(verifier_api_start, json=payload, headers=headers, timeout=30)
-    except Exception as e:
-        return _ok_content(
-            [{"type": "text", "text": f"Network error calling oidc4vp API : {e}"}],
-            structured={"error": "network_error", "detail": str(e)},
-            is_error=True
-        )
-    if r.status_code >= 400:
-        txt = r.text
-        try:
-            err = r.json()
-        except Exception:
-            err = {"status": r.status_code, "body": txt}
-        return _ok_content(
-            [{"type": "text", "text": f"Verifier API error {r.status_code}"}],
-            structured={"error": "upstream_error", "upstream": err},
-            is_error=True
-        )
-
-    data = r.json()
+    data = oidc4vp.oidc4vp_qrcode(verifier_id, session_id, scope, red, mode)
+    
     deeplink = data.get("url")
     sess = data.get("session_id", session_id)
 
@@ -148,8 +111,9 @@ def call_start_verification(arguments: Dict[str, Any], verifier_api_key: Optiona
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
 
-def call_poll_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
-    pull_status_base = config["PULL_STATUS_BASE"]
+
+def call_poll_user_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
+    red = config["REDIS"]
     session_id = arguments.get("session_id")
     if not session_id:
         return _ok_content(
@@ -158,21 +122,8 @@ def call_poll_verification(arguments: Dict[str, Any], verifier_api_key: Optional
             is_error=True
         )
     
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-API-KEY": verifier_api_key
-    }
-    try:
-        r = requests.get(f"{pull_status_base.rstrip('/')}/{session_id}", headers=headers, timeout=20)
-        payload = r.json()
-    except Exception as e:
-        return _ok_content(
-            [{"type": "text", "text": f"Network error polling status: {e}"}],
-            structured={"error": "network_error", "detail": str(e)},
-            is_error=True
-        )
-
+    payload = oidc4vp.wallet_pull_status(session_id, red)
+    print("payload = ", payload)
     status = payload.get("status", "pending")
 
     # current oidc4vp: claims merged at the top level (exclude status/session_id)
@@ -192,17 +143,3 @@ def call_poll_verification(arguments: Dict[str, Any], verifier_api_key: Optional
     text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
 
     return _ok_content(text_blocks, structured=structured)
-
-def call_revoke_verification_flow(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
-    session_id = arguments.get("session_id")
-    if not session_id:
-        return _ok_content(
-            [{"type": "text", "text": "session_id is required"}],
-            structured={"error": "invalid_arguments", "missing": ["session_id"]},
-            is_error=True
-        )
-    red = config["REDIS"]
-    red.delete(session_id)
-    structured = {"ok": True, "session_id": session_id}
-    return _ok_content([{"type": "text", "text": "Flow revoked (TTL cleanup handled server-side)."}], structured=structured)
-

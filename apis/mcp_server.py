@@ -1,10 +1,6 @@
-import io
 import json
-import base64
-import uuid
 from typing import Any, Dict, List, Optional
 import logging
-import requests
 from flask import request, jsonify, current_app, make_response
 from db_model import Verifier, Wallet
 from utils.kms import decrypt_json
@@ -59,12 +55,14 @@ def init_app(app):
     def get_role_and_agent_id() ->str:
         bearer_token = _bearer_or_api_key()
         if not bearer_token:
+            logging.info("no Bearer toen")
             return "guest", None 
         try:
             role = oidc4vc.get_payload_from_token(bearer_token).get("role")
             agent_id = oidc4vc.get_payload_from_token(bearer_token).get("sub")
             oidc4vc.verif_token(bearer_token)
         except Exception:
+            logging.info("verif token failed with role = %s and agent_id = %s", role, agent_id)
             return "guest", None
         if not role:
             return "guest", None
@@ -172,7 +170,6 @@ def init_app(app):
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
         logging.info("header = %s", request.headers)
-        
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
     
@@ -229,59 +226,39 @@ def init_app(app):
         # tools/call
         if method == "tools/call":
             name = params.get("name")
-            arguments = params.get("arguments") or {}
-            api_key = _bearer_or_api_key()
-            
+            arguments = params.get("arguments") or {}         
             role, agent_id = get_role_and_agent_id()
-            
-            def check_api_key():
-                if not api_key:
-                    return jsonify({"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: missing token"}})
-                
-            
-            if name == "get_supported_verification_scopes":
-                check_api_key()
+    
+            if name == "get_supported_user_verification_scopes":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = _ok_content([{"type":"text","text":"Scopes and profiles"}],
                         structured={
-                            "profiles": {
+                            "scopes": {
                                 "0000": "wallet identifier",
                                 "0001": "email",
                                 "0002": "over 18 proof",
                                 "0003": "first name, last name and birth date"
-                            },
-                            "auth": "Send X-API-KEY header. For test profiles, key = verifier_id (0000, 0001, 0002, 0003)."
+                            }
                         })  
     
-            elif name == "start_verification":
-                verifier_id = arguments.get("verifier_id")
+            elif name == "start_user_verification":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                verifier_id = arguments.get("scope")
                 # For public test profiles, simplest rule: token must equal verifier_id
-                
-                if verifier_id in {"0000","0001","0002", "0003"}:
-                    if api_key != verifier_id:
-                        return jsonify({"jsonrpc":"2.0","id":req_id,
-                                        "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
-                    out = verifier_tools.call_start_verification(arguments, api_key, config())
-                else:
-                    mcp_verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
-                    if not mcp_verifier:
-                        return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: missing verifier"}}
-                    
-                    expected_key = decrypt_json(mcp_verifier.application_api)["verifier_secret"]
-                    if expected_key != api_key:
-                        return jsonify({"jsonrpc":"2.0","id":req_id,
-                                        "error":{"code":-32001,"message":"Unauthorized: key/verifier mismatch"}})
-                    
-                    out = verifier_tools.call_start_verification(arguments, api_key, config())
+                if verifier_id not in {"0000","0001","0002", "0003"}:
+                    return jsonify({"jsonrpc":"2.0","id":req_id,
+                                        "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
+                out = verifier_tools.call_start_user_verification(arguments, api_key, config())
             
-            elif name == "poll_verification":
-                check_api_key()
-                out = verifier_tools.call_poll_verification(arguments, api_key, config())
-            
-            elif name == "revoke_verification_flow":
-                check_api_key()
-                out = verifier_tools.call_revoke_verification_flow(arguments, config())
+            elif name == "poll_user_verification":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = verifier_tools.call_poll_user_verification(arguments, api_key, config())
             
             elif name == "create_identity":
                 if role == "agent":
@@ -292,26 +269,35 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: owner_login missing "}}        
                 out = wallet_tools.call_create_identity(arguments, config())
             
+            elif name == "add_authentication_key":
+                if role != "dev":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("public_key"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: public_key missing "}}  
+                out = wallet_tools.call_add_authentication_key(arguments, agent_id, config())
+            
             elif name == "get_identity_data":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_data(agent_id, config())
             
-            elif name == "list_attestations":
+            elif name == "get_attestation_list":
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_list_attestations(agent_id, config())
+                out = wallet_tools.call_get_attestation_list(agent_id, config())
             
-            elif name == "display_attestation":
+            elif name == "get_attestation":
                 if not arguments.get("attestation_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: attestation_id missing "}}       
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_display_attestation(arguments, config())
+                out = wallet_tools.call_get_attestation(arguments, config())
             
             elif name == "rotate_bearer_token":
                 if role != "dev":

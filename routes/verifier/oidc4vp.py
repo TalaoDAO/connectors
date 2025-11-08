@@ -30,10 +30,7 @@ def init_app(app):
     # endpoints for wallet
     app.add_url_rule('/verifier/wallet/callback',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
     app.add_url_rule('/verifier/wallet/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
-    
-    # endpoint for MCP server
-    app.add_url_rule('/verifier/wallet/pull/<session_id>', view_func=wallet_pull_status, methods=['GET'])
-    app.add_url_rule('/verifier/wallet/start', view_func=oidc4vp_qrcode, methods=['POST'])
+   
     return
 
 """
@@ -105,44 +102,20 @@ def build_verifier_metadata(verifier_id) -> dict:
     return verifier_metadata
 
 
-# API to build the authorization request                                      
-def oidc4vp_qrcode():
-    red = current_app.config["REDIS"]
-    mode = current_app.config["MODE"]
-            
-    # --- Auth ---
-    request_api_key = request.headers.get("X-API-KEY")
-    if not request_api_key:
-        return {"error": "unauthorized", "error_description": "Missing X-API-KEY"}, 401
-    
-    body = request.get_json(silent=True) or {}
-    if not body:    
-        logging.error("Data must be a json object")
-        return {"error": "invalid_request", "error_description": "data must be a JSON object"}, 400
-    
-    verifier_id = body.get("verifier_id")
-    if not verifier_id:
-        return {"error": "invalid_request", "error_description": "issuer_id missing"}, 400    
-    
+# build the authorization request                                      
+def oidc4vp_qrcode(verifier_id, session_id, mcp_scope, red, mode):
+
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
     if not verifier:
         logging.warning("verifier not found: %s", verifier_id)
         return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
 
-    if request_api_key != decrypt_json(verifier.application_api)["verifier_secret"]:
-        return {"error": "unauthorized"}, 401
-
-    # RELAXED: Do NOT require webhook_url when using pull model (still allowed if provided)
     if verifier.response_mode != "id_token" and not verifier.presentation and not body.get("presentation"):
         logging.warning("Presentation is not provided")
         return {"error": "invalid_request", "error_description": "A presentation object (PEX or DCQL) is required"}, 400
 
-    if not body.get("session_id"):
-        return {"error": "invalid_request", "error_description": "session_id is required"}, 400
-
     # we dont use session_id as nonce
     nonce = str(uuid.uuid4()) # body["session_id"]
-    session_id = body["session_id"]
 
     # authorization request
     authorization_request = { 
@@ -153,9 +126,6 @@ def oidc4vp_qrcode():
         "response_mode": verifier.response_mode,
         "nonce": nonce
     }
-
-    # OIDC4VP request setup
-    mcp_scope = body.get("scope")
         
     if 'vp_token' in verifier.response_type:              
         authorization_request["client_metadata"] = build_verifier_metadata(verifier_id)
@@ -226,10 +196,10 @@ def oidc4vp_qrcode():
 
     url = verifier.prefix + '?' + urlencode(authorization_request_for_qrcode)
 
-    return jsonify({
+    return {
         "url": url,
         "session_id": session_id
-    })
+    }
 
 def verifier_request_uri(stream_id):
     red = current_app.config["REDIS"]
@@ -413,45 +383,31 @@ async def verifier_response():
     return jsonify(response), status_code
 
 
-# ------------- Pull endpoint -------------
-def wallet_pull_status(session_id: str):
-    """Return the current status for a given session_id.
-    Responses:
-    200 verified/denied -> include wallet_data (tokens redacted should be done by caller if needed)
-    202 pending         -> still waiting for wallet
-    404 not_found       -> unknown or expired flow
-    """
-    red = current_app.config["REDIS"]
-    
-    # --- Auth ---
-    request_api_key = request.headers.get("X-API-KEY")
-    if not request_api_key:
-        return {"error": "unauthorized", "error_description": "Missing X-API-KEY"}, 401
+# ------------- Pull -------------
+def wallet_pull_status(session_id, red):
     
     try:
         data = json.loads(red.get(session_id).decode())
     except Exception:
-        return jsonify({"status":"not_found","session_id":session_id}), 404
+        return {"status":"not_found","session_id":session_id}
     
     verifier_id = data.get("verifier_id")    
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
     if not verifier:
         logging.warning("verifier not found: %s", verifier_id)
-        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
-    if request_api_key != decrypt_json(verifier.application_api)["verifier_secret"]:
-        return {"error": "unauthorized"}, 401
+        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}
     
     # Fetch status first
     status_raw = red.get(session_id + "_status")
     if not status_raw:
-        return jsonify({"status": "not_found", "session_id": session_id}), 404
+        return {"status": "not_found", "session_id": session_id}
     try:
         status = json.loads(status_raw.decode()).get("status", "pending")
     except Exception:
         status = "pending"
 
     if status == "pending":
-        return jsonify({"status": "pending", "session_id": session_id}), 202
+        return {"status": "pending", "session_id": session_id}
 
     # verified or denied -> try to include wallet_data if present
     wd_raw = red.get(session_id + "_wallet_data")
@@ -468,4 +424,4 @@ def wallet_pull_status(session_id: str):
     }
     if wallet_data is not None:
         response.update(wallet_data)
-    return jsonify(response), 200
+    return response

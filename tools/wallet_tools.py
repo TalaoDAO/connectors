@@ -1,5 +1,4 @@
 import json
-import base64
 from typing import Any, Dict, List, Optional
 from db_model import Wallet, db, User
 import secrets
@@ -105,7 +104,21 @@ tools_dev = [
         }
     },
     {
-        "name": "list_attestations",
+        "name": "add_authentication_key",
+        "description": "Add an authentication public key",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "public_key": {
+                    "type": "string",
+                    "description": "Public key as a JWK (JSON Web Key) encoded as a JSON string"
+                }
+            },
+            "required": ["public_key"]
+        }
+    },
+    {
+        "name": "get_attestation_list",
         "description": "List all attestations of the agent",
         "inputSchema": {
             "type": "object",
@@ -114,7 +127,7 @@ tools_dev = [
         }
     },
     {
-        "name": "display_attestation",
+        "name": "get_attestation",
         "description": "Display the content of an attestation",
         "inputSchema": {
             "type": "object",
@@ -139,7 +152,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
-def call_display_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_get_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     attestation_id = arguments.get("attestation_id")
     attestation = Attestation.query.filter_by(id=attestation_id).first()
@@ -147,7 +160,7 @@ def call_display_attestation(arguments: Dict[str, Any], config: dict) -> Dict[st
     return _ok_content([{"type": "text", "text": "An attestations of the Agent"}], structured=structured)
 
 
-def call_list_attestations(wallet_did, config) -> Dict[str, Any]:
+def call_get_attestation_list(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
     wallet_attestations = []
@@ -213,8 +226,91 @@ def call_rotate_bearer_token(arguments, agent_id, config) -> Dict[str, Any]:
         "wallet_url": this_wallet.url
     }
     return _ok_content([{"type": "text", "text": text}], structured=structured)
-    
-    
+
+
+def call_add_authentication_key(arguments, agent_id, config) -> Dict[str, Any]:
+    # Find the wallet for this agent
+    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+    if not this_wallet:
+        return _ok_content(
+            [{"type": "text", "text": "Wallet not found for this agent_id"}],
+            is_error=True,
+        )
+
+    public_key_str = arguments.get("public_key")
+    if not public_key_str:
+        return _ok_content(
+            [{"type": "text", "text": "Missing 'public_key' argument"}],
+            is_error=True,
+        )
+
+    # Parse the JWK
+    try:
+        jwk = json.loads(public_key_str)
+    except Exception:
+        logging.exception("Invalid JWK passed to call_add_authentication_key")
+        return _ok_content(
+            [{"type": "text", "text": "Invalid JSON for 'public_key' (JWK)"}],
+            is_error=True,
+        )
+
+    # Ensure no private part is stored, just in case
+    jwk.pop("d", None)
+
+    # Load the existing DID Document
+    try:
+        did_document = json.loads(this_wallet.did_document)
+    except Exception:
+        logging.exception("Invalid DID Document in wallet")
+        return _ok_content(
+            [{"type": "text", "text": "Stored DID Document is invalid JSON"}],
+            is_error=True,
+        )
+
+    # Get or init verificationMethod array
+    verification_methods = did_document.get("verificationMethod", [])
+
+    # Choose an identifier for the new key
+    # Prefer a provided 'kid' if present, otherwise use "key-N"
+    did = this_wallet.did
+    key_suffix = jwk.get("kid")
+    if not key_suffix:
+        key_suffix = f"key-{len(verification_methods) + 1}"
+
+    verification_method_id = f"{did}#{key_suffix}"
+
+    new_verification_method = {
+        "id": verification_method_id,
+        "type": "JsonWebKey2020",
+        "controller": did,
+        "publicKeyJwk": jwk,
+    }
+
+    verification_methods.append(new_verification_method)
+    did_document["verificationMethod"] = verification_methods
+
+    # Add this key as an authentication method (by reference)
+    authentication = did_document.get("authentication", [])
+    if verification_method_id not in authentication:
+        authentication.append(verification_method_id)
+    did_document["authentication"] = authentication
+
+    # Persist the updated DID Document
+    this_wallet.did_document = json.dumps(did_document)
+    db.session.commit()
+
+    text = "New authentication key added to the DID Document."
+    structured = {
+        "agent_id": this_wallet.did,
+        "dev_bearer_token": this_wallet.dev_token,
+        "agent_bearer_token": this_wallet.agent_token,
+        "wallet_url": this_wallet.url,
+        "did_document": did_document,
+        "added_key_id": verification_method_id,
+    }
+    return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+
 # guest tool
 def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
@@ -306,10 +402,6 @@ def create_did_web_document(did, jwk_1, jwk_2, url, agent_card_url=False):
                 "controller": did,
                 "publicKeyJwk": jwk_2
             }
-        ],
-        "authentication" : [
-            did + "#key-1",
-            did + "#key-2"
         ],
         "assertionMethod" : [
             did + "#key-1",

@@ -59,19 +59,24 @@
     <section class="hero">
       <img src="static/img/hero.png" alt="AI identity management illustration" class="hero-image" />
       <br>
-   <!--   <span class="badge">A2A • MCP • DIDs • Verifiable Credentials</span> -->
-      <h1 class="main-title">Identity for AI Agents</h1>
-     <p class="subtitle">
-  <strong>Trusted Identities, Attestations, and Wallets for the Agentic Web</strong><br><br>
-  <strong>Wallet4Agent</strong> empowers AI Agents to connect with organizations and individuals through verifiable digital identities. By combining <strong>Decentralized Identifiers (DIDs)</strong> and <strong>Verifiable Credentials (VCs)</strong> with modern trust frameworks, Wallet4Agent bridges decentralized identity standards and regulated ecosystems—ensuring every interaction between humans, organizations, and AI Agents is <strong>trusted, auditable, and verifiable by design</strong>.
-</p>
+   <h1 class="main-title">
+    We help AI Agents integrate with regulated and decentralized trust ecosystems
+  </h1>
+  <p class="subtitle">
+    <strong>Trusted Identities, Attestations, and Wallets for the Agentic Web</strong><br><br>
+    <strong>Wallet4Agent</strong> gives AI Agents a direct bridge into both <strong>regulated identity ecosystems</strong>
+    (such as <strong>EU eIDAS v2</strong>, the <strong>EUDI Wallet</strong>, and emerging <strong>U.S. digital-identity frameworks</strong>)
+    and <strong>decentralized ecosystems</strong> built on <strong>DIDs</strong> and <strong>Verifiable Credentials</strong>.
+    Agents can authenticate, connect to organizations and individuals, exchange attestations, and act on behalf of their owners in a way that is
+    <strong>trusted, auditable, and verifiable by design</strong>.
+  </p>
 
 
       <div class="cta">
-            <a class="btn primary" href="/mcp/info">MCP Info</a><br>
-             <a class="btn primary" href="/manifest.json">Manifest</a>
-          </div>
-            <div style="text-align:center; margin:2rem 0;">
+        <a class="btn primary" href="/mcp/info">MCP Info</a><br>
+        <a class="btn primary" href="/manifest.json">Manifest</a>
+      </div>
+      <div style="text-align:center; margin:2rem 0;">
         <a href="#get-started" class="button" 
           style="display:inline-block; background:#0ea5b0; color:white; padding:0.7rem 1.2rem; border-radius:0.5rem; text-decoration:none; font-weight:600;">
           Get Started
@@ -108,7 +113,7 @@
           <h3>Delegation vs Permission</h3>
           <p>
             In regulated contexts (e.g., EU), delegation is often expressed <em>declaratively</em> as a VC “legal mandate” and stored in a wallet.
-            Operational permission is best enforced by <strong>certificates/capabilities</strong> (e.g., scoped, time‑bound rights).
+            Operational permission is best enforced by <strong>certificates/capabilities</strong> (e.g., scoped, time-bound rights).
             Together, a mandate VC (who/why) + a capability certificate (what/when) provide both compliance and runtime safety.
           </p>
         </article>
@@ -140,7 +145,7 @@
       </p>
     </section>
 
-     <section class="section">
+    <section class="section">
       <h2>A Verifiable-by-Default Infrastructure</h2>
       <p style="text-align:center; max-width:850px; margin:0 auto;">
         By combining decentralized identity, open protocols, and verifiable credentials,
@@ -149,8 +154,6 @@
         and compliance with digital-identity regulations such as <strong>eIDAS v2</strong> and the upcoming AI governance frameworks.
       </p>
     </section>
-
-
 
     <section class="section">
       <h2>How Different Actors Use Wallet4Agent</h2>
@@ -190,11 +193,6 @@
       </div>
     </section>
 
-   
-    
-
-
-
     <section class="section">
       <h2>Technology Stack</h2>
       <p>
@@ -231,7 +229,7 @@
 
       <div class="feature-grid" style="margin-top:1rem;">
         <article class="card">
-          <h3>Option A — JSON‑RPC call to <code>/mcp</code> (no auth)</h3>
+          <h3>Option A — JSON-RPC call to <code>/mcp</code> (no auth)</h3>
           <p style="margin-bottom:.75rem;">
             Create an agent identity and wallet in one call. Provide your own credential (e.g., Google email or GitHub login) so you can
             later manage the wallet’s lifecycle.
@@ -266,7 +264,7 @@
 }</code></pre>
           <p style="margin-top:.75rem;">
             You’ll receive <strong>two bearer tokens</strong> right away — one for you as <em>developer</em> and one for the <em>agent</em>.
-            Use these to access role‑based tools and manage the wallet lifecycle.
+            Use these to access role-based tools and manage the wallet lifecycle.
           </p>
         </article>
 
@@ -290,7 +288,6 @@
         capabilities through standard MCP routes, and tools are enforced per role.
       </p>
     </section>
-
 
   </main>
 

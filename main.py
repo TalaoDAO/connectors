@@ -39,7 +39,7 @@ from routes.credential import crud_credential, select_credential
 
 from routes.status_list import statuslist
 
-from apis import issuer_api,  signin_api, verifier_api, mcp_server
+from apis import issuer_api,  signin_api,  mcp_server
 
 
 # ---- default constants (overridable via env) ----
@@ -157,7 +157,6 @@ def create_app() -> Flask:
     bridge.init_app(app)
     
     issuer_api.init_app(app)     # your issuer API (Swagger/RESTX)
-    verifier_api.init_app(app) 
     mcp_server.init_app(app)
     signin_api.init_app(app)
     
