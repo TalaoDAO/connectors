@@ -19,25 +19,6 @@ from db_model import Wallet, Attestation, db
 from utils import deterministic_jwk, oidc4vc
 import secrets
 
-# wallet key for testing purpose
-
-KEY_DICT = {
-    "kty": "EC",
-    "d": "d_PpSCGQWWgUc1t4iLLH8bKYlYfc9Zy_M7TsfOAcbg8",
-    "crv": "P-256",
-    "x": "ngy44T1vxAT6Di4nr-UaM9K3Tlnz9pkoksDokKFkmNc",
-    "y": "QCRfOKlSM31GTkb4JHx3nXB4G_jSPMsbdjzlkT_UpPc",
-    "alg": "ES256",
-}
-wallet_key = jwk.JWK(**KEY_DICT)
-KEY_DICT['kid'] = wallet_key.thumbprint()
-pub_key = copy.copy(KEY_DICT)
-del pub_key['d']
-
-
-pub_key_json = json.dumps(pub_key).replace(" ", "")
-DID = "did:jwk:" + base64.urlsafe_b64encode(pub_key_json.encode()).decode().replace("=", "")
-VM = DID + "#0"
 
 
 def init_app(app):
