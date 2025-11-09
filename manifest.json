@@ -1,14 +1,14 @@
 {
   "name": "Wallet4Agent MCP Server",
   "id": "wallet4agent-mcp",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "protocolVersion": "2025-06-18",
   "description": "Wallet4Agent MCP Server provides decentralized and regulated identity tools for AI Agents, Companies, and Users \u2014 powered by DIDs, Verifiable Credentials (SD-JWT & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, and Linked Verifiable Presentations.",
   "homepage": "https://wallet4agent.com",
   "license": "Apache-2.0",
   "maintainer": {
-    "name": "Wallet4Agent Team",
-    "url": "https://wallet4agent.com"
+    "name": "Web3 Digital Wallet Team",
+    "url": "https://talao.io"
   },
   "endpoints": {
     "rpc": {
@@ -30,131 +30,5 @@
     "header": "Authorization",
     "description": "Send Authorization: Bearer <token> to authenticate with the MCP server."
   },
-  "tools": [
-    {
-      "name": "create_identity",
-      "description": "Generate a Decentralized Identifier (DID) for the agent and create a new wallet to store agent verifiable credentials",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "agentcard_url": {
-            "type": "string",
-            "description": "Optional AgentCard URL."
-          },
-          "always_human_in_the_loop": {
-            "type": "boolean",
-            "description": "Always human in the loop",
-            "default": true
-          },
-          "owner_identity_provider": {
-            "type": "string",
-            "description": "Identity provider for owner",
-            "enum": [
-              "google",
-              "github",
-              "wallet"
-            ],
-            "default": "google"
-          },
-          "owner_login": {
-            "type": "string",
-            "description": "Google email, Github login, personal wallet DID"
-          }
-        },
-        "required": [
-          "owner_identity_provider",
-          "owner_login"
-        ]
-      }
-    },
-    {
-      "name": "get_data",
-      "description": "Get token for dev and agent",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      }
-    },
-    {
-      "name": "request_attestation",
-      "description": "Request the verifiable credential which is offered and store it in the wallet",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "credential_offer": {
-            "type": "string",
-            "description": "OIDC4VCI credential offer "
-          },
-          "agent_id": {
-            "type": "string",
-            "description": "Agent decentralized identifier. Use did:web:wallet4agent:demo for testing and demo."
-          }
-        },
-        "required": [
-          "agent_id",
-          "credential_offer"
-        ]
-      }
-    },
-    {
-      "name": "get_supported_verification_scopes",
-      "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      }
-    },
-    {
-      "name": "start_verification",
-      "description": "Create a wallet request as a QR code image or deeplink.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "verifier_id": {
-            "type": "string",
-            "description": "Verifier identifier."
-          },
-          "session_id": {
-            "type": "string",
-            "description": "Optional caller-provided session id."
-          }
-        },
-        "required": [
-          "verifier_id"
-        ]
-      }
-    },
-    {
-      "name": "poll_verification",
-      "description": "Poll current status for a session; returns structured status and redacted wallet_data.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "session_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id"
-        ]
-      }
-    },
-    {
-      "name": "revoke_verification_flow",
-      "description": "Acknowledge cleanup for a session id (back-end TTL handles actual expiration).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "session_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id"
-        ]
-      }
-    }
-  ]
+  "tools": []
 }

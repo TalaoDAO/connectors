@@ -190,6 +190,8 @@ class Wallet(db.Model):
     name = db.Column(db.Text)
     owner_identity_provider = db.Column(db.String(64))
     owner_login = db.Column(db.String(64))
+    ecosystem_profile = db.Column(db.String(64), default="DIIP V4")
+    agent_framework = db.Column(db.String(64), default="None")
     url = db.Column(db.Text)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
@@ -232,7 +234,7 @@ def seed_wallet(mode):
             did=did,
             url=url,
             owner_identity_provider="test",
-            owner_login="thierry.thevenet@talao.io",
+            owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet)
@@ -248,7 +250,7 @@ def seed_wallet(mode):
             did=did,
             url=url,
             owner_identity_provider="google",
-            owner_login="thierry.thevenet@talao.io",
+            owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet)
@@ -264,7 +266,7 @@ def seed_wallet(mode):
             did=did,
             url=url,
             owner_identity_provider="github",
-            owner_login="ThierryThevenet",
+            owner_login=json.dumps(["ThierryThevenet"]),
             did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet)
@@ -280,7 +282,7 @@ def seed_wallet(mode):
             did=did,
             url=url,
             owner_identity_provider="wallet",
-            owner_login="did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9",
+            owner_login=json.dumps(["did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9"]),
             did_document=create_did_document(did, jwk_1, jwk_2, url)
         )
         db.session.add(default_wallet_3)

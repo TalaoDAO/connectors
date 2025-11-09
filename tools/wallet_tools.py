@@ -27,13 +27,25 @@ tools_guest = [
                 },
                 "owner_identity_provider": {
                     "type": "string",
-                    "description": "Identity provider for owner",
+                    "description": "Identity provider for owners",
                     "enum": ["google", "github", "wallet"],
                     "default": "google"
                 },
                 "owner_login": {
                     "type": "string",
-                    "description": "Google email, Github login, personal wallet DID"
+                    "description": "One or more user login separated by a comma (Google email, Github login, personal wallet DID)"
+                },
+                "profile": {
+                    "type": "string",
+                    "description": "Ecosystem profile",
+                    "enum": ["EBSI V3", "DIIP V4", "DIIP V3", "ARF"],
+                    "default": "DIIP V4"
+                },
+                "agent_framework": {
+                    "type": "string",
+                    "description": "Agent framework",
+                    "enum": ["None", "Agntcy"],
+                    "default": "None"
                 }
             },
             "required": ["owner_identity_provider", "owner_login"]
@@ -44,34 +56,48 @@ tools_guest = [
 tools_agent = [
     {
         "name": "request_attestation",
-        "description": "Request the verifiable credential which is offered and store it in the wallet",
+        "description": "Request the verifiable credential which is offered.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "credential_offer": {
                     "type": "string",
-                    "description": "OIDC4VCI credential offer "
-                },
-                "agent_id": {
-                    "type": "string",
-                    "description": "Agent decentralized identifier. Use did:web:wallet4agent:demo for testing and demo.",
+                    "description": "OIDC4VCI credential offer"
                 }
             },
-            "required": ["agent_id", "credential_offer"]
+            "required": ["credential_offer"]
         }
     },
     {
-        "name": "verify",
-        "description": "Verify an Agent identity through its attestations",
+        "name": "get_wallet_data",
+        "description": "Get all the information about the wallet",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "get_attestation_list",
+        "description": "List all attestations of the wallet",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [""]
+        }
+    },
+    {
+        "name": "get_attestation",
+        "description": "Get the content of an attestation of the wallet",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "agent_id": {
+                "attestation_id": {
                     "type": "string",
-                    "description": "Agent decentralized identifier. Use did:web:wallet4agent:demo for testing and demo.",
+                    "description": "Attestation identifier.",
                 }
             },
-            "required": ["agent_id"]
+            "required": ["attestation_id"]
         }
     },
     
@@ -177,15 +203,32 @@ def call_get_attestation_list(wallet_did, config) -> Dict[str, Any]:
             }
         )        
     structured = {"attestations": wallet_attestations}
-    return _ok_content([{"type": "text", "text": "All attestations of the Agent"}], structured=structured)
+    if not wallet_attestations:
+        text = "No attestation found"
+    else:
+        text = "All attestations of the Agent"
+    return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+# for agent
+def call_get_wallet_data(wallet_did, config) -> Dict[str, Any]:
+    # Query attestations linked to this wallet
+    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
+    structured = {
+        "wallet_url": this_wallet.url,
+        "number_of_attestations": len(attestations_list),
+        "ecosystem_profile": this_wallet.ecosystem_profile,
+        "human_in_the_loop": this_wallet. always_human_in_the_loop
+        }
+    text = "Wallet data"
+    return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
 # agent tool
-def call_request_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_request_attestation(arguments: Dict[str, Any], agent_id, config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
-    wallet_did = arguments.get("agent_id")
     mode = config["MODE"]
-    attestation, text = wallet.wallet(wallet_did, credential_offer, mode)
+    attestation, text = wallet.wallet(agent_di, credential_offer, mode)
     if not attestation:
         return _ok_content([{"type": "text", "text": text}], is_error=True)     
     structured = {
@@ -196,7 +239,7 @@ def call_request_attestation(arguments: Dict[str, Any], config: dict) -> Dict[st
 
 
 # dev tool
-def call_get_data(agent_id, config) -> Dict[str, Any]:
+def call_get_identity_data(agent_id, config) -> Dict[str, Any]:
     mode = config["MODE"]
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
     structured = {
@@ -206,6 +249,8 @@ def call_get_data(agent_id, config) -> Dict[str, Any]:
         "wallet_url": mode.server + "did/" + urllib.parse.quote(this_wallet.did, safe=""),
         "did_document": json.loads(this_wallet.did_document),
         "owner_login": this_wallet.owner_login,
+        "ecosystem_profile": this_wallet.ecosystem_profile,
+        "agent_framework": this_wallet.agent_framework,
         "owner_identity_provider": this_wallet.owner_identity_provider
     }
     return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
@@ -315,7 +360,7 @@ def call_add_authentication_key(arguments, agent_id, config) -> Dict[str, Any]:
 def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
     owner_identity_provider = arguments.get("owner_identity_provider")
-    owner_login = arguments.get("owner_login")
+    owner_login = arguments.get("owner_login").split(",")
     agent_card_url = arguments.get("agentcard_url")
     agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
     jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase(agent_did + "#key-2")
@@ -333,36 +378,38 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
     wallet = Wallet(
         dev_token=dev_token,
         agent_token=agent_token,
-        owner_login=owner_login,
+        owner_login=json.dumps(owner_login),
         owner_identity_provider=owner_identity_provider,
+        ecosystem_profile=arguments.get("ecosystem_profile", "DIIP V4"),
+        agent_framework=arguments.get("agent_framework", "None"),
         did=agent_did,
         did_document=json.dumps(did_document),
         url=url
     )
-    if arguments.get("owner_identity_provider") == "google":
-        email = owner_login
-        login = email
-        user = User.query.filter_by(email=email).first()
-    elif arguments.get("owner_identity_provider") == "github":
-        user = User.query.filter_by(email=owner_login).first()
-        email = ""
-        login = owner_login
-    elif arguments.get("owner_identity_provider") == "wallet":
-        login = owner_login
-        user = User.query.filter_by(login=owner_login).first()
-        email = ""
-    else:
-        email = ""
-        login = owner_login
-    if not user:
-        user = User(
-            email=email,
-            login=login,
-            registration="wallet_creation",
-            subscription="free",
-            profile_picture="default_picture.jpeg",
-        )
-    db.session.add(user)  
+    for user_login in owner_login:
+        if arguments.get("owner_identity_provider") == "google":
+            email = user_login
+            login = email
+            owner = User.query.filter_by(email=email).first()
+        elif arguments.get("owner_identity_provider") == "github":
+            owner = User.query.filter_by(email=user_login).first()
+            email = ""
+            login = user_login
+        elif arguments.get("owner_identity_provider") == "wallet":
+            login = user_login
+            owner = User.query.filter_by(login=user_login).first()
+            email = ""
+        else:
+            break
+        if not owner:
+            owner = User(
+                email=email,
+                login=login,
+                registration="wallet_creation",
+                subscription="free",
+                profile_picture="default_picture.jpeg",
+            )
+        db.session.add(owner)  
     db.session.add(wallet)
     db.session.commit()
     text = "New agent identifier and wallet created."
@@ -374,7 +421,7 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
         "wallet_url": wallet.url
     }
     # send message
-    message_text = owner_login + " from " + owner_identity_provider
+    message_text = json.dumps(owner_login) + " from " + owner_identity_provider
     message.message("A new wallet for AI Agent has been created", "thierry.thevenet@talao.io", message_text, mode)
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 

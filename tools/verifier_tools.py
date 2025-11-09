@@ -7,30 +7,25 @@ import logging
 import qrcode
 from routes.verifier import oidc4vp
 
+tools_dev = []
+tools_guest = []
 
 tools_agent = [
     {
-        "name": "get_supported_user_verification_scopes",
-        "description": "Return supported scopes, the claims each scope returns, and available verifier profiles.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
-    },
-    {
         "name": "start_user_verification",
-        "description": "Create a wallet request as a QR code image or deeplink.",
+        "description": "Create a user wallet request as a QR code image or link.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "scope": {
                     "type": "string",
-                    "description": "Scope to verify."
+                    "description": "User scope to verify. Profile is first name, last name and birth date.",
+                    "enum": ["email", "over18", "profile", "wallet_identifier"],
+                    "default": "email"
                 },
                 "session_id": {
                     "type": "string",
-                    "description": "Optional caller-provided session id."
+                    "description": "Optional caller-provided user session id."
                 }
             },
             "required": ["scope"]
@@ -38,7 +33,7 @@ tools_agent = [
     },
     {
         "name": "poll_user_verification",
-        "description": "Poll current status for a session; returns structured status and redacted wallet_data.",
+        "description": "Poll current verification status for a user verification; returns user wallet data.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -75,39 +70,38 @@ def call_start_user_verification(arguments: Dict[str, Any], verifier_api_key: Op
     red = config["REDIS"]
     mode = config["MODE"]
 
-    verifier_id = arguments.get("scope")
+    scope = arguments.get("scope")
     
-    # scope is now unique by verifier_id
-    scope_for_demo = {
-        "0000": "wallet_identifier",
-        "0001": "email",
-        "0002": "over18",
-        "0003": "profile"
+    verifier_id_for_scope = {
+        "wallet_identifier": "0000",
+        "email": "0001",
+        "over18": "0002",
+        "profile": "0003"
     }
-    scope = scope_for_demo.get(verifier_id, "custom")
+    verifier_id = verifier_id_for_scope.get(scope, "custom")
+    
+    print(scope, verifier_id)
     
     # optional session_id
     session_id = arguments.get("session_id") or str(uuid.uuid4())
         
     data = oidc4vp.oidc4vp_qrcode(verifier_id, session_id, scope, red, mode)
     
-    deeplink = data.get("url")
-    sess = data.get("session_id", session_id)
+    link = data.get("url")
+    session_id = data.get("session_id", session_id)
 
     # Build structured flow info
     flow = {
-        "session_id": sess,
-        "deeplink_url": deeplink,
-        "pull_url": f"{pull_status_base.rstrip('/')}/{sess}",
-        "public_base_url": public_base_url
+        "session_id": session_id,
+        "oidc4vp_request": link,
     }
 
     blocks: List[Dict[str, Any]] = []
-    b64 = _qr_png_b64(deeplink) if deeplink else None
+    b64 = _qr_png_b64(link) if link else None
     if b64:
         blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
     # Always include a text hint
-    text_hint = f"Scan the QR code (if shown) or open wallet link:\n{deeplink}" if deeplink else "No deeplink URL returned."
+    text_hint = f"Scan the QR code (if shown) or open wallet link:\n{link}" if link else "No deeplink URL returned."
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
 

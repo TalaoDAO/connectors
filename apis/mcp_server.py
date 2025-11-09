@@ -10,7 +10,7 @@ import importlib
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.3.0"
 
  
 LEVELS = {
@@ -55,25 +55,29 @@ def init_app(app):
     def get_role_and_agent_id() ->str:
         bearer_token = _bearer_or_api_key()
         if not bearer_token:
-            logging.info("no Bearer toen")
+            logging.info("no Bearer token")
             return "guest", None 
         try:
             role = oidc4vc.get_payload_from_token(bearer_token).get("role")
             agent_id = oidc4vc.get_payload_from_token(bearer_token).get("sub")
             oidc4vc.verif_token(bearer_token)
         except Exception:
-            logging.info("verif token failed with role = %s and agent_id = %s", role, agent_id)
+            logging.warning("verif token failed with role = %s and agent_id = %s", role, agent_id)
             return "guest", None
         if not role:
             return "guest", None
         
         # check if token is still valid for this agent_id
         this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
-        if bearer_token == this_wallet.dev_token:
-            return "dev", agent_id
-        elif bearer_token == this_wallet.agent_token:
-            return "agent", agent_id
-        else:
+        try:
+            if bearer_token == this_wallet.dev_token:
+                return "dev", agent_id
+            elif bearer_token == this_wallet.agent_token:
+                return "agent", agent_id
+            else:
+                return "guest", None
+        except Exception as e:
+            logging.warning(str(e))
             return "guest", None
         
     
@@ -103,7 +107,7 @@ def init_app(app):
             "name": SERVER_NAME,
             "version": SERVER_VERSION,
             "protocolVersion": PROTOCOL_VERSION,
-            "endpoints": {"rpc": "/mcp"},
+            "endpoints": {"rpc": config()["SERVER"] + "mcp"},
             "auth": {
                 "type": "bearer",
                 "scheme": "Bearer",
@@ -115,8 +119,10 @@ def init_app(app):
 
     @app.get("/manifest.json")
     def manifest():
-        file = json.load(open("manifest.json", "r"))
-        return jsonify(file)
+        manifest = json.load(open("manifest.json", "r"))
+        manifest["tools"].extend(wallet_tools.tools_agent)
+        manifest["tools"].extend(verifier_tools.tools_agent)
+        return jsonify(manifest)
             
     @app.get("/mcp/tools_list")
     def mcp_tools_list():
@@ -130,8 +136,7 @@ def init_app(app):
                     tools_list["tools"].extend(getattr(module, const))
         return jsonify(tools_list)
 
-
-    # --------- CORS for /mcp ---------
+    # --------- CORS for /mcp ---------  
     def _add_cors(resp):
         origin = request.headers.get("Origin")
         allow = current_app.config.get("CORS_ALLOWED_ORIGINS", "*")
@@ -155,16 +160,28 @@ def init_app(app):
 
     # --------- Tool catalog ---------
     def _tools_list(role) -> Dict[str, Any]:
+        """
         tools_list = {"tools": []}   
         #tools_list["tools"].extend(verifier_tools.tools)
         if role == "guest":
             tools_list["tools"].extend(wallet_tools.tools_guest)
         if role == "dev":
             tools_list["tools"].extend(wallet_tools.tools_dev)
+            tools_list["tools"].extend(verifier_tools.tools_dev)
         if role == "agent":
             tools_list["tools"].extend(verifier_tools.tools_agent)
+            tools_list["tools"].extend(wallet_tools.tools_agent)
         return tools_list
-
+        
+        """
+        modules = ["tools.wallet_tools", "tools.verifier_tools"]
+        constant = "tools_" + role
+        tools_list = {"tools": []}
+        for module_name in modules:
+            module = importlib.import_module(module_name) 
+            if hasattr(module, constant):
+                tools_list["tools"].extend(getattr(module, constant))
+        return tools_list
 
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
@@ -228,28 +245,15 @@ def init_app(app):
             name = params.get("name")
             arguments = params.get("arguments") or {}         
             role, agent_id = get_role_and_agent_id()
+
     
-            if name == "get_supported_user_verification_scopes":
+            if name == "start_user_verification":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = _ok_content([{"type":"text","text":"Scopes and profiles"}],
-                        structured={
-                            "scopes": {
-                                "0000": "wallet identifier",
-                                "0001": "email",
-                                "0002": "over 18 proof",
-                                "0003": "first name, last name and birth date"
-                            }
-                        })  
-    
-            elif name == "start_user_verification":
-                if role != "agent":
-                    return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                verifier_id = arguments.get("scope")
+                scope = arguments.get("scope")
                 # For public test profiles, simplest rule: token must equal verifier_id
-                if verifier_id not in {"0000","0001","0002", "0003"}:
+                if scope not in {"email","over18","profile", "wallet_identifier"}:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
                 out = verifier_tools.call_start_user_verification(arguments, api_key, config())
@@ -264,9 +268,9 @@ def init_app(app):
                 if role == "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                if not arguments.get("owner_login"):
+                if not arguments.get("owner_login") or not arguments.get("owner_identity_provider"):
                     return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: owner_login missing "}}        
+                                "error":{"code":-32001,"message":"Unauthorized: owner_login or owner_identity_provider missing "}}        
                 out = wallet_tools.call_create_identity(arguments, config())
             
             elif name == "add_authentication_key":
@@ -282,7 +286,13 @@ def init_app(app):
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_data(agent_id, config())
+                out = wallet_tools.call_get_identity_data(agent_id, config())
+                
+            elif name == "get_wallet_data":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_get_wallet_data(agent_id, config())
             
             elif name == "get_attestation_list":
                 if role not in ["dev", "agent"]:
@@ -306,13 +316,13 @@ def init_app(app):
                 out = wallet_tools.call_rotate_bearer_token(arguments, agent_id, config())
             
             elif name == "request_attestation":
+                if role not in ["agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if not arguments.get("credential_offer"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing credential_offer"}}
-                if not arguments.get("agent_id"):
-                    return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: missing agent_id"}}
-                out = wallet_tools.call_request_attestation(arguments, config())
+                out = wallet_tools.call_request_attestation(arguments, agent_id, config())
 
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})
