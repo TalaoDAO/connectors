@@ -64,7 +64,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 
 # --------- Tool implementations ---------
-def call_start_user_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
+def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     pull_status_base = config["PULL_STATUS_BASE"]
     public_base_url = config["PUBLIC_BASE_URL"]
     red = config["REDIS"]
@@ -106,7 +106,7 @@ def call_start_user_verification(arguments: Dict[str, Any], verifier_api_key: Op
     return _ok_content(blocks, structured=flow)
 
 
-def call_poll_user_verification(arguments: Dict[str, Any], verifier_api_key: Optional[str], config: dict) -> Dict[str, Any]:
+def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     red = config["REDIS"]
     session_id = arguments.get("session_id")
     if not session_id:

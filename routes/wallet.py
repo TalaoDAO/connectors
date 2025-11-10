@@ -4,21 +4,21 @@ from flask import Flask, request, jsonify, render_template, redirect, session, c
 from flask_login import login_required, current_user, logout_user
 from jwcrypto import jwk, jwt
 import requests
-import json
-import sys
-from urllib.parse import urlencode
+from urllib.parse import urlencode,parse_qs, urlparse
 import pkce
 import logging
 from datetime import datetime
 logging.basicConfig(level=logging.INFO)
-import uuid
-import copy
-from datetime import datetime, timedelta
-from urllib.parse import parse_qs, urlparse
+from datetime import datetime
 from db_model import Wallet, Attestation, db
 from utils import deterministic_jwk, oidc4vc
 import secrets
+import json
+import base64
+import hashlib
 
+from jwcrypto import jwk, jwt
+from jwcrypto.common import json_encode
 
 
 def init_app(app):
@@ -46,7 +46,7 @@ def web_wallet_openid_configuration(wallet_did):
     return jsonify(config)
 
 
-def build_session_config(agent_id: str, credential_offer: str):
+def build_session_config(agent_id: str, credential_offer: str, mode):
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
     if not this_wallet:
         logging.warning("wallet not found")
@@ -139,7 +139,8 @@ def build_session_config(agent_id: str, credential_offer: str):
         "wallet_did": this_wallet.did,
         "wallet_url": this_wallet.url,
         "owner_login": json.loads(this_wallet.owner_login),
-        "always_human_in_the_loop": this_wallet.always_human_in_the_loop
+        "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
+        "server": mode.server
     }
     
     # mandatory fields
@@ -157,7 +158,7 @@ def build_session_config(agent_id: str, credential_offer: str):
 
 # for MCP tools
 def wallet(agent_id, credential_offer, mode):
-    session_config, text = build_session_config(agent_id, credential_offer)
+    session_config, text = build_session_config(agent_id, credential_offer, mode)
     if not session_config:
         return None, text
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
@@ -171,7 +172,7 @@ def wallet_route():
     return render_template("home.html")
     
     
-# credntial offer endpoint
+# credential offer endpoint
 def credential_offer(wallet_did):
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
@@ -228,7 +229,7 @@ def credential_offer(wallet_did):
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
     
-    session_config, text = build_session_config(wallet.did, json.dumps(offer))    
+    session_config, text = build_session_config(wallet.did, json.dumps(offer), mode)    
     if not session_config:
         return render_template("wallet/session_screen.html", message=text, title="Access Denied")
     
@@ -242,10 +243,11 @@ def credential_offer(wallet_did):
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
         attestation, message = code_flow(session_config, mode)
         if attestation:
-            # store attestation but do not publish it
-            result, message = store(attestation, session_config, published=False)
+            # store attestation and publish it
+            result, message = store(attestation, session_config, published=True)
             if result:
-                return render_template("wallet/session_screen.html", message=message, title="Congrats !")
+                message_ok = "Attestation has been stored and published successfully"
+                return render_template("wallet/session_screen.html", message=message_ok, title="Congrats !")
         return render_template("wallet/session_screen.html", message=message, title="Issuance failed")
     else:
         message = "Grant type not supported when user is not in the loop"
@@ -264,12 +266,20 @@ def user_consent():
     public_url = request.form.get("publish_scope") or None
     session_config = json.loads(red.get(session_id).decode())
     if public_url == "public":
-        store(attestation, session_config, published=True)
-        message = "Attestation has been stored an published"
+        result, message = store(attestation, session_config, published=True)
+        if result:
+            message_ok = "Attestation has been stored an published"
+            return render_template("wallet/session_screen.html", message=message_ok, title= "Congrats !") 
+        else:
+            return render_template("wallet/session_screen.html", message=message, title= "Issuance failure")
+            
     else:
-        store(attestation, session_config, published=False)
-        message = "Attestation has been stored"
-    return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
+        result, message = store(attestation, session_config, published=False)
+        if result:
+            message_ok = "Attestation has been stored"
+            return render_template("wallet/session_screen.html", message=message_ok, title= "Congrats !") 
+        else:
+            return render_template("wallet/session_screen.html", message=message, title= "Issuance failure")
 
 
 def build_authorization_request(session_config, red, mode) -> str:
@@ -464,5 +474,139 @@ def store(cred, session_config, published=False):
         )
     db.session.add(attestation)
     db.session.commit()
+    if published:
+        server = session_config["server"]
+        wallet_did = session_config["wallet_did"]
+        publish(wallet_did, cred, server)
+        
     logging.info("credential is stored as attestation #%s", attestation.id)
     return True, "Attestation has been stored"
+
+
+# helper: base64url without padding
+def base64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def publish(wallet_did, attestation: str, server: str):
+    """
+    Publish a Linked Verifiable Presentation for an SD-JWT VC, following:
+      - IETF SD-JWT + SD-JWT VC (including KB-JWT + sd_hash)
+      - DIF Linked Verifiable Presentations (service entry in DID Doc)
+
+    Args:
+        wallet_did: DID of the wallet/holder.
+        attestation: SD-JWT presentation string:
+            <Issuer-JWT>~<Disclosure 1>~...~<Disclosure N>~
+        mode: object with .server (base URL) used to build service endpoints.
+    """
+
+    # 1. Look up wallet
+    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    if this_wallet is None:
+        logging.error("Wallet not found for DID %s", wallet_did)
+        return None
+
+    # 2. Load existing DID Document
+    try:
+        did_document = json.loads(this_wallet.did_document or "{}")
+    except Exception:
+        logging.exception("Invalid DID Document in wallet")
+        return None
+
+    # 3. Normalize / validate incoming SD-JWT VC presentation (SD-JWT)
+    sd_jwt_presentation = attestation.strip()
+
+    # Per SD-JWT spec, an SD-JWT presentation (without KB) ends with '~'
+    if not sd_jwt_presentation.endswith("~"):
+        logging.error("Expected SD-JWT presentation to end with '~'")
+        return None
+
+    # remove disclosure if any
+    sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did)
+
+    # 6. Wrap into a VC Data Model 2.0-style Verifiable Presentation envelope
+    #    Using media type application/dc+sd-jwt in a data: URI.
+    vp_resource = {
+        "@context": ["https://www.w3.org/ns/credentials/v2"],
+        "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
+        "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
+    }
+
+    # 7. Add VP to wallet's internal Linked VP registry
+    id = secrets.token_hex(16)
+    service_id = wallet_did + "#" + id
+
+    try:
+        linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
+    except Exception:
+        linked_vp_json = {}
+
+    linked_vp_json[id] = vp_resource
+    this_wallet.linked_vp = json.dumps(linked_vp_json)
+
+    # 8. Create LinkedVerifiablePresentation service endpoint in DID Doc
+    service_array = did_document.get("service", [])
+    
+    new_service = {
+        "id": service_id,
+        "type": "LinkedVerifiablePresentation",
+        "serviceEndpoint": server + "service/" + wallet_did + "/" + id,
+    }
+
+    service_array.append(new_service)
+    did_document["service"] = service_array
+    this_wallet.did_document = json.dumps(did_document)
+
+    # 9. Persist changes
+    db.session.commit()
+
+    # Optionally return details for caller
+    return {
+        "service_id": service_id,
+        "service": new_service,
+        "verifiable_presentation": vp_resource,
+    }
+
+    
+def sign_and_add_kb(sd_jwt, wallet_did):
+    """ Build Key Binding JWT (KB-JWT) using jwcrypto
+    remove disclosure
+        header: typ=kb+jwt, alg=ES256
+    """
+    sd_jwt_presentation = sd_jwt.split("~")[0]
+    now = int(datetime.utcnow().timestamp())
+    nonce = secrets.token_urlsafe(16)
+
+    # sd_hash = b64url( SHA-256( ascii(SD-JWT-presentation) ) )
+    digest = hashlib.sha256(sd_jwt_presentation.encode("ascii")).digest()
+    sd_hash = base64url_encode(digest)
+
+    kb_header = {
+        "typ": "kb+jwt",
+        "alg": "ES256",
+    }
+
+    kb_claims = {
+        "iat": now,
+        "aud": wallet_did,
+        "nonce": nonce,
+        "sd_hash": sd_hash,
+    }
+
+    # Load holder key from wallet (JWK JSON assumed)
+    private_jwk = deterministic_jwk.jwk_p256_from_passphrase(wallet_did + "#key-1")
+    print("private jwk = ", private_jwk)
+    if not isinstance(private_jwk, dict):
+        private_jwk = json.loads(private_jwk)
+    try:
+        holder_jwk = jwk.JWK(**private_jwk)
+    except Exception:
+        logging.exception("Invalid holder private JWK in wallet")
+        return None
+
+    kb_token = jwt.JWT(header=kb_header, claims=kb_claims)
+    kb_token.make_signed_token(holder_jwk)
+    print("kb = ",  kb_token.serialize())
+    return sd_jwt_presentation + "~" + kb_token.serialize()  # compact JWS
+    

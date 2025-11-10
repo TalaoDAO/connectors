@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import timedelta
 
-from flask import Flask, redirect, request, render_template_string, current_app, Response
+from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify
 #from flask_mobility import Mobility
 from flask_session import Session
 from flask_qrcode import QRcode
@@ -233,6 +233,21 @@ def create_app() -> Flask:
             "Cache-Control": "no-cache"
         }
         return Response(json.dumps(did_document), headers=headers)
+    
+    
+    @app.get('/service/<wallet_did>/<id>')
+    def service(wallet_did, id):
+        this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+        service = json.loads(this_wallet.linked_vp).get(id)
+        if service:
+            headers = {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache"
+            }
+            return Response(json.dumps(service), headers=headers)
+        else:
+            return jsonify({"error": "linked VP Not found"}), 401
+    
     
     return app
 

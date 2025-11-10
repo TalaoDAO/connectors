@@ -160,20 +160,6 @@ def init_app(app):
 
     # --------- Tool catalog ---------
     def _tools_list(role) -> Dict[str, Any]:
-        """
-        tools_list = {"tools": []}   
-        #tools_list["tools"].extend(verifier_tools.tools)
-        if role == "guest":
-            tools_list["tools"].extend(wallet_tools.tools_guest)
-        if role == "dev":
-            tools_list["tools"].extend(wallet_tools.tools_dev)
-            tools_list["tools"].extend(verifier_tools.tools_dev)
-        if role == "agent":
-            tools_list["tools"].extend(verifier_tools.tools_agent)
-            tools_list["tools"].extend(wallet_tools.tools_agent)
-        return tools_list
-        
-        """
         modules = ["tools.wallet_tools", "tools.verifier_tools"]
         constant = "tools_" + role
         tools_list = {"tools": []}
@@ -202,17 +188,13 @@ def init_app(app):
         params = req.get("params") or {}
         
         if method and method.startswith("notifications/"):
-            return ("", 202)
-        
-        # Get API key as Authorization bearer or X-API-KEY
-        api_key = _bearer_or_api_key()
-        
+            return ("", 202)      
         # ping basic 
-        if method == "ping":
+        elif method == "ping":
             return jsonify({"jsonrpc": "2.0", "result": {}, "id": req_id})
 
         # initialize handshake
-        if method == "initialize":
+        elif method == "initialize":
             result = {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {
@@ -224,14 +206,14 @@ def init_app(app):
             return jsonify({"jsonrpc": "2.0", "result": result, "id": req_id})
 
         # tools/list
-        if method == "tools/list":
+        elif method == "tools/list":
             role, agent_id = get_role_and_agent_id()
             logging.info("role = %s",role)
             return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
                 
     
         # trace and debug
-        if method == "logging/setLevel":
+        elif method == "logging/setLevel":
             level_str = (params.get("level") or "").lower()
             py_level = LEVELS.get(level_str)
             if py_level is None:
@@ -241,7 +223,7 @@ def init_app(app):
             return jrpc_ok(req_id)
 
         # tools/call
-        if method == "tools/call":
+        elif method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments") or {}         
             role, agent_id = get_role_and_agent_id()
@@ -256,19 +238,19 @@ def init_app(app):
                 if scope not in {"email","over18","profile", "wallet_identifier"}:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
-                out = verifier_tools.call_start_user_verification(arguments, api_key, config())
+                out = verifier_tools.call_start_user_verification(arguments, config())
             
             elif name == "poll_user_verification":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = verifier_tools.call_poll_user_verification(arguments, api_key, config())
+                out = verifier_tools.call_poll_user_verification(arguments, config())
             
             elif name == "create_identity":
                 if role == "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                if not arguments.get("owner_login") or not arguments.get("owner_identity_provider"):
+                if not arguments.get("owners_login") or not arguments.get("owners_identity_provider"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: owner_login or owner_identity_provider missing "}}        
                 out = wallet_tools.call_create_identity(arguments, config())
@@ -293,21 +275,37 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_wallet_data(agent_id, config())
+                
+            elif name == "delete_wallet":
+                if role != "dev":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_delete_wallet(agent_id, config())
             
-            elif name == "get_attestation_list":
+            elif name == "get_wallet_attestation_list":
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_attestation_list(agent_id, config())
+                out = wallet_tools.call_get_wallet_attestation_list(agent_id, config())
+                
+            elif name == "get_agent_attestation_list":
+                if not arguments.get("agent_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: attestation_id missing "}}       
+                if role not in ["agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_get_agent_attestation_list(agent_id, config())
+                
             
-            elif name == "get_attestation":
+            elif name == "get_wallet_attestation":
                 if not arguments.get("attestation_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: attestation_id missing "}}       
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_attestation(arguments, config())
+                out = wallet_tools.call_get_wallet_attestation(arguments, config())
             
             elif name == "rotate_bearer_token":
                 if role != "dev":

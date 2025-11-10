@@ -8,11 +8,12 @@ from routes import wallet
 from db_model import Attestation
 from utils import deterministic_jwk, oidc4vc, message
 import urllib
+import requests
 
 tools_guest = [
     {
         "name": "create_identity",
-        "description": "Generate a Decentralized Identifier (DID) for the agent and create a new wallet to store agent verifiable credentials",
+        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent verifiable credentials",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -25,17 +26,17 @@ tools_guest = [
                     "description": "Always human in the loop",
                     "default": True
                 },
-                "owner_identity_provider": {
+                "owners_identity_provider": {
                     "type": "string",
                     "description": "Identity provider for owners",
                     "enum": ["google", "github", "wallet"],
                     "default": "google"
                 },
-                "owner_login": {
+                "owners_login": {
                     "type": "string",
                     "description": "One or more user login separated by a comma (Google email, Github login, personal wallet DID)"
                 },
-                "profile": {
+                "ecosystem": {
                     "type": "string",
                     "description": "Ecosystem profile",
                     "enum": ["EBSI V3", "DIIP V4", "DIIP V3", "ARF"],
@@ -48,7 +49,7 @@ tools_guest = [
                     "default": "None"
                 }
             },
-            "required": ["owner_identity_provider", "owner_login"]
+            "required": ["owners_identity_provider", "owners_login"]
         }
     }
 ]
@@ -78,7 +79,7 @@ tools_agent = [
         }
     },
     {
-        "name": "get_attestation_list",
+        "name": "get_wallet_attestation_list",
         "description": "List all attestations of the wallet",
         "inputSchema": {
             "type": "object",
@@ -87,7 +88,21 @@ tools_agent = [
         }
     },
     {
-        "name": "get_attestation",
+        "name": "get_agent_attestation_list",
+        "description": "List all attestations of the wallet",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent identifier"
+                    }
+            },
+            "required": ["agent_id"]
+        }
+    },
+    {
+        "name": "get_wallet_attestation",
         "description": "Get the content of an attestation of the wallet",
         "inputSchema": {
             "type": "object",
@@ -107,6 +122,15 @@ tools_dev = [
     {
         "name": "get_identity_data",
         "description": "Get all information about an agent identity",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "delete_wallet",
+        "description": "Delete the current wallet",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -178,7 +202,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
-def call_get_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_get_wallet_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     attestation_id = arguments.get("attestation_id")
     attestation = Attestation.query.filter_by(id=attestation_id).first()
@@ -186,7 +210,7 @@ def call_get_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, A
     return _ok_content([{"type": "text", "text": "An attestations of the Agent"}], structured=structured)
 
 
-def call_get_attestation_list(wallet_did, config) -> Dict[str, Any]:
+def call_get_wallet_attestation_list(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
     wallet_attestations = []
@@ -209,6 +233,79 @@ def call_get_attestation_list(wallet_did, config) -> Dict[str, Any]:
         text = "All attestations of the Agent"
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
+
+def call_get_agent_attestation_list(wallet_did: str, config: Dict[str, Any]) -> Dict[str, Any]:
+
+    # 1. Resolve DID using Universal Resolver (Talao -> fallback to public)
+    resolver_urls = [
+        f"https://unires:test@unires.talao.co/1.0/identifiers/{wallet_did}",
+        f"https://dev.uniresolver.io/1.0/identifiers/{wallet_did}",
+    ]
+
+    did_doc = None
+    last_exception = None
+
+    for url in resolver_urls:
+        try:
+            logging.info("Resolving DID %s via %s", wallet_did, url)
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            payload = r.json()
+            logging.info("DID Resolution response: %s", payload)
+            did_doc = payload.get("didDocument") or payload.get("didDocument", {})
+            break
+        except Exception as e:
+            logging.exception("Failed to resolve DID via %s", url)
+            last_exception = e
+
+    if did_doc is None:
+        logging.warning("Failed to resolve DID %s via all resolvers", wallet_did)
+        text = f"Could not resolve DID {wallet_did} using Universal Resolver."
+        structured = {
+            "attestations": [],
+            "error": "cannot_access_universal_resolver",
+            "details": str(last_exception) if last_exception else None,
+        }
+        return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+    # 2. Extract LinkedVerifiablePresentation services as "attestations"
+    services: List[Dict[str, Any]] = did_doc.get("service", []) or []
+
+    wallet_attestations: List[Dict[str, Any]] = []
+    for svc in services:
+        svc_type = svc.get("type", "")
+        # type can be string or list
+        if isinstance(svc_type, list):
+            is_linked_vp = "LinkedVerifiablePresentation" in svc_type
+        else:
+            is_linked_vp = svc_type == "LinkedVerifiablePresentation"
+
+        if not is_linked_vp:
+            continue
+
+        # Basic info from service; you can add more from your own conventions
+        attestation = {
+            "attestation_id": svc.get("id"),
+            "name": svc.get("label") or "Linked Verifiable Presentation",
+            "description": "LinkedVerifiablePresentation service discovered in DID Document",
+            "issuer": wallet_did,
+            "service_endpoint": svc.get("serviceEndpoint"),
+            "iat": None,         # no issuance time in DID Doc; can be enriched later
+            "validity": "active" # assumption; you could check revocation if you have a registry
+        }
+        wallet_attestations.append(attestation)
+
+    structured = {"attestations": wallet_attestations}
+
+    # 3. Human-readable text for MCP client
+    if not wallet_attestations:
+        text = f"No attestations found for Agent DID {wallet_did}."
+    else:
+        text = f"All attestations (Linked VPs) of Agent DID {wallet_did}."
+
+    return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+
 # for agent
 def call_get_wallet_data(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet
@@ -222,6 +319,56 @@ def call_get_wallet_data(wallet_did, config) -> Dict[str, Any]:
         }
     text = "Wallet data"
     return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+
+def call_delete_wallet(wallet_did, config) -> Dict[str, Any]:
+    """
+    Delete a wallet and its related data from the database.
+
+    - Removes the Wallet row identified by `wallet_did`
+    - Removes all Attestations linked to this wallet
+    - Returns a structured summary of what was deleted
+    """
+
+    # Look up the wallet
+    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    if not this_wallet:
+        text = f"Wallet not found for DID: {wallet_did}"
+        return _ok_content(
+            [{"type": "text", "text": text}],
+            is_error=True,
+        )
+
+    # Query attestations linked to this wallet
+    attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
+    number_of_attestations = len(attestations_list)
+
+    # Capture info before deletion
+    structured = {
+        "wallet_did": wallet_did,
+        "wallet_url": getattr(this_wallet, "url", None),
+        "number_of_attestations_deleted": number_of_attestations,
+        "ecosystem_profile": getattr(this_wallet, "ecosystem_profile", None),
+        "human_in_the_loop": getattr(this_wallet, "always_human_in_the_loop", None),
+        "deleted": True,
+    }
+
+    # First delete attestations, then wallet
+    for att in attestations_list:
+        db.session.delete(att)
+
+    db.session.delete(this_wallet)
+    db.session.commit()
+
+    text = (
+        f"Wallet {wallet_did} has been deleted, along with "
+        f"{number_of_attestations} attestation(s)."
+    )
+
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        structured=structured,
+    )
 
 
 # agent tool
@@ -248,10 +395,10 @@ def call_get_identity_data(agent_id, config) -> Dict[str, Any]:
         "agent_bearer_token": this_wallet.agent_token,
         "wallet_url": mode.server + "did/" + urllib.parse.quote(this_wallet.did, safe=""),
         "did_document": json.loads(this_wallet.did_document),
-        "owner_login": this_wallet.owner_login,
+        "owners_login": this_wallet.owner_login,
         "ecosystem_profile": this_wallet.ecosystem_profile,
         "agent_framework": this_wallet.agent_framework,
-        "owner_identity_provider": this_wallet.owner_identity_provider
+        "owners_identity_provider": this_wallet.owner_identity_provider
     }
     return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
     
@@ -359,43 +506,40 @@ def call_add_authentication_key(arguments, agent_id, config) -> Dict[str, Any]:
 # guest tool
 def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
-    owner_identity_provider = arguments.get("owner_identity_provider")
-    owner_login = arguments.get("owner_login").split(",")
+    owners_identity_provider = arguments.get("owners_identity_provider")
+    owners_login = arguments.get("owners_login").split(",")
     agent_card_url = arguments.get("agentcard_url")
     agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
-    jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase(agent_did + "#key-2")
     jwk_1 = deterministic_jwk.jwk_p256_from_passphrase(agent_did + "#key-1")
     # add alg for DID Document only
     jwk_1["alg"] = "ES256"
-    jwk_2["alg"] = "EdDSA"
     jwk_1.pop("d", None)
-    jwk_2.pop("d", None)
     url = mode.server + "did/" + urllib.parse.quote(agent_did, safe="")
     url = mode.server + "did/" + agent_did
-    did_document = create_did_web_document(agent_did, jwk_1, jwk_2, url, agent_card_url=agent_card_url)
+    did_document = create_did_web_document(agent_did, jwk_1, url, agent_card_url=agent_card_url)
     dev_token = oidc4vc.sign_mcp_bearer_token(agent_did, "dev")
     agent_token = oidc4vc.sign_mcp_bearer_token(agent_did, "agent")
     wallet = Wallet(
         dev_token=dev_token,
         agent_token=agent_token,
-        owner_login=json.dumps(owner_login),
-        owner_identity_provider=owner_identity_provider,
-        ecosystem_profile=arguments.get("ecosystem_profile", "DIIP V4"),
+        owner_login=json.dumps(owners_login),
+        owner_identity_provider=owners_identity_provider,
+        ecosystem_profile=arguments.get("ecosystem", "DIIP V4"),
         agent_framework=arguments.get("agent_framework", "None"),
         did=agent_did,
         did_document=json.dumps(did_document),
         url=url
     )
-    for user_login in owner_login:
-        if arguments.get("owner_identity_provider") == "google":
+    for user_login in owners_login:
+        if owners_identity_provider == "google":
             email = user_login
             login = email
             owner = User.query.filter_by(email=email).first()
-        elif arguments.get("owner_identity_provider") == "github":
+        elif owners_identity_provider == "github":
             owner = User.query.filter_by(email=user_login).first()
             email = ""
             login = user_login
-        elif arguments.get("owner_identity_provider") == "wallet":
+        elif owners_identity_provider == "wallet":
             login = user_login
             owner = User.query.filter_by(login=user_login).first()
             email = ""
@@ -421,12 +565,12 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
         "wallet_url": wallet.url
     }
     # send message
-    message_text = json.dumps(owner_login) + " from " + owner_identity_provider
+    message_text = json.dumps(owners_login) + " from " + owners_identity_provider
     message.message("A new wallet for AI Agent has been created", "thierry.thevenet@talao.io", message_text, mode)
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def create_did_web_document(did, jwk_1, jwk_2, url, agent_card_url=False):
+def create_did_web_document(did, jwk_1, url, agent_card_url=False):
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -442,17 +586,10 @@ def create_did_web_document(did, jwk_1, jwk_2, url, agent_card_url=False):
                 "type": "JsonWebKey2020",
                 "controller": did,
                 "publicKeyJwk": jwk_1
-            },
-            {
-                "id": did + "#key-2",
-                "type": "JsonWebKey2020",
-                "controller": did,
-                "publicKeyJwk": jwk_2
             }
         ],
         "assertionMethod" : [
             did + "#key-1",
-            did + "#key-2"
         ],
         "service": [
             {

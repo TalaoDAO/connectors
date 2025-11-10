@@ -195,6 +195,7 @@ class Wallet(db.Model):
     url = db.Column(db.Text)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
+    linked_vp = db.Column(db.Text)
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     exp = db.Column(db.DateTime)
@@ -217,11 +218,8 @@ class Attestation(db.Model):
 def seed_wallet(mode):
     if not Wallet.query.first():
         jwk_1 = deterministic_jwk.jwk_p256_from_passphrase("did:web:wallet4agent.com:demo#key-1")
-        jwk_2 = deterministic_jwk.jwk_ed25519_from_passphrase("did:web:wallet4agent.com:demo#key-2")
         jwk_1.pop("d", None)
-        jwk_2.pop("d", None)
         jwk_1["alg"] = "ES256"
-        jwk_2["alg"] = "EdDSA"
         did = "did:web:wallet4agent.com:demo"
         #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         url = mode.server + "did/" + did
@@ -230,12 +228,12 @@ def seed_wallet(mode):
             agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
             name="Wallet_for_demo_with_test",
             workload_id="spiffe://wallet4agent.com/demo",
-            always_human_in_the_loop=True,
+            always_human_in_the_loop=False,
             did=did,
             url=url,
             owner_identity_provider="test",
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
-            did_document=create_did_document(did, jwk_1, jwk_2, url)
+            did_document=create_did_document(did, jwk_1, url)
         )
         db.session.add(default_wallet)
         did = "did:web:wallet4agent.com:demo_google"
@@ -251,7 +249,7 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="google",
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
-            did_document=create_did_document(did, jwk_1, jwk_2, url)
+            did_document=create_did_document(did, jwk_1, url)
         )
         db.session.add(default_wallet)
         did = "did:web:wallet4agent.com:demo_github"
@@ -267,7 +265,7 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="github",
             owner_login=json.dumps(["ThierryThevenet"]),
-            did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, jwk_2, url)
+            did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, url)
         )
         db.session.add(default_wallet)
         did = "did:web:wallet4agent.com:demo_wallet"
@@ -283,7 +281,7 @@ def seed_wallet(mode):
             url=url,
             owner_identity_provider="wallet",
             owner_login=json.dumps(["did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9"]),
-            did_document=create_did_document(did, jwk_1, jwk_2, url)
+            did_document=create_did_document(did, jwk_1, url)
         )
         db.session.add(default_wallet_3)
         db.session.commit()
@@ -512,7 +510,7 @@ def seed_user():
         db.session.commit()
 
 
-def create_did_document(did, jwk_1, jwk_2, url) -> str:
+def create_did_document(did, jwk_1, url) -> str:
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -528,21 +526,10 @@ def create_did_document(did, jwk_1, jwk_2, url) -> str:
                 "type": "JsonWebKey2020",
                 "controller": did,
                 "publicKeyJwk": jwk_1
-            },
-            {
-                "id": did + "#key-1",
-                "type": "JsonWebKey2020",
-                "controller": did,
-                "publicKeyJwk": jwk_2
             }
-        ],
-        "authentication" : [
-            did + "#key-1",
-            did + "#key-2"
         ],
         "assertionMethod" : [
             did + "#key-1",
-            did + "#key-2"
         ],
         "service": [
             {
