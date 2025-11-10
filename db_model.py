@@ -203,7 +203,8 @@ class Wallet(db.Model):
     
 class Attestation(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
-    wallet_did = db.Column(db.String(256))
+    wallet_did = db.Column(db.Text)
+    service_id = db.Column(db.Text)
     name = db.Column(db.String(64))
     description = db.Column(db.Text)
     vc = db.Column(db.Text)

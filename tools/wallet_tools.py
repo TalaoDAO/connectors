@@ -9,6 +9,9 @@ from db_model import Attestation
 from utils import deterministic_jwk, oidc4vc, message
 import urllib
 import requests
+import base64
+from urllib.parse import unquote
+
 
 tools_guest = [
     {
@@ -56,8 +59,8 @@ tools_guest = [
 
 tools_agent = [
     {
-        "name": "request_attestation",
-        "description": "Request the verifiable credential which is offered.",
+        "name": "accept_credential_offer",
+        "description": "Request the verifiable credential which is offered and store it in the wallet.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -79,40 +82,26 @@ tools_agent = [
         }
     },
     {
-        "name": "get_wallet_attestation_list",
-        "description": "List all attestations of the wallet",
+        "name": "get_wallet_attestations",
+        "description": "Get all attestations of the wallet",
         "inputSchema": {
             "type": "object",
             "properties": {},
-            "required": [""]
+            "required": []
         }
     },
     {
-        "name": "get_agent_attestation_list",
-        "description": "List all attestations of the wallet",
+        "name": "get_agent_attestations",
+        "description": "Get all attestations of another agent wallet",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "agent_id": {
                     "type": "string",
-                    "description": "Agent identifier"
-                    }
-            },
-            "required": ["agent_id"]
-        }
-    },
-    {
-        "name": "get_wallet_attestation",
-        "description": "Get the content of an attestation of the wallet",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "attestation_id": {
-                    "type": "string",
-                    "description": "Attestation identifier.",
+                    "description": "Agent identifier.",
                 }
             },
-            "required": ["attestation_id"]
+            "required": ["agent_id"]
         }
     },
     
@@ -168,29 +157,14 @@ tools_dev = [
         }
     },
     {
-        "name": "get_attestation_list",
-        "description": "List all attestations of the agent",
+        "name": "get_wallet_attestations",
+        "description": "Get all attestations of the wallet",
         "inputSchema": {
             "type": "object",
             "properties": {},
-            "required": [""]
+            "required": []
         }
-    },
-    {
-        "name": "get_attestation",
-        "description": "Display the content of an attestation",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "attestation_id": {
-                    "type": "string",
-                    "description": "Attestation identifier.",
-                }
-            },
-            "required": ["attestation_id"]
-        }
-    },
-    
+    }
 ]
 
 
@@ -202,15 +176,8 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
-def call_get_wallet_attestation(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
-    # Query attestations linked to this wallet
-    attestation_id = arguments.get("attestation_id")
-    attestation = Attestation.query.filter_by(id=attestation_id).first()
-    structured = {"attestation": attestation.vc}
-    return _ok_content([{"type": "text", "text": "An attestations of the Agent"}], structured=structured)
 
-
-def call_get_wallet_attestation_list(wallet_did, config) -> Dict[str, Any]:
+def call_get_wallet_attestations(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
     wallet_attestations = []
@@ -219,6 +186,7 @@ def call_get_wallet_attestation_list(wallet_did, config) -> Dict[str, Any]:
         wallet_attestations.append(
             {
                 "attestation_id": attestation.id,
+                "vc": attestation.vc,
                 "name": attestation.name,
                 "description": attestation.description,
                 "issuer": attestation.issuer,
@@ -234,14 +202,91 @@ def call_get_wallet_attestation_list(wallet_did, config) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def call_get_agent_attestation_list(wallet_did: str, config: Dict[str, Any]) -> Dict[str, Any]:
+
+def _parse_data_uri(data_uri: str) -> (Optional[str], Optional[str]):
+    """
+    Parse a data: URI into (media_type, data_string).
+    Example: data:application/dc+sd-jwt,eyJhbGciOi...
+    """
+    if not isinstance(data_uri, str) or not data_uri.startswith("data:"):
+        return None, None
+
+    # Strip "data:"
+    body = data_uri[5:]
+    # Split media type and data
+    if "," not in body:
+        return None, None
+    media_type, data_part = body.split(",", 1)
+    if not media_type:
+        media_type = "text/plain;charset=US-ASCII"
+
+    # Data might be URL-encoded
+    data_str = unquote(data_part)
+    return media_type, data_str
+
+
+def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
+    """
+    Decode JWT payload (no signature verification).
+    """
+    try:
+        parts = jwt_token.split(".")
+        if len(parts) < 2:
+            return None
+        payload_b64 = parts[1]
+        # add padding if needed
+        padding = "=" * (-len(payload_b64) % 4)
+        payload_bytes = base64.urlsafe_b64decode(payload_b64 + padding)
+        payload_json = json.loads(payload_bytes.decode("utf-8"))
+        for claim in ["vct", "iat", "exp", "cnf", "_sd", "_sd_alg", "iss", "status"]:
+            payload_json.pop(claim, None)
+        return payload_json
+    except Exception:
+        logging.exception("Failed to decode JWT payload")
+        return None
+
+
+def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, Any]]:
+    """
+    From a data: URI that contains an SD-JWT or SD-JWT+KB, extract the
+    Issuer-signed JWT payload as JSON.
+    We assume format:
+      - SD-JWT:    <issuer-jwt>~<disclosure>~...~
+      - SD-JWT+KB: <issuer-jwt>~<disclosure>~...~<kb-jwt>
+    """
+    media_type, data_str = _parse_data_uri(data_uri)
+    if media_type is None or data_str is None:
+        return None
+
+    # Only handle SD-JWT / VC-JWT-like media types here
+    # (dc+sd-jwt is used for SD-JWT VC; vc+sd-jwt is legacy).:contentReference[oaicite:1]{index=1}
+    lowered = media_type.lower()
+    if "sd-jwt" not in lowered and "jwt" not in lowered:
+        return None
+
+    # If SD-JWT(+KB), first segment before the first "~" is the issuer JWT.
+    issuer_jwt = data_str.split("~", 1)[0]
+    payload = _decode_jwt_payload(issuer_jwt)
+    return payload
+
+
+def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
+    """
+    List attestations (Linked VPs) of an Agent DID.
+
+    For each LinkedVerifiablePresentation service:
+      * Fetch its verifiable presentation from serviceEndpoint.
+      * If it's a JSON-LD VerifiablePresentation, embed VP JSON-LD.
+      * If it's an EnvelopedVerifiablePresentation with an SD-JWT VC
+        (data:application/dc+sd-jwt,...), embed the decoded SD-JWT payload.
+    """
 
     # 1. Resolve DID using Universal Resolver (Talao -> fallback to public)
     resolver_urls = [
         f"https://unires:test@unires.talao.co/1.0/identifiers/{wallet_did}",
         f"https://dev.uniresolver.io/1.0/identifiers/{wallet_did}",
     ]
-
+    print("agent DID = ", wallet_did)
     did_doc = None
     last_exception = None
 
@@ -252,7 +297,7 @@ def call_get_agent_attestation_list(wallet_did: str, config: Dict[str, Any]) -> 
             r.raise_for_status()
             payload = r.json()
             logging.info("DID Resolution response: %s", payload)
-            did_doc = payload.get("didDocument") or payload.get("didDocument", {})
+            did_doc = payload.get("didDocument") or {}
             break
         except Exception as e:
             logging.exception("Failed to resolve DID via %s", url)
@@ -272,6 +317,7 @@ def call_get_agent_attestation_list(wallet_did: str, config: Dict[str, Any]) -> 
     services: List[Dict[str, Any]] = did_doc.get("service", []) or []
 
     wallet_attestations: List[Dict[str, Any]] = []
+
     for svc in services:
         svc_type = svc.get("type", "")
         # type can be string or list
@@ -283,16 +329,84 @@ def call_get_agent_attestation_list(wallet_did: str, config: Dict[str, Any]) -> 
         if not is_linked_vp:
             continue
 
-        # Basic info from service; you can add more from your own conventions
-        attestation = {
+        service_endpoint = svc.get("serviceEndpoint")
+        attestation: Dict[str, Any] = {
             "attestation_id": svc.get("id"),
-            "name": svc.get("label") or "Linked Verifiable Presentation",
-            "description": "LinkedVerifiablePresentation service discovered in DID Document",
-            "issuer": wallet_did,
-            "service_endpoint": svc.get("serviceEndpoint"),
-            "iat": None,         # no issuance time in DID Doc; can be enriched later
-            "validity": "active" # assumption; you could check revocation if you have a registry
+            #"name": svc.get("label") or "Linked Verifiable Presentation",
+            #"description": "LinkedVerifiablePresentation service discovered in DID Document",
+            #"service_endpoint": service_endpoint,
+            #"validity": "active",  # assumption; revocation could be checked in a registry
         }
+
+        # 2.a Fetch VP from serviceEndpoint (if HTTP(S))
+        vp_json = None
+        if isinstance(service_endpoint, str):
+            if service_endpoint.startswith("data:"):
+                # Endpoint itself is a data: URI
+                vp_json = None  # handled below as enveloped only
+            else:
+                try:
+                    logging.info("Fetching VP from serviceEndpoint %s", service_endpoint)
+                    resp = requests.get(service_endpoint, timeout=10)
+                    resp.raise_for_status()
+                    # Expect a JSON VP envelope by default
+                    try:
+                        vp_json = resp.json()
+                    except Exception:
+                        logging.exception("Failed to parse VP JSON from %s", service_endpoint)
+                        vp_json = None
+                except Exception:
+                    logging.exception("Failed to fetch serviceEndpoint %s", service_endpoint)
+
+        # 2.b Decide representation based on VCDM 2.0 types / envelope
+
+        # Case 1: JSON-LD VP / Enveloped VP JSON object
+        if isinstance(vp_json, dict):
+            vp_type = vp_json.get("type", [])
+            if isinstance(vp_type, str):
+                vp_type_list = [vp_type]
+            else:
+                vp_type_list = vp_type or []
+
+            # EnvelopedVerifiablePresentation per VCDM 2.0.:contentReference[oaicite:2]{index=2}
+            if "EnvelopedVerifiablePresentation" in vp_type_list:
+                data_uri = vp_json.get("id")
+                payload = None
+                if isinstance(data_uri, str) and data_uri.startswith("data:"):
+                    payload = _extract_sd_jwt_payload_from_data_uri(data_uri)
+
+                if payload is not None:
+                    #attestation["format"] = "sd_jwt_vc"
+                    attestation["payload"] = payload
+                else:
+                    # Fallback: store the raw envelope
+                    #attestation["format"] = "enveloped_vp"
+                    attestation["envelope"] = vp_json
+
+            # Non-enveloped VerifiablePresentation JSON-LD
+            elif "VerifiablePresentation" in vp_type_list:
+                #attestation["format"] = "vp_jsonld"
+                attestation["verifiable_presentation"] = vp_json
+
+            else:
+                # Unknown type, but still JSON; keep for debugging
+                #attestation["format"] = "unknown_json"
+                attestation["raw"] = vp_json
+
+        # Case 2: serviceEndpoint itself is a data: URI (no JSON wrapper)
+        elif isinstance(service_endpoint, str) and service_endpoint.startswith("data:"):
+            payload = _extract_sd_jwt_payload_from_data_uri(service_endpoint)
+            if payload is not None:
+                #attestation["format"] = "sd_jwt_vc"
+                attestation["payload"] = payload
+            else:
+                #attestation["format"] = "unknown_data_uri"
+                attestation["raw"] = service_endpoint
+
+        else:
+            # We couldn't fetch or parse a VP; keep meta only
+            attestation["format"] = "unavailable"
+
         wallet_attestations.append(attestation)
 
     structured = {"attestations": wallet_attestations}
@@ -372,16 +486,16 @@ def call_delete_wallet(wallet_did, config) -> Dict[str, Any]:
 
 
 # agent tool
-def call_request_attestation(arguments: Dict[str, Any], agent_id, config: dict) -> Dict[str, Any]:
+def call_accept_credential_offer(arguments: Dict[str, Any], agent_id, config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
     mode = config["MODE"]
-    attestation, text = wallet.wallet(agent_di, credential_offer, mode)
+    attestation, text = wallet.wallet(agent_id, credential_offer, mode)
     if not attestation:
         return _ok_content([{"type": "text", "text": text}], is_error=True)     
     structured = {
         "attestation": attestation
     }
-    text = "attestation is stored"
+    text = "Attestation successfully received (not stored automatically)."
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 

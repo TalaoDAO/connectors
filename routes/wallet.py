@@ -462,8 +462,20 @@ def store(cred, session_config, published=False):
         attestation_payload = oidc4vc.get_payload_from_token(vcsd_jwt)
     except Exception:
         return None, "Attestation is in an incorrect format and cannot be stored"
+
+    # attestation as a service id
+    id = secrets.token_hex(16)
+    service_id = session_config["wallet_did"] + "#" + id
+    
+    if published:
+        result = publish(service_id, cred, session_config["server"])
+        if not result:
+            logging.warning("publish failed")
+            published = False
+            
     attestation = Attestation(
             wallet_did=session_config["wallet_did"],
+            service_id=service_id,
             vc=cred,
             vc_format=attestation_header.get("typ"),
             issuer=attestation_payload.get("iss"),
@@ -474,12 +486,9 @@ def store(cred, session_config, published=False):
         )
     db.session.add(attestation)
     db.session.commit()
-    if published:
-        server = session_config["server"]
-        wallet_did = session_config["wallet_did"]
-        publish(wallet_did, cred, server)
-        
-    logging.info("credential is stored as attestation #%s", attestation.id)
+    if attestation: 
+        logging.info("credential is stored as attestation #%s", attestation.id)
+    
     return True, "Attestation has been stored"
 
 
@@ -488,7 +497,7 @@ def base64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
-def publish(wallet_did, attestation: str, server: str):
+def publish(service_id: str, attestation: str, server: str):
     """
     Publish a Linked Verifiable Presentation for an SD-JWT VC, following:
       - IETF SD-JWT + SD-JWT VC (including KB-JWT + sd_hash)
@@ -501,7 +510,10 @@ def publish(wallet_did, attestation: str, server: str):
         mode: object with .server (base URL) used to build service endpoints.
     """
 
-    # 1. Look up wallet
+    # 1. Look up wallet did and id
+    wallet_did = service_id.split("#")[0]
+    id = service_id.split("#")[1]
+    
     this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
     if this_wallet is None:
         logging.error("Wallet not found for DID %s", wallet_did)
@@ -524,6 +536,8 @@ def publish(wallet_did, attestation: str, server: str):
 
     # remove disclosure if any
     sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did)
+    if not sd_jwt_plus_kb:
+        return None
 
     # 6. Wrap into a VC Data Model 2.0-style Verifiable Presentation envelope
     #    Using media type application/dc+sd-jwt in a data: URI.
@@ -532,10 +546,6 @@ def publish(wallet_did, attestation: str, server: str):
         "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
         "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
     }
-
-    # 7. Add VP to wallet's internal Linked VP registry
-    id = secrets.token_hex(16)
-    service_id = wallet_did + "#" + id
 
     try:
         linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
