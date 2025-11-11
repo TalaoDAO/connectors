@@ -52,7 +52,7 @@ def init_app(app):
             return auth.split(" ", 1)[1].strip()
         return request.headers.get("X-API-KEY")
 
-    def get_role_and_agent_id() ->str:
+    def get_role_and_agent_id() -> str:
         bearer_token = _bearer_or_api_key()
         if not bearer_token:
             logging.info("no Bearer token")
