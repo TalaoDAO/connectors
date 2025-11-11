@@ -330,7 +330,6 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
         f"https://unires:test@unires.talao.co/1.0/identifiers/{wallet_did}",
         f"https://dev.uniresolver.io/1.0/identifiers/{wallet_did}",
     ]
-    print("agent DID = ", wallet_did)
     did_doc = None
     last_exception = None
 
@@ -459,7 +458,8 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
     if not wallet_attestations:
         text = f"No attestations found for Agent DID {wallet_did}."
     else:
-        text = f"All attestations (Linked VPs) of Agent DID {wallet_did}."
+        nb_attestations = str(len(wallet_attestations))
+        text = f"{nb_attestations} attestations of Agent DID {wallet_did}."
 
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 

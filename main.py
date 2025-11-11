@@ -222,17 +222,21 @@ def create_app() -> Flask:
         html = markdown.markdown(content, extensions=["fenced_code"])
         return render_template_string(html)
 
+
     # .well-known DID API
     @app.get('/<optional_path>/did.json')
     def well_known_did(optional_path):
         wallet_did = "did:web:wallet4agent.com:" + optional_path
-        wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
-        did_document = json.loads(wallet.did_document)
+        this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
         headers = {
             "Content-Type": "application/did+ld+json",
             "Cache-Control": "no-cache"
         }
-        return Response(json.dumps(did_document), headers=headers)
+        if not wallet:
+            resp = {"error": "notFound"}
+            return Response(json.dumps(resp), headers=headers)
+        did_doc = json.loads(this_wallet.did_document)
+        return Response(json.dumps(did_doc), headers=headers)
     
     
     @app.get('/service/<wallet_did>/<id>')
