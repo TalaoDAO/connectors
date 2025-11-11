@@ -15,7 +15,7 @@ from urllib.parse import unquote
 
 tools_guest = [
     {
-        "name": "create_identity",
+        "name": "create_agent_identifier_and_wallet",
         "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent digital credentials",
         "inputSchema": {
             "type": "object",
@@ -60,17 +60,24 @@ tools_guest = [
         }
     }
 ]
-
 tools_agent = [
     {
         "name": "accept_credential_offer",
-        "description": "Request the digital credential which is offered and store it in the wallet.",
+        "description": (
+            "Accept an OIDC4VCI credential offer on behalf of this AI agent and return "
+            "the issued digital credential. The credential is typically a Verifiable "
+            "Credential (VC), often in SD-JWT VC format, that can later be stored in "
+            "the agent's wallet or presented to third parties."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "credential_offer": {
                     "type": "string",
-                    "description": "OIDC4VCI credential offer"
+                    "description": (
+                        "OIDC4VCI credential offer or credential_offer_uri as provided "
+                        "by an external issuer."
+                    )
                 }
             },
             "required": ["credential_offer"]
@@ -78,7 +85,14 @@ tools_agent = [
     },
     {
         "name": "get_wallet_data",
-        "description": "Get all the data about the wallet. This tool provides the wallet identifier as an agent identifier.",
+        "description": (
+            "Retrieve a high-level overview of this agent's wallet. The wallet is a "
+            "secure software component that stores and manages digital and verifiable "
+            "credentials (e.g., W3C VCs, SD-JWT VCs) for the agent and the humans or "
+            "organizations it represents. This tool returns metadata such as the "
+            "wallet URL, ecosystem profile, number of stored attestations, and whether "
+            "a human is always kept in the loop."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -87,7 +101,12 @@ tools_agent = [
     },
     {
         "name": "get_wallet_attestations",
-        "description": "Get all attestations of the wallet",
+        "description": (
+            "List all attestations (verifiable credentials) currently stored in this "
+            "agent's wallet. Use this to understand what has been issued about the "
+            "agent (or its owner), such as AgentCards, proofs of delegation, "
+            "capabilities, or organizational attributes."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -96,19 +115,40 @@ tools_agent = [
     },
     {
         "name": "get_agent_attestations",
-        "description": "Get all published attestations of another agent wallet",
+        "description": (
+            "Resolve another agent's DID and retrieve its published Linked Verifiable "
+            "Presentations (attestations). These are credentials that the agent (or "
+            "its wallet) has chosen to expose publicly via its DID Document, such as "
+            "AgentCards, proofs of authorization, or capability statements."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "agent_id": {
+                "agent_identifier": {
                     "type": "string",
-                    "description": "Agent identifier.",
+                    "description": (
+                        "The DID of the agent whose published attestations should be "
+                        "listed (for example: did:web:wallet4agent.com:demo:abc...)."
+                    ),
                 }
             },
-            "required": ["agent_id"]
+            "required": ["agent_identifier"]
         }
     },
-    
+    {
+        "name": "describe_wallet4agent",
+        "description": (
+            "Explain what the Wallet4Agent MCP server and its wallet do. Use this "
+            "tool first if you need to understand the concepts of 'wallet', 'agent', "
+            "and 'digital/verifiable credentials' in this ecosystem before calling "
+            "other tools."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
 ]
 
 tools_dev = [
@@ -425,17 +465,18 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
 
 
 # for agent
-def call_get_wallet_data(wallet_did, config) -> Dict[str, Any]:
+def call_get_wallet_data(agent_identifier) -> Dict[str, Any]:
     # Query attestations linked to this wallet
-    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
-    attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    attestations_list = Attestation.query.filter_by(wallet_did=agent_identifier).all()
     structured = {
+        "agent_identifier": agent_identifier,
         "wallet_url": this_wallet.url,
         "number_of_attestations": len(attestations_list),
         "ecosystem_profile": this_wallet.ecosystem_profile,
         "human_in_the_loop": this_wallet. always_human_in_the_loop
         }
-    text = "Wallet data"
+    text = "Agent identifier is " + agent_identifier + " and wallet url is " + this_wallet.url
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
@@ -490,10 +531,10 @@ def call_delete_wallet(wallet_did, config) -> Dict[str, Any]:
 
 
 # agent tool
-def call_accept_credential_offer(arguments: Dict[str, Any], agent_id, config: dict) -> Dict[str, Any]:
+def call_accept_credential_offer(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
     mode = config["MODE"]
-    attestation, text = wallet.wallet(agent_id, credential_offer, mode)
+    attestation, text = wallet.wallet(agent_identifier, credential_offer, mode)
     if not attestation:
         return _ok_content([{"type": "text", "text": text}], is_error=True)     
     structured = {
@@ -504,11 +545,11 @@ def call_accept_credential_offer(arguments: Dict[str, Any], agent_id, config: di
 
 
 # dev tool
-def call_get_identity_data(agent_id, config) -> Dict[str, Any]:
+def call_get_identity_data(agent_identifier, config) -> Dict[str, Any]:
     mode = config["MODE"]
-    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     structured = {
-        "agent_id": this_wallet.did,
+        "agent_identifier": this_wallet.did,
         "dev_bearer_token": this_wallet.dev_token,
         "agent_bearer_token": this_wallet.agent_token,
         "wallet_url": mode.server + "did/" + urllib.parse.quote(this_wallet.did, safe=""),
@@ -521,16 +562,16 @@ def call_get_identity_data(agent_id, config) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
     
 
-def call_rotate_bearer_token(arguments, agent_id, config) -> Dict[str, Any]:
-    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+def call_rotate_bearer_token(arguments, agent_identifier, config) -> Dict[str, Any]:
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     if arguments.get("role") == "dev":
-        this_wallet.dev_token = oidc4vc.sign_mcp_bearer_token(agent_id, "dev")
+        this_wallet.dev_token = oidc4vc.sign_mcp_bearer_token(agent_identifier, "dev")
     else:
-        this_wallet.agent_token = oidc4vc.sign_mcp_bearer_token(agent_id, "agent")
+        this_wallet.agent_token = oidc4vc.sign_mcp_bearer_token(agent_identifier, "agent")
     db.session.commit()
     text = "New token available"
     structured = {
-        "agent_id": this_wallet.did,
+        "agent_identifier": this_wallet.did,
         "dev_bearer_token": this_wallet.dev_token,
         "agent_bearer_token": this_wallet.agent_token,
         "wallet_url": this_wallet.url
@@ -538,12 +579,12 @@ def call_rotate_bearer_token(arguments, agent_id, config) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def call_add_authentication_key(arguments, agent_id, config) -> Dict[str, Any]:
+def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str, Any]:
     # Find the wallet for this agent
-    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     if not this_wallet:
         return _ok_content(
-            [{"type": "text", "text": "Wallet not found for this agent_id"}],
+            [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
             is_error=True,
         )
 
@@ -611,7 +652,7 @@ def call_add_authentication_key(arguments, agent_id, config) -> Dict[str, Any]:
 
     text = "New authentication key added to the DID Document."
     structured = {
-        "agent_id": this_wallet.did,
+        "agent_identifier": this_wallet.did,
         "dev_bearer_token": this_wallet.dev_token,
         "agent_bearer_token": this_wallet.agent_token,
         "wallet_url": this_wallet.url,
@@ -622,7 +663,7 @@ def call_add_authentication_key(arguments, agent_id, config) -> Dict[str, Any]:
 
 
 # guest tool
-def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
     owners_identity_provider = arguments.get("owners_identity_provider")
     owners_login = arguments.get("owners_login").split(",")
@@ -677,7 +718,7 @@ def call_create_identity(arguments: Dict[str, Any], config: dict) -> Dict[str, A
     text = "New agent identifier and wallet created."
     
     structured = {
-        "agent_id": wallet.did,
+        "agent_identifier": wallet.did,
         "dev_bearer_token": wallet.dev_token,
         "agent_bearer_token": wallet.agent_token,
         "wallet_url": wallet.url
@@ -727,3 +768,62 @@ def create_did_web_document(did, jwk_1, url, agent_card_url=False):
         )
     return document
 
+def call_describe_wallet4agent() -> Dict[str, Any]:
+    """
+    Self-description tool for the Wallet4Agent MCP server.
+
+    Returns a human-readable explanation plus structured information about:
+      - what the server is,
+      - what a wallet is in this context,
+      - how it relates to AI agents and digital/verifiable credentials.
+    """
+
+    text = (
+        "This is the Wallet4Agent MCP server. It exposes tools for interacting with a "
+        "digital wallet dedicated to AI agents.\n\n"
+        "In this context, a wallet is a secure software component that stores and "
+        "manages digital credentials and verifiable credentials (including W3C VCs "
+        "and SD-JWT VCs) on behalf of a subject: a human, an organization, or an AI "
+        "agent acting for them.\n\n"
+        "The wallet can:\n"
+        "- accept credentials from external issuers via protocols like OIDC4VCI,\n"
+        "- store those credentials as attestations for later use,\n"
+        "- present them to verifiers as verifiable presentations (including Linked "
+        "Verifiable Presentations published in DID Documents), and\n"
+        "- act as the identity and authorization layer for AI agents.\n\n"
+        "AI agents use this wallet as their 'identity and credentials layer' so that "
+        "every action or delegation can be traced back to a responsible human or "
+        "organization, enabling accountability, interoperability, and compliance."
+    )
+
+    structured = {
+        "server": "wallet4agent-mcp",
+        "role": "agent_wallet_and_credential_orchestrator",
+        "wallet_definition": {
+            "short": "Secure store and orchestrator for digital and verifiable credentials.",
+            "details": [
+                "Stores W3C Verifiable Credentials and SD-JWT VCs.",
+                "Receives credentials via OIDC4VCI and similar issuance protocols.",
+                "Presents credentials as verifiable presentations to other parties.",
+                "Binds credentials to humans, organizations, and AI agents via DIDs.",
+            ],
+        },
+        "agent_context": {
+            "purpose": (
+                "Provide AI agents with an attached, accountable identity and "
+                "a portable set of credentials for cross-ecosystem interactions."
+            ),
+            "key_concepts": [
+                "agent wallet",
+                "digital credentials",
+                "verifiable credentials",
+                "proof of delegation / authorization",
+                "Linked Verifiable Presentation",
+            ],
+        },
+    }
+
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        structured=structured,
+    )
