@@ -116,10 +116,10 @@ tools_agent = [
     {
         "name": "get_agent_attestations",
         "description": (
-            "Resolve another agent's DID and retrieve its published Linked Verifiable "
-            "Presentations (attestations). These are credentials that the agent (or "
-            "its wallet) has chosen to expose publicly via its DID Document, such as "
-            "AgentCards, proofs of authorization, or capability statements."
+            "Resolve another agent's DID and retrieve its published attestations."
+            " These are digital credentials that the agent "
+            " has chosen to expose publicly via its DID, such as "
+            "AgentCards, proofs of authorization, capability statements or certificates."
         ),
         "inputSchema": {
             "type": "object",
@@ -420,7 +420,8 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
 
                 if payload is not None:
                     #attestation["format"] = "sd_jwt_vc"
-                    attestation["payload"] = payload
+                    #attestation["payload"] = payload
+                    attestation.update(payload)
                 else:
                     # Fallback: store the raw envelope
                     #attestation["format"] = "enveloped_vp"
@@ -441,7 +442,8 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
             payload = _extract_sd_jwt_payload_from_data_uri(service_endpoint)
             if payload is not None:
                 #attestation["format"] = "sd_jwt_vc"
-                attestation["payload"] = payload
+                #attestation["payload"] = payload
+                attestation.update(payload)
             else:
                 #attestation["format"] = "unknown_data_uri"
                 attestation["raw"] = service_endpoint
