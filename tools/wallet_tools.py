@@ -16,7 +16,7 @@ from urllib.parse import unquote
 tools_guest = [
     {
         "name": "create_identity",
-        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent verifiable credentials",
+        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent digital credentials",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -28,6 +28,10 @@ tools_guest = [
                     "type": "boolean",
                     "description": "Always human in the loop",
                     "default": True
+                },
+                "organization": {
+                    "type": "string",
+                    "description": "Optional company name of the Agent provider",
                 },
                 "owners_identity_provider": {
                     "type": "string",
@@ -60,7 +64,7 @@ tools_guest = [
 tools_agent = [
     {
         "name": "accept_credential_offer",
-        "description": "Request the verifiable credential which is offered and store it in the wallet.",
+        "description": "Request the digital credential which is offered and store it in the wallet.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -74,7 +78,7 @@ tools_agent = [
     },
     {
         "name": "get_wallet_data",
-        "description": "Get all the information about the wallet",
+        "description": "Get all the data about the wallet. This tool provides the wallet identifier as an agent identifier.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -92,7 +96,7 @@ tools_agent = [
     },
     {
         "name": "get_agent_attestations",
-        "description": "Get all attestations of another agent wallet",
+        "description": "Get all published attestations of another agent wallet",
         "inputSchema": {
             "type": "object",
             "properties": {

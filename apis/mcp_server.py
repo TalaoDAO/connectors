@@ -113,6 +113,20 @@ def init_app(app):
                 "scheme": "Bearer",
                 "header": "Authorization",
                 "description": "Use Authorization: Bearer <token> to authenticate"
+            },
+            "description": (
+                "Wallet4Agent MCP server. "
+                "It manages digital and verifiable credentials for humans, "
+                "organizations, and AI agents, and exposes tools to inspect, "
+                "store, and present those credentials."
+            ),
+            "about": {
+                "role": "Agent wallet and digital credential orchestrator",
+                "wallet_definition": (
+                    "A wallet is a secure software component that stores and manages "
+                    "digital credentials (including W3C Verifiable Credentials and "
+                    "SD-JWT VCs) for a subject or for an AI agent acting on their behalf."
+                )
             }
         })
 
