@@ -464,7 +464,7 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
         text = f"{nb_attestations} attestations of Agent DID {wallet_did}."
         i = 0
         for attest in wallet_attestations:
-            text += "\n attestation #" + i + " = " + json.dumps(attest)
+            text += "\n attestation #" + str(i) + " = " + json.dumps(attest)
             i += 1
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
