@@ -462,7 +462,7 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
     else:
         nb_attestations = str(len(wallet_attestations))
         text = f"{nb_attestations} attestations of Agent DID {wallet_did}."
-        i = 0
+        i = 1
         for attest in wallet_attestations:
             text += "\n attestation #" + str(i) + " = " + json.dumps(attest)
             i += 1
