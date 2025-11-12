@@ -185,7 +185,6 @@ class Wallet(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
     dev_token = db.Column(db.Text)
     agent_token = db.Column(db.Text)
-    workload_id = db.Column(db.String(64))
     description = db.Column(db.Text)
     name = db.Column(db.Text)
     owner_identity_provider = db.Column(db.String(64))
@@ -216,75 +215,25 @@ class Attestation(db.Model):
     published = db.Column(db.Boolean, default=False)
 
 
-def seed_wallet(mode):
+def seed_wallet(mode, manager):
     if not Wallet.query.first():
-        jwk_1 = deterministic_jwk.jwk_p256_from_passphrase("did:web:wallet4agent.com:demo#key-1")
-        jwk_1.pop("d", None)
-        jwk_1["alg"] = "ES256"
+        vm = "did:web:wallet4agent.com:demo#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo"
-        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
         url = mode.server + "did/" + did
         default_wallet = Wallet(
-            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
-            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
+            dev_token=oidc4vc.sign_mcp_bearer_token(vm, "dev", manager),
+            agent_token=oidc4vc.sign_mcp_bearer_token(vm, "agent", manager),
             name="Wallet_for_demo_with_test",
-            workload_id="spiffe://wallet4agent.com/demo",
             always_human_in_the_loop=False,
             did=did,
             url=url,
             owner_identity_provider="test",
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
-            did_document=create_did_document(did, jwk_1, url)
+            did_document=create_did_document(did, jwk, url)
         )
         db.session.add(default_wallet)
-        did = "did:web:wallet4agent.com:demo_google"
-        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
-        url = mode.server + "did/" + did
-        default_wallet = Wallet(
-            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
-            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
-            name="Wallet_with_google_identity_provider",
-            workload_id="spiffe://wallet4agent.com/demo_google",
-            always_human_in_the_loop=True,
-            did=did,
-            url=url,
-            owner_identity_provider="google",
-            owner_login=json.dumps(["thierry.thevenet@talao.io"]),
-            did_document=create_did_document(did, jwk_1, url)
-        )
-        db.session.add(default_wallet)
-        did = "did:web:wallet4agent.com:demo_github"
-        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
-        url = mode.server + "did/" + did
-        default_wallet = Wallet(
-            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
-            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
-            name="Wallet_with_github_identity_provider",
-            workload_id="spiffe://wallet4agent.com/demo_github",
-            always_human_in_the_loop=True,
-            did=did,
-            url=url,
-            owner_identity_provider="github",
-            owner_login=json.dumps(["ThierryThevenet"]),
-            did_document=create_did_document("did:web:wallet4agent.com:demo_github", jwk_1, url)
-        )
-        db.session.add(default_wallet)
-        did = "did:web:wallet4agent.com:demo_wallet"
-        #url = mode.server + "did/" + urllib.parse.quote(did, safe="")
-        url = mode.server + "did/" + did
-        default_wallet_3 = Wallet(
-            dev_token=oidc4vc.sign_mcp_bearer_token(did, "dev"),
-            agent_token=oidc4vc.sign_mcp_bearer_token(did, "agent"),
-            name="Wallet_for_demo",
-            workload_id="spiffe://wallet4agent.com/demo_wallet",
-            always_human_in_the_loop=True,
-            did=did,
-            url=url,
-            owner_identity_provider="wallet",
-            owner_login=json.dumps(["did:jwk:eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6ImR6UWFCUmltTFlqNVJyT2dfVkEtME82eXBQb3FDTXhOZ3pQSmx5YTZISFUiLCJ5IjoiQmRlNkFtWm1KSHltVnJfeTlTa1BvckpWNE5BSDlxXzJaQXNCLW91OVZFMCJ9"]),
-            did_document=create_did_document(did, jwk_1, url)
-        )
-        db.session.add(default_wallet_3)
         db.session.commit()
 
 

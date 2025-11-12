@@ -11,6 +11,7 @@ import urllib
 import requests
 import base64
 from urllib.parse import unquote
+import tenant_kms
 
 
 tools_guest = [
@@ -539,7 +540,8 @@ def call_delete_wallet(wallet_did, config) -> Dict[str, Any]:
 def call_accept_credential_offer(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
     mode = config["MODE"]
-    attestation, text = wallet.wallet(agent_identifier, credential_offer, mode)
+    manager = config["MANAGER"]
+    attestation, text = wallet.wallet(agent_identifier, credential_offer, mode, manager)
     if not attestation:
         return _ok_content([{"type": "text", "text": text}], is_error=True)     
     structured = {
@@ -670,19 +672,18 @@ def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str
 # guest tool
 def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
+    manager = config["MANAGER"]
     owners_identity_provider = arguments.get("owners_identity_provider")
     owners_login = arguments.get("owners_login").split(",")
     agent_card_url = arguments.get("agentcard_url")
     agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
-    jwk_1 = deterministic_jwk.jwk_p256_from_passphrase(agent_did + "#key-1")
-    # add alg for DID Document only
-    jwk_1["alg"] = "ES256"
-    jwk_1.pop("d", None)
-    url = mode.server + "did/" + urllib.parse.quote(agent_did, safe="")
+    vm = agent_did + "#key-1"
+    key_id = manager.create_or_get_key_for_tenant(vm)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
     url = mode.server + "did/" + agent_did
-    did_document = create_did_web_document(agent_did, jwk_1, url, agent_card_url=agent_card_url)
-    dev_token = oidc4vc.sign_mcp_bearer_token(agent_did, "dev")
-    agent_token = oidc4vc.sign_mcp_bearer_token(agent_did, "agent")
+    did_document = create_did_web_document(agent_did, jwk, url, agent_card_url=agent_card_url)
+    dev_token = oidc4vc.sign_mcp_bearer_token(vm, "dev", manager)
+    agent_token = oidc4vc.sign_mcp_bearer_token(vm, "agent", manager)
     wallet = Wallet(
         dev_token=dev_token,
         agent_token=agent_token,

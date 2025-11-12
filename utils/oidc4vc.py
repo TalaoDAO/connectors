@@ -16,6 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, padding
 from cryptography.x509.oid import ExtensionOID
 from utils import signer
+import tenant_kms
 
 """
 https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/EBSI+DID+Method
@@ -86,23 +87,24 @@ def alg(key):
         raise Exception("Key type not supported")
 
 
-def sign_mcp_bearer_token(sub, role):
-    signature_key = jwk.JWK(**KEY["key"])
+def sign_mcp_bearer_token(vm, role, manager):
+    key_id = manager.create_or_get_key_for_tenant(vm)
+    did = vm.split("#")[0]
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
     header = {
         "typ": "JWT",
-        "kid": KEY["verification_method"],
-        "alg": alg(KEY["key"])
+        "kid": vm,
+        "alg": alg
     }
     now = int(datetime.timestamp(datetime.now()))
     payload = {
-        "iss": KEY["did"],
-        "sub": sub,
+        "iss": did,
+        "sub": did,
         "iat": now,
         "role": role
     }
-    token = jwt.JWT(header=header, claims=payload, algs=["ES256", "RS256", "EdDSA"])
-    token.make_signed_token(signature_key)
-    return token.serialize()
+    jwt_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
+    return jwt_token
 
 
 def extract_first_san_dns_from_der_b64(cert_b64: str) -> str:

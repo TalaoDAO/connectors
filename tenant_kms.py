@@ -12,11 +12,47 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import hashlib
+from jwcrypto import jwk as _jwk, jws as _jws
+import json as _json
+
 
 REGION = "eu-west-3"   # Paris
 KEY_SPEC = "ECC_NIST_P256"  # or "ECC_SECG_P256K1" if you want Ethereum-style keys
 KEY_USAGE = "SIGN_VERIFY"
 KMS_ADMIN_ROLE_ARN = None
+
+
+def kms_init(myenv):
+    
+    if myenv == "local":
+        
+        BASE_PROFILE = "dev-user"  # the profile you configured via aws
+        TARGET_ROLE_ARN = "arn:aws:iam::623031118740:role/my-app-signing-role"
+        base_sess = boto3.Session(profile_name=BASE_PROFILE, region_name=REGION)
+
+        print("Base identity:", base_sess.client("sts").get_caller_identity())
+
+        # 2) assume the application role using the SAME session
+        sts = base_sess.client("sts")
+        resp = sts.assume_role(
+            RoleArn=TARGET_ROLE_ARN,
+            RoleSessionName="desktop-test-session",
+        )
+        c = resp["Credentials"]
+        assumed_sess = boto3.Session(
+            aws_access_key_id=c["AccessKeyId"],
+            aws_secret_access_key=c["SecretAccessKey"],
+            aws_session_token=c["SessionToken"],
+            region_name=REGION,
+        )
+        print("Assumed identity:", assumed_sess.client("sts").get_caller_identity())
+        manager = TenantKMSManager(boto3_session=assumed_sess, region_name="eu-west-3")
+        return manager
+    else:
+        manager = TenantKMSManager(region_name=REGION)
+        return manager
+    
+
 
 
 def sanitize_alias_from_did(did: str) -> str:
@@ -317,6 +353,46 @@ class TenantKMSManager:
         key_id = md["KeyMetadata"]["KeyId"]
         return self.sign_jwt_with_key(key_id, header, payload)
 
+
+    def verify_tenant_jwt_with_jwcrypto(self, tenant_did: str, jwt_compact: str):
+        """
+        Convenience: resolve tenant alias -> key -> JWK, then verify the JWT with jwcrypto.
+        """
+        alias = sanitize_alias_from_did(tenant_did)
+        md = self.kms.describe_key(KeyId=alias)
+        key_id = md["KeyMetadata"]["KeyId"]
+        jwk, kid, alg = self.get_public_key_jwk(key_id)
+        return verify_jwt_with_jwcrypto(jwt_compact, jwk)
+
+
+    # --- JWS verification with jwcrypto ---
+def verify_jwt_with_jwcrypto(jwt_compact: str, jwk_dict: dict):
+    """
+    Verifies a compact JWS/JWT using jwcrypto and the given public JWK.
+    Returns (header_dict, payload_dict) on success; raises on failure.
+
+    Note: jwcrypto supports ES256 (P-256). ES256K (secp256k1) requires jwcrypto/cryptography
+    versions that include secp256k1; if not available, you'll get NotImplementedError.
+    """
+
+    key = _jwk.JWK.from_json(_json.dumps(jwk_dict))
+    token = _jws.JWS()
+    token.deserialize(jwt_compact)
+
+    # Let jwcrypto select the algorithm from the header (alg)
+    try:
+        token.verify(key)
+    except NotImplementedError as e:
+        raise RuntimeError(
+            "Your jwcrypto/cryptography build doesn't support the JWT alg in the header "
+            "(likely ES256K). Upgrade jwcrypto & cryptography, or verify via cryptography manually."
+        ) from e
+
+    # Extract JOSE header + payload as dicts
+    header = _json.loads(token.jose_header) if isinstance(token.jose_header, str) else token.jose_header
+    payload = _json.loads(token.payload.decode("utf-8"))
+    return header, payload
+    
     
 # === demo flow ===
 def test_flow(tenant_did: str):

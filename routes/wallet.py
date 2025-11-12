@@ -157,12 +157,12 @@ def build_session_config(agent_id: str, credential_offer: str, mode):
 
 
 # for MCP tools
-def wallet(agent_id, credential_offer, mode):
+def wallet(agent_id, credential_offer, mode, manager):
     session_config, text = build_session_config(agent_id, credential_offer, mode)
     if not session_config:
         return None, text
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
-        attestation, text = code_flow(session_config, mode)
+        attestation, text = code_flow(session_config, mode, manager)
         return attestation, text
     else:
         return None, "this grant type is not supported here"
@@ -176,6 +176,7 @@ def wallet_route():
 def credential_offer(wallet_did):
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
+    manager = current_app.config["MANAGER"]
     # if user is logged (user in the loop)
     if current_user.is_authenticated:
         logging.info("user is now logged")
@@ -197,7 +198,7 @@ def credential_offer(wallet_did):
         
         # the user is logged, it is a pre authorized code flow and we ask user for consent 
         else:
-            sd_jwt_vc, text = code_flow(session_config, mode)
+            sd_jwt_vc, text = code_flow(session_config, mode, manager)
             logout_user()
             if sd_jwt_vc:
                 return render_template("wallet/user_consent.html", sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
@@ -241,7 +242,7 @@ def credential_offer(wallet_did):
     
     # no user in the loop, Start the pre authorized code flow only
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
-        attestation, message = code_flow(session_config, mode)
+        attestation, message = code_flow(session_config, mode, manager)
         if attestation:
             # store attestation and publish it
             result, message = store(attestation, session_config, published=True)
@@ -306,6 +307,7 @@ def callback():
     logging.info('This is an authorized code flow')
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
+    manager = current_app.config["MANAGER"]
     try:
         code = request.args['code']
         session_id = request.args.get('state', "")
@@ -316,7 +318,7 @@ def callback():
     # update session config with code from AS
     session_config["code"] = code
     logout_user()    
-    sd_jwt_vc, text = code_flow(session_config, mode)
+    sd_jwt_vc, text = code_flow(session_config, mode, manager)
     if not sd_jwt_vc:
         return render_template("wallet/session_screen.html", message=text, title="Issuance Failure")
     return render_template(
@@ -377,17 +379,18 @@ def credential_request(session_config, access_token, proof):
     except Exception as e:
         return None, "credential endpoint failure " +str(e)
     logging.info("credential endpoint response = %s", resp_json)
+    
     return resp_json, "ok"
 
 
-def build_proof_of_key_ownership(session_config, nonce):
+def build_proof_of_key_ownership(session_config, nonce, manager):
     wallet_did = session_config["wallet_did"]
     wallet_kid = wallet_did + "#key-1"
-    key = deterministic_jwk.jwk_p256_from_passphrase(wallet_kid)
-    signer_key = jwk.JWK(**key) 
+    key_id = manager.create_or_get_key_for_tenant(wallet_kid)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
     header = {
         'typ': 'openid4vci-proof+jwt',
-        'alg': key.get("alg", "ES256"),
+        'alg': alg,
         "kid": wallet_kid
     }
     payload = {
@@ -396,14 +399,13 @@ def build_proof_of_key_ownership(session_config, nonce):
         'aud': session_config["credential_issuer"]  # Credential Issuer URL
     }
     if nonce:
-        payload["nonce"] = nonce  
-    token = jwt.JWT(header=header, claims=payload, algs=['ES256'])
-    token.make_signed_token(signer_key)
-    return token.serialize()
+        payload["nonce"] = nonce
+    jwt_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
+    return jwt_token
 
 
 # process code flow
-def code_flow(session_config, mode):
+def code_flow(session_config, mode, manager):
     # access token request
     token_endpoint_response, text = token_request(session_config, mode)
     logging.info('token endpoint response = %s', token_endpoint_response)
@@ -426,7 +428,7 @@ def code_flow(session_config, mode):
         
     #build proof of key ownership
     try:
-        proof = build_proof_of_key_ownership(session_config, nonce)
+        proof = build_proof_of_key_ownership(session_config, nonce, manager)
     except Exception as e:
         return None, str(e)
     logging.info("proof of key ownership sent = %s", proof)
@@ -579,44 +581,28 @@ def publish(service_id: str, attestation: str, server: str):
     }
 
     
-def sign_and_add_kb(sd_jwt, wallet_did):
-    """ Build Key Binding JWT (KB-JWT) using jwcrypto
-    remove disclosure
-        header: typ=kb+jwt, alg=ES256
-    """
+def sign_and_add_kb(sd_jwt, wallet_did, manager):
     sd_jwt_presentation = sd_jwt.split("~")[0]
     now = int(datetime.utcnow().timestamp())
     nonce = secrets.token_urlsafe(16)
+    vm = wallet_did + "#key-1"
+    key_id = manager.create_or_get_key_for_tenant(vm)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
 
     # sd_hash = b64url( SHA-256( ascii(SD-JWT-presentation) ) )
     digest = hashlib.sha256(sd_jwt_presentation.encode("ascii")).digest()
     sd_hash = base64url_encode(digest)
 
-    kb_header = {
+    header = {
         "typ": "kb+jwt",
-        "alg": "ES256",
+        "alg": alg,
     }
-
-    kb_claims = {
+    payload = {
         "iat": now,
         "aud": wallet_did,
         "nonce": nonce,
         "sd_hash": sd_hash,
     }
-
-    # Load holder key from wallet (JWK JSON assumed)
-    private_jwk = deterministic_jwk.jwk_p256_from_passphrase(wallet_did + "#key-1")
-    print("private jwk = ", private_jwk)
-    if not isinstance(private_jwk, dict):
-        private_jwk = json.loads(private_jwk)
-    try:
-        holder_jwk = jwk.JWK(**private_jwk)
-    except Exception:
-        logging.exception("Invalid holder private JWK in wallet")
-        return None
-
-    kb_token = jwt.JWT(header=kb_header, claims=kb_claims)
-    kb_token.make_signed_token(holder_jwk)
-    print("kb = ",  kb_token.serialize())
-    return sd_jwt_presentation + "~" + kb_token.serialize()  # compact JWS
+    kb_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
+    return sd_jwt_presentation + "~" + kb_token  # compact JWS
     

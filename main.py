@@ -12,6 +12,8 @@ import markdown
 import env
 import json
 from db_model import Wallet
+import tenant_kms
+
 
 # Your modules
 from utils import message
@@ -108,6 +110,10 @@ def create_app() -> Flask:
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
         os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+        
+    # initialize KMS
+    manager = tenant_kms.kms_init(myenv)
+    app.config["MANAGER"] = manager
 
     # ---- Init extensions bound to app ----
     db.init_app(app)
@@ -126,7 +132,7 @@ def create_app() -> Flask:
             seed_signin_for_wallet_registration(mode)
             #seed_issuer_for_testing(mode)
             seed_verifier_for_demo(mode)
-            seed_wallet(mode)
+            seed_wallet(mode, manager)
 
     # ---- Flask-Login ----
     login_manager = LoginManager()

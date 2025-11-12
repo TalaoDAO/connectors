@@ -42,7 +42,8 @@ def init_app(app):
             "PUBLIC_BASE_URL": "https://wallet4agent.com",
             "REDIS": current_app.config["REDIS"],
             "MODE": current_app.config["MODE"],
-            "SERVER": current_app.config["MODE"].server
+            "SERVER": current_app.config["MODE"].server,
+            "MANAGER": current_app.config["MANAGER"]
         }
         return config
     
@@ -60,8 +61,10 @@ def init_app(app):
         try:
             role = oidc4vc.get_payload_from_token(bearer_token).get("role")
             agent_identifier = oidc4vc.get_payload_from_token(bearer_token).get("sub")
+            print(role, agent_identifier)
             oidc4vc.verif_token(bearer_token)
-        except Exception:
+        except Exception as e:
+            print(str(e))
             logging.warning("verif token failed with role = %s and agent_identifier = %s", role, agent_identifier)
             return "guest", None
         if not role:
