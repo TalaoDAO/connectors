@@ -559,7 +559,7 @@ def call_get_identity_data(agent_identifier, config) -> Dict[str, Any]:
         "agent_identifier": this_wallet.did,
         "dev_bearer_token": this_wallet.dev_token,
         "agent_bearer_token": this_wallet.agent_token,
-        "wallet_url": mode.server + "did/" + urllib.parse.quote(this_wallet.did, safe=""),
+        "wallet_url": this_wallet.url,
         "did_document": json.loads(this_wallet.did_document),
         "owners_login": this_wallet.owner_login,
         "ecosystem_profile": this_wallet.ecosystem_profile,
@@ -570,11 +570,13 @@ def call_get_identity_data(agent_identifier, config) -> Dict[str, Any]:
     
 
 def call_rotate_bearer_token(arguments, agent_identifier, config) -> Dict[str, Any]:
+    manager = config["MANAGER"]
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    vm = agent_identifier + "#key-1"
     if arguments.get("role") == "dev":
-        this_wallet.dev_token = oidc4vc.sign_mcp_bearer_token(agent_identifier, "dev")
+        this_wallet.dev_token = oidc4vc.sign_mcp_bearer_token(vm, "dev", manager)
     else:
-        this_wallet.agent_token = oidc4vc.sign_mcp_bearer_token(agent_identifier, "agent")
+        this_wallet.agent_token = oidc4vc.sign_mcp_bearer_token(vm, "agent")
     db.session.commit()
     text = "New token available"
     structured = {

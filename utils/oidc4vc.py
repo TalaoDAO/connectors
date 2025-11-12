@@ -16,7 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, padding
 from cryptography.x509.oid import ExtensionOID
 from utils import signer
-import tenant_kms
+import secrets
 
 """
 https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/EBSI+DID+Method
@@ -99,6 +99,7 @@ def sign_mcp_bearer_token(vm, role, manager):
     now = int(datetime.timestamp(datetime.now()))
     payload = {
         "iss": did,
+        "jti": secrets.token_hex(16),
         "sub": did,
         "iat": now,
         "role": role
