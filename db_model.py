@@ -229,7 +229,7 @@ def seed_wallet(mode, manager):
             always_human_in_the_loop=False,
             did=did,
             url=url,
-            owner_identity_provider="test",
+            owner_identity_provider="google",
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )
@@ -246,7 +246,7 @@ def seed_wallet(mode, manager):
             always_human_in_the_loop=True,
             did=did,
             url=url,
-            owner_identity_provider="test",
+            owner_identity_provider="google",
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )

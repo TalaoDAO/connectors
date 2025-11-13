@@ -60,12 +60,11 @@ def register():
         session_config = json.loads(red.get(session_id).decode())
     except Exception:
         message = "Session expired"
-        return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
-    mode = current_app.config["MODE"]
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     wallet = Wallet.query.filter(Wallet.did == session_config["wallet_did"]).one_or_none()
     if not wallet:
         message = "Wallet not found"
-        return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     
     if wallet.owner_identity_provider == "google":
         return redirect(url_for("login_with_google", session_id=session_id))
@@ -74,7 +73,9 @@ def register():
     elif wallet.owner_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
     
-    return render_template("register.html", mode=mode, title="Authenticate", session_id=session_id)
+    logging.warning("wallet identity provider unknonw")
+    message = "User authentication failed"
+    return render_template("wallet/session_screen.html", message=message, title="Sorry !")
 
 
 def login_with_google():
