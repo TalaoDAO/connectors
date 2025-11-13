@@ -61,14 +61,15 @@ tools_guest = [
         }
     }
 ]
+
 tools_agent = [
     {
         "name": "accept_credential_offer",
         "description": (
-            "Accept an OIDC4VCI credential offer on behalf of this AI agent and return "
-            "the issued digital credential. The credential is typically a Verifiable "
-            "Credential (VC), often in SD-JWT VC format, that can later be stored in "
-            "the agent's wallet or presented to third parties."
+            "Accept an OIDC4VCI credential offer on behalf of this Agent and return "
+            "the issued credential. The issued object is typically a Verifiable "
+            "Credential (VC), which can then be stored in the Agent's wallet or "
+            "published for later presentation."
         ),
         "inputSchema": {
             "type": "object",
@@ -76,8 +77,8 @@ tools_agent = [
                 "credential_offer": {
                     "type": "string",
                     "description": (
-                        "OIDC4VCI credential offer or credential_offer_uri as provided "
-                        "by an external issuer."
+                        "An OIDC4VCI credential offer, or a credential_offer_uri as "
+                        "provided by an external issuer."
                     )
                 }
             },
@@ -85,14 +86,14 @@ tools_agent = [
         }
     },
     {
-        "name": "get_wallet_data",
+        "name": "get_this_wallet_data",
         "description": (
-            "Retrieve a high-level overview of this agent's wallet. The wallet is a "
+            "Retrieve a high-level overview of this Agent's wallet. The wallet is a "
             "secure software component that stores and manages digital and verifiable "
-            "credentials (e.g., W3C VCs, SD-JWT VCs) for the agent and the humans or "
-            "organizations it represents. This tool returns metadata such as the "
-            "wallet URL, ecosystem profile, number of stored attestations, and whether "
-            "a human is always kept in the loop."
+            "credentials (for example, W3C VCs or SD-JWT VCs) for the Agent and the "
+            "humans or organizations it represents. This tool returns metadata such as "
+            "the wallet URL, ecosystem profile, number of stored attestations, and "
+            "whether a human is always kept in the loop."
         ),
         "inputSchema": {
             "type": "object",
@@ -101,11 +102,11 @@ tools_agent = [
         }
     },
     {
-        "name": "get_wallet_attestations",
+        "name": "get_this_wallet_attestations",
         "description": (
             "List all attestations (verifiable credentials) currently stored in this "
-            "agent's wallet. Use this to understand what has been issued about the "
-            "agent (or its owner), such as AgentCards, proofs of delegation, "
+            "Agent's wallet. Use this to understand what has been issued about the "
+            "Agent (or its owner), such as AgentCards, proofs of delegation, "
             "capabilities, or organizational attributes."
         ),
         "inputSchema": {
@@ -115,12 +116,13 @@ tools_agent = [
         }
     },
     {
-        "name": "get_agent_attestations",
+        "name": "get_another_agent_attestations",
         "description": (
-            "Resolve another agent's DID and retrieve its published attestations."
-            " These are digital credentials that the agent "
-            " has chosen to expose publicly via its DID, such as "
-            "AgentCards, proofs of authorization, capability statements or certificates."
+            "Resolve another Agent's DID and retrieve its published attestations. "
+            "These are digital credentials that the Agent has chosen to expose "
+            "publicly, typically via Linked Verifiable Presentations (VPs) in its "
+            "DID Document—for example AgentCards, proofs of authorization, capability "
+            "statements, or certificates."
         ),
         "inputSchema": {
             "type": "object",
@@ -128,7 +130,7 @@ tools_agent = [
                 "agent_identifier": {
                     "type": "string",
                     "description": (
-                        "The DID of the agent whose published attestations should be "
+                        "The DID of the Agent whose published attestations should be "
                         "listed (for example: did:web:wallet4agent.com:demo:abc...)."
                     ),
                 }
@@ -140,8 +142,8 @@ tools_agent = [
         "name": "describe_wallet4agent",
         "description": (
             "Explain what the Wallet4Agent MCP server and its wallet do. Use this "
-            "tool first if you need to understand the concepts of 'wallet', 'agent', "
-            "and 'digital/verifiable credentials' in this ecosystem before calling "
+            "tool when you need to understand the concepts of 'wallet', 'Agent', and "
+            "'digital/verifiable credentials' in this ecosystem before calling "
             "other tools."
         ),
         "inputSchema": {

@@ -102,6 +102,7 @@ def sign_mcp_bearer_token(vm, role, manager):
         "jti": secrets.token_hex(16),
         "sub": did,
         "iat": now,
+        "aud": "https://wallet4agent.com/mcp",
         "role": role
     }
     jwt_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)

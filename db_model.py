@@ -222,7 +222,7 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo"
         url = mode.server + "did/" + did
-        default_wallet = Wallet(
+        default_wallet_1 = Wallet(
             dev_token=oidc4vc.sign_mcp_bearer_token(vm, "dev", manager),
             agent_token=oidc4vc.sign_mcp_bearer_token(vm, "agent", manager),
             name="Wallet_for_demo_with_test",
@@ -233,7 +233,24 @@ def seed_wallet(mode, manager):
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )
-        db.session.add(default_wallet)
+        db.session.add(default_wallet_1)
+        vm = "did:web:wallet4agent.com:demo2#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        did = "did:web:wallet4agent.com:demo2"
+        url = mode.server + "did/" + did
+        default_wallet_2 = Wallet(
+            dev_token=oidc4vc.sign_mcp_bearer_token(vm, "dev", manager),
+            agent_token=oidc4vc.sign_mcp_bearer_token(vm, "agent", manager),
+            name="Wallet_for_demo_with_test",
+            always_human_in_the_loop=True,
+            did=did,
+            url=url,
+            owner_identity_provider="test",
+            owner_login=json.dumps(["thierry.thevenet@talao.io"]),
+            did_document=create_did_document(did, jwk, url)
+        )
+        db.session.add(default_wallet_2)
         db.session.commit()
 
 

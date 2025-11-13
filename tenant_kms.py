@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import hashlib
 from jwcrypto import jwk as _jwk, jws as _jws
 import json as _json
+import logging
 
 
 REGION = "eu-west-3"   # Paris
@@ -30,7 +31,7 @@ def kms_init(myenv):
         TARGET_ROLE_ARN = "arn:aws:iam::623031118740:role/my-app-signing-role"
         base_sess = boto3.Session(profile_name=BASE_PROFILE, region_name=REGION)
 
-        print("Base identity:", base_sess.client("sts").get_caller_identity())
+        logging.info("Base identity: %s", json.dumps(base_sess.client("sts").get_caller_identity(), indent=2))
 
         # 2) assume the application role using the SAME session
         sts = base_sess.client("sts")
@@ -45,7 +46,7 @@ def kms_init(myenv):
             aws_session_token=c["SessionToken"],
             region_name=REGION,
         )
-        print("Assumed identity:", assumed_sess.client("sts").get_caller_identity())
+        logging.info("Assumed identity: %s", json.dumps(assumed_sess.client("sts").get_caller_identity(), indent=2))
         manager = TenantKMSManager(boto3_session=assumed_sess, region_name="eu-west-3")
         return manager
     else:
@@ -62,6 +63,11 @@ def sanitize_alias_from_did(did: str) -> str:
     # keep total length within KMS limits
     body = body[:250]
     return "alias/" + body
+
+
+def sanitize_tag_value(value: str) -> str:
+    # Allow only valid AWS tag characters: [\p{L}\p{Z}\p{N}_.:/=+\-@]
+    return re.sub(r"[^\w\s\.:\/=\+\-@]", "_", value)
 
 
 # --- base64url helpers (no padding) ---
@@ -215,15 +221,15 @@ class TenantKMSManager:
         # if alias already exists, return its TargetKeyId
         existing_alias = self.alias_exists(alias_name)
         if existing_alias and existing_alias.get("TargetKeyId"):
-            print("Alias exists for tenant:", alias_name)
+            logging.info("Alias exists for tenant: %s", alias_name)
             return existing_alias["TargetKeyId"]
 
         app_arn, account_id = self.get_app_role_arn()
-        print("App running as ARN:", app_arn)
+        logging.info("App running as ARN: %s", app_arn)
 
         initial_policy = build_initial_policy(app_role_arn=app_arn, account_id=account_id, admin_role_arn=KMS_ADMIN_ROLE_ARN)
 
-        print("Creating KMS key for tenant:", tenant_did)
+        logging.info("Creating KMS key for tenant: %s", tenant_did)
         resp = self.kms.create_key(
             Policy=json.dumps(initial_policy),
             KeySpec=KEY_SPEC,
@@ -232,7 +238,7 @@ class TenantKMSManager:
             Description=(description or f"Tenant key for {tenant_did}")
         )
         key_id = resp["KeyMetadata"]["KeyId"]
-        print("Created key id:", key_id)
+        logging.info("Created key id: %s", key_id)
 
         # Immediately lock the policy down (drop PutKeyPolicy from the app role)
         final_policy = build_final_policy(app_role_arn=app_arn, account_id=account_id, admin_role_arn=KMS_ADMIN_ROLE_ARN)
@@ -241,10 +247,10 @@ class TenantKMSManager:
         # create alias
         try:
             self.kms.create_alias(AliasName=alias_name, TargetKeyId=key_id)
-            print("Created alias:", alias_name)
+            logging.info("Created alias: %s", alias_name)
         except ClientError as e:
             # if alias already exists (race), fetch the alias target
-            print("create_alias error:", e)
+            logging.warning("create_alias error: %s", str(e))
             existing_alias = self.alias_exists(alias_name)
             if existing_alias and existing_alias.get("TargetKeyId"):
                 return existing_alias["TargetKeyId"]
@@ -252,13 +258,14 @@ class TenantKMSManager:
                 raise
 
         # tag the key with the tenant DID for discoverability
+        safe_tag = sanitize_tag_value(tenant_did)
         try:
             self.kms.tag_resource(
                 KeyId=key_id,
-                Tags=[{"TagKey": "tenant_did", "TagValue": tenant_did}]
+                Tags=[{"TagKey": "tenant_did", "TagValue": safe_tag}]
             )
         except Exception as e:
-            print("Warning: failed tagging key:", e)
+            logging.warning("Warning: failed tagging key: %s", str(e))
 
         # KMS may take a second to become fully available via get_public_key
         time.sleep(0.5)

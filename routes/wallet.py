@@ -187,12 +187,13 @@ def credential_offer(wallet_did):
         if not session_id:
             logout_user()
             message = "This session expired"
-            return render_template("wallet/session_screen.html", message=message, title="Access Denied")
+            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
         raw = red.get(session_id)
         if not raw:
             logout_user()
-            message = "This session expired"
-            return render_template("wallet/session_screen.html", message=message, title="Access Denied")
+            logging.warning("session expired")
+            message = "This attestation offer has expired"
+            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
         session_config = json.loads(raw.decode())
         if session_config["grant_type"] == "authorization_code":
             redirect_uri = build_authorization_request(session_config, red, mode)
@@ -206,7 +207,9 @@ def credential_offer(wallet_did):
             if sd_jwt_vc:
                 return render_template("wallet/user_consent.html", sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
             else:
-                return render_template("wallet/session_screen.html", message=text, title="Issuance Failure")
+                logging.warning("sd jwt is missing %s", text)
+                message = "The attestation cannot be issued"
+                return render_template("wallet/session_screen.html", message=text, title="Sorry !")
     
     # user is not logged
     logging.info("user is not logged") 
@@ -214,28 +217,33 @@ def credential_offer(wallet_did):
     if credential_offer_uri := request.args.get('credential_offer_uri'):
         try:
             offer = requests.get(credential_offer_uri, timeout=10).json()
-        except Exception:
-            message = "The issuer session expired"
-            return render_template("wallet/session_screen.html", message=message, title="Issuance Failure")
+        except Exception as e:
+            logging.warning("session expired %s", str(e))
+            message = "The attestation offer has expired"
+            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     elif offer := request.args.get('credential_offer'):
         try:
             offer = json.loads(offer)
-        except Exception:
-            message = "The issuer session expired"
-            return render_template("wallet/session_screen.html", message=message, title="Issuance Failure")
+        except Exception as e:
+            logging.warning("session expired %s", str(e))
+            message = "The attestation offer has expired"
+            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     else:
-        message = "Incorrect credential format"
-        return render_template("wallet/session_screen.html", message=message, title="Issuance Failure")
+        logging.warning("incorrect VC format")
+        message = "This credential format is not supported."
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
             
     # build session config and store it in memory for next call to the same endpoint
     wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
     if not wallet:
         message = "Wallet not found"
-        return render_template("wallet/session_screen.html", message=message, title= "Access Denied")
+        return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
     
     session_config, text = build_session_config(wallet.did, json.dumps(offer), mode)    
     if not session_config:
-        return render_template("wallet/session_screen.html", message=text, title="Access Denied")
+        logging.warning(" session config expired %s", text)
+        message = "The attestation offer has expired"
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     
     # if user in the loop, redirect user to regisration
     if session_config["always_human_in_the_loop"]:
@@ -250,12 +258,13 @@ def credential_offer(wallet_did):
             # store attestation and publish it
             result, message = store(attestation, session_config, manager, published=True)
             if result:
-                message_ok = "Attestation has been stored and published successfully"
+                message_ok = "Attestation has been issued, stored and published successfully"
                 return render_template("wallet/session_screen.html", message=message_ok, title="Congrats !")
-        return render_template("wallet/session_screen.html", message=message, title="Issuance failed")
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     else:
-        message = "Grant type not supported when user is not in the loop"
-        return render_template("wallet/session_screen.html", message=message, title= "Issuance Failure")
+        logging.warning("attestation is missing %s", message)
+        message = "This attestation cannot been issued without human consent."
+        return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
 
 
 # route to request user consent then store the VC
@@ -273,18 +282,21 @@ def user_consent():
     if public_url == "public":
         result, message = store(attestation, session_config, manager, published=True)
         if result:
-            message_ok = "Attestation has been stored an published"
-            return render_template("wallet/session_screen.html", message=message_ok, title= "Congrats !") 
+            message = "Attestation has been issued, stored an published successfully"
+            return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
         else:
-            return render_template("wallet/session_screen.html", message=message, title= "Issuance failure")
+            logging.warning(message)
+            message = "Attestation cannot be issued"
+            return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
             
     else:
         result, message = store(attestation, session_config, manager, published=False)
         if result:
-            message_ok = "Attestation has been stored"
-            return render_template("wallet/session_screen.html", message=message_ok, title= "Congrats !") 
+            message = "Attestation has been issued and stored successfully"
+            return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
         else:
-            return render_template("wallet/session_screen.html", message=message, title= "Issuance failure")
+            logging.warning("attestation cannot be stored %s", message)
+            return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
 
 
 def build_authorization_request(session_config, red, mode) -> str:
