@@ -96,8 +96,11 @@ def build_session_config(agent_id: str, credential_offer: str, mode):
     issuer_config_url = credential_issuer + '/.well-known/openid-credential-issuer'
     issuer_config_json = requests.get(issuer_config_url, timeout= 10).json()
     if not authorization_server_url:
-        if issuer_config_json.get("authorization_server"):
-            authorization_server_url = issuer_config_json.get("authorization_server")[0]
+        authz_srv = issuer_config_json.get("authorization_server")
+        if isinstance(authz_srv, list) and authz_srv:
+            authorization_server_url = authz_srv[0]
+        elif isinstance(authz_srv, str) and authz_srv.strip():
+            authorization_server_url = authz_srv.strip()
         else:
             authorization_server_url = credential_issuer
     try:
@@ -245,7 +248,7 @@ def credential_offer(wallet_did):
         attestation, message = code_flow(session_config, mode, manager)
         if attestation:
             # store attestation and publish it
-            result, message = store(attestation, session_config, published=True)
+            result, message = store(attestation, session_config, manager, published=True)
             if result:
                 message_ok = "Attestation has been stored and published successfully"
                 return render_template("wallet/session_screen.html", message=message_ok, title="Congrats !")
@@ -262,12 +265,13 @@ def user_consent():
         message = "Attestation has been rejected"
         return render_template("wallet/session_screen.html", message=message, title= "Well done!") 
     red = current_app.config["REDIS"]
+    manager = current_app.config["MANAGER"]
     attestation = request.form.get("sd_jwt_vc")
     session_id = request.form.get("session_id")
     public_url = request.form.get("publish_scope") or None
     session_config = json.loads(red.get(session_id).decode())
     if public_url == "public":
-        result, message = store(attestation, session_config, published=True)
+        result, message = store(attestation, session_config, manager, published=True)
         if result:
             message_ok = "Attestation has been stored an published"
             return render_template("wallet/session_screen.html", message=message_ok, title= "Congrats !") 
@@ -275,7 +279,7 @@ def user_consent():
             return render_template("wallet/session_screen.html", message=message, title= "Issuance failure")
             
     else:
-        result, message = store(attestation, session_config, published=False)
+        result, message = store(attestation, session_config, manager, published=False)
         if result:
             message_ok = "Attestation has been stored"
             return render_template("wallet/session_screen.html", message=message_ok, title= "Congrats !") 
@@ -455,7 +459,7 @@ def code_flow(session_config, mode, manager):
     return cred, "ok"
 
 
-def store(cred, session_config, published=False):
+def store(cred, session_config, manager, published=False):
     # store attestation
     vcsd = cred.split("~") 
     vcsd_jwt = vcsd[0]
@@ -470,7 +474,7 @@ def store(cred, session_config, published=False):
     service_id = session_config["wallet_did"] + "#" + id
     
     if published:
-        result = publish(service_id, cred, session_config["server"])
+        result = publish(service_id, cred, session_config["server"], manager)
         if not result:
             logging.warning("publish failed")
             published = False
@@ -499,18 +503,7 @@ def base64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
-def publish(service_id: str, attestation: str, server: str):
-    """
-    Publish a Linked Verifiable Presentation for an SD-JWT VC, following:
-      - IETF SD-JWT + SD-JWT VC (including KB-JWT + sd_hash)
-      - DIF Linked Verifiable Presentations (service entry in DID Doc)
-
-    Args:
-        wallet_did: DID of the wallet/holder.
-        attestation: SD-JWT presentation string:
-            <Issuer-JWT>~<Disclosure 1>~...~<Disclosure N>~
-        mode: object with .server (base URL) used to build service endpoints.
-    """
+def publish(service_id, attestation, server, manager):
 
     # 1. Look up wallet did and id
     wallet_did = service_id.split("#")[0]
@@ -530,14 +523,11 @@ def publish(service_id: str, attestation: str, server: str):
 
     # 3. Normalize / validate incoming SD-JWT VC presentation (SD-JWT)
     sd_jwt_presentation = attestation.strip()
-
-    # Per SD-JWT spec, an SD-JWT presentation (without KB) ends with '~'
     if not sd_jwt_presentation.endswith("~"):
-        logging.error("Expected SD-JWT presentation to end with '~'")
-        return None
+        sd_jwt_presentation = sd_jwt_presentation + "~"
 
     # remove disclosure if any
-    sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did)
+    sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
     if not sd_jwt_plus_kb:
         return None
 
