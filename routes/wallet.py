@@ -180,6 +180,7 @@ def credential_offer(wallet_did):
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
     manager = current_app.config["MANAGER"]
+    
     # if user is logged (user in the loop)
     if current_user.is_authenticated:
         logging.info("user is now logged")
@@ -258,8 +259,14 @@ def credential_offer(wallet_did):
             # store attestation and publish it
             result, message = store(attestation, session_config, manager, published=True)
             if result:
-                message_ok = "Attestation has been issued, stored and published successfully"
-                return render_template("wallet/session_screen.html", message=message_ok, title="Congrats !")
+                message = "Attestation has been issued, stored and published successfully"
+                return render_template("wallet/session_screen.html", message=message, title="Congrats !")
+            else:
+                message = "Attestation has been issued but not stored"
+                return render_template("wallet/session_screen.html", message=message, title="Congrats !")
+        
+        logging.warning("no attestation")
+        message = "The attestation issuance failed"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     else:
         logging.warning("attestation is missing %s", message)
@@ -272,13 +279,23 @@ def user_consent():
     decision = request.form.get('decision')
     if decision == "reject":
         message = "Attestation has been rejected"
-        return render_template("wallet/session_screen.html", message=message, title= "Well done!") 
+        return render_template("wallet/session_screen.html", message=message, title="Well done!") 
+
     red = current_app.config["REDIS"]
     manager = current_app.config["MANAGER"]
     attestation = request.form.get("sd_jwt_vc")
     session_id = request.form.get("session_id")
     public_url = request.form.get("publish_scope") or None
-    session_config = json.loads(red.get(session_id).decode())
+    try:
+        raw = red.get(session_id)
+        if not raw:
+            raise ValueError("Session expired or not found")
+        session_config = json.loads(raw.decode())
+    except Exception as e:
+        logging.exception("User consent session issue: %s", str(e))
+        message = "This attestation session has expired. Please start again from the attestation offer."
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
+
     if public_url == "public":
         result, message = store(attestation, session_config, manager, published=True)
         if result:
@@ -324,12 +341,22 @@ def callback():
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
     manager = current_app.config["MANAGER"]
+    
     try:
         code = request.args['code']
         session_id = request.args.get('state', "")
-        session_config = json.loads(red.get(session_id).decode())
-    except Exception:
-        return jsonify({"error": "callback issue"})
+        raw = red.get(session_id)
+        if not raw:
+            raise ValueError("Session not found or expired")
+        session_config = json.loads(raw.decode())
+    except Exception as e:
+        logging.exception("Callback issue: %s", e)
+        message = "The authorization response cannot be processed (session expired or invalid callback)."
+        return render_template(
+            "wallet/session_screen.html",
+            message=message,
+            title="Sorry !"
+        )
     
     # update session config with code from AS
     session_config["code"] = code
@@ -574,6 +601,7 @@ def publish(service_id, attestation, server, manager):
 
     # 9. Persist changes
     db.session.commit()
+    logging.info("attestation is published")
 
     # Optionally return details for caller
     return {
