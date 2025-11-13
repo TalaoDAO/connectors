@@ -102,7 +102,7 @@ tools_agent = [
         }
     },
     {
-        "name": "get_this_wallet_attestations",
+        "name": "get_attestations_of_this_wallet",
         "description": (
             "List all attestations (verifiable credentials) currently stored in this "
             "Agent's wallet. Use this to understand what has been issued about the "
@@ -116,7 +116,7 @@ tools_agent = [
         }
     },
     {
-        "name": "get_another_agent_attestations",
+        "name": "get_attestations_of_another_agent",
         "description": (
             "Resolve another Agent's DID and retrieve its published attestations. "
             "These are digital credentials that the Agent has chosen to expose "
@@ -224,7 +224,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     return out
 
 
-def call_get_wallet_attestations(wallet_did, config) -> Dict[str, Any]:
+def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
     wallet_attestations = []
@@ -317,7 +317,7 @@ def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, A
     return payload
 
 
-def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
+def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
     """
     List attestations (Linked VPs) of an Agent DID.
 
@@ -473,7 +473,7 @@ def call_get_agent_attestations(wallet_did: str) -> Dict[str, Any]:
 
 
 # for agent
-def call_get_wallet_data(agent_identifier) -> Dict[str, Any]:
+def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
     # Query attestations linked to this wallet
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     attestations_list = Attestation.query.filter_by(wallet_did=agent_identifier).all()
@@ -481,7 +481,6 @@ def call_get_wallet_data(agent_identifier) -> Dict[str, Any]:
         "agent_identifier": agent_identifier,
         "wallet_url": this_wallet.url,
         "number_of_attestations": len(attestations_list),
-        "ecosystem_profile": this_wallet.ecosystem_profile,
         "human_in_the_loop": this_wallet. always_human_in_the_loop
         }
     text = "Agent identifier is " + agent_identifier + " and wallet url is " + this_wallet.url

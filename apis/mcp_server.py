@@ -287,11 +287,11 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_identity_data(agent_identifier, config())
                 
-            elif name == "get_wallet_data":
+            elif name == "get_this_wallet_data":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_wallet_data(agent_identifier)
+                out = wallet_tools.call_get_this_wallet_data(agent_identifier)
             
             elif name == "describe_wallet4agent":
                 if role != "agent":
@@ -305,13 +305,13 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_delete_wallet(agent_identifier, config())
             
-            elif name == "get_wallet_attestations":
+            elif name == "get_attestations_of_this_wallet":
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_wallet_attestations(agent_identifier, config())
+                out = wallet_tools.call_get_attestations_of_this_wallet(agent_identifier, config())
                 
-            elif name == "get_agent_attestations":
+            elif name == "get_attestations_of_another_agent":
                 target_agent_identifier = arguments.get("agent_identifier")
                 if not target_agent_identifier:
                     return {"jsonrpc":"2.0","id":req_id,
@@ -319,9 +319,8 @@ def init_app(app):
                 if role not in ["agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_agent_attestations(target_agent_identifier)
-                
-            
+                out = wallet_tools.call_get_attestations_of_another_agent(target_agent_identifier)
+                     
             elif name == "rotate_bearer_token":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
