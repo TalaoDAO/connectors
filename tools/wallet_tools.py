@@ -540,6 +540,8 @@ def call_delete_wallet(wallet_did, config) -> Dict[str, Any]:
 # agent tool
 def call_accept_credential_offer(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
     credential_offer = arguments.get("credential_offer")
+    if isinstance(credential_offer, str):
+        credential_offer = json.loads(credential_offer)
     mode = config["MODE"]
     manager = config["MANAGER"]
     attestation, text = wallet.wallet(agent_identifier, credential_offer, mode, manager)

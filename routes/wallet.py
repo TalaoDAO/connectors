@@ -45,28 +45,37 @@ def web_wallet_openid_configuration(wallet_did):
     }
     return jsonify(config)
 
-
-def build_session_config(agent_id: str, credential_offer: str, mode):
+    
+def build_session_config(agent_id: str, credential_offer, mode):
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
     if not this_wallet:
         logging.warning("wallet not found")
         return None, "wallet not found"
-    parse_result = urlparse(credential_offer)
-    result = {k: v[0] for k, v in parse_qs(parse_result.query).items()}
-    if result:        
-        if credential_offer_uri := result.get('credential_offer_uri'):
-            try:
-                credential_offer = requests.get(credential_offer_uri, timeout=10).json()
-            except Exception:
-                return None, "credential_offer_uri endpoint not available"
+    if isinstance(credential_offer, dict):
+        pass
+    elif isinstance(credential_offer, str):
+        parse_result = urlparse(credential_offer)
+        result = {k: v[0] for k, v in parse_qs(parse_result.query).items()}
+        if result:
+            if credential_offer_uri := result.get('credential_offer_uri'):
+                try:
+                    credential_offer = requests.get(credential_offer_uri, timeout=10).json()
+                except Exception:
+                    return None, "credential_offer_uri endpoint not available"
+            else:
+                try:
+                    credential_offer = json.loads(result.get('credential_offer', '{}'))
+                except Exception:
+                    return None, "credential_offer is in incorrect format"
         else:
+            # try to parse the whole string as JSON
             try:
-                credential_offer = json.loads(result.get('credential_offer', '{}'))
+                credential_offer = json.loads(credential_offer)
             except Exception:
                 return None, "credential_offer is in incorrect format"
-    
-    if not isinstance(credential_offer, dict):
-        credential_offer = json.loads(credential_offer)
+
+    else:
+        return None, "credential_offer is in incorrect format"
     
     credential_issuer = credential_offer.get('credential_issuer')
     
@@ -240,7 +249,7 @@ def credential_offer(wallet_did):
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
     
-    session_config, text = build_session_config(wallet.did, json.dumps(offer), mode)    
+    session_config, text = build_session_config(wallet.did, offer, mode)    
     if not session_config:
         logging.warning(" session config expired %s", text)
         message = "The attestation offer has expired"
