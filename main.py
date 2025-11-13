@@ -241,8 +241,8 @@ def create_app() -> Flask:
         if not wallet:
             resp = {"error": "notFound"}
             return Response(json.dumps(resp), headers=headers)
-        did_doc = json.loads(this_wallet.did_doc)
-        return Response(json.dumps(did_doc), headers=headers)
+        did_doc = this_wallet.did_document
+        return Response(did_doc, headers=headers)
     
     
     @app.get('/service/<wallet_did>/<id>')
