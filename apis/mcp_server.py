@@ -7,6 +7,8 @@ from utils.kms import decrypt_json
 from tools import wallet_tools, verifier_tools
 from utils import oidc4vc
 import importlib
+import logging
+from datetime import datetime
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
@@ -53,30 +55,44 @@ def init_app(app):
             return auth.split(" ", 1)[1].strip()
         return request.headers.get("X-API-KEY")
 
+    def _get_pat_exp():
+        encrypted_pat = _bearer_or_api_key()
+        pat = json.loads(oidc4vc.decrypt_string(encrypted_pat))
+        return pat.get("exp")
+        
     def get_role_and_agent_id() -> str:
-        bearer_token = _bearer_or_api_key()
-        if not bearer_token:
-            logging.info("no Bearer token")
+        encrypted_pat = _bearer_or_api_key()
+        if not encrypted_pat:
+            logging.warning("no PAT")
             return "guest", None 
         try:
-            role = oidc4vc.get_payload_from_token(bearer_token).get("role")
-            agent_identifier = oidc4vc.get_payload_from_token(bearer_token).get("sub")
-            print(role, agent_identifier)
-            oidc4vc.verif_token(bearer_token)
+            pat = json.loads(oidc4vc.decrypt_string(encrypted_pat))
         except Exception as e:
-            print(str(e))
-            logging.warning("verif token failed with role = %s and agent_identifier = %s", role, agent_identifier)
+            logging.warning("cannot decrypt PAT %s", str(e))
             return "guest", None
+        role = pat.get("role")
+        agent_identifier = pat.get("agent_identifier")
+        jti = pat.get("jti")
+        exp = pat.get("exp")
+        logging.info("agent = %s and role = %s",agent_identifier, role)
+        
+        # check expiration date
+        now = int(datetime.timestamp(datetime.now()))
+        if exp and exp < now:
+            logging.warning("PAT expired")
+            return "guest", None
+        
+        # check role
         if not role:
             return "guest", None
         
         # check if token is still valid for this agent_identifier
         this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
         try:
-            if bearer_token == this_wallet.dev_token:
-                return "dev", agent_identifier
-            elif bearer_token == this_wallet.agent_token:
-                return "agent", agent_identifier
+            if jti == this_wallet.dev_pat_jti and role == "dev":
+                return role, agent_identifier
+            elif jti == this_wallet.dev_agent_jti and role == "agent":
+                return role, agent_identifier
             else:
                 return "guest", None
         except Exception as e:
@@ -299,11 +315,14 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_describe_wallet4agent()
             
-            elif name == "delete_wallet":
+            elif name == "delete_identity":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_delete_wallet(agent_identifier, config())
+                if agent_identifier != arguments.get("agent_identifier"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: agent_identifier missing "}}
+                out = wallet_tools.call_delete_identity(agent_identifier)
             
             elif name == "get_attestations_of_this_wallet":
                 if role not in ["dev", "agent"]:
@@ -321,11 +340,11 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_attestations_of_another_agent(target_agent_identifier)
                      
-            elif name == "rotate_bearer_token":
+            elif name == "rotate_personal_access_token":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_rotate_bearer_token(arguments, agent_identifier, config())
+                out = wallet_tools.call_rotate_personal_access_token(arguments, agent_identifier)
             
             elif name == "accept_credential_offer":
                 if role not in ["agent"]:

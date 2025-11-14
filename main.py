@@ -27,7 +27,7 @@ from db_model import (
 from routes import (
     home, register, menu, user_profile,
     did_document, online_test,
-    log, wallet
+    log, wallet, authorization_server
 )
 
 
@@ -175,6 +175,9 @@ def create_app() -> Flask:
     statuslist.init_app(app)
     
     wallet.init_app(app)
+    authorization_server.init_app(app)
+    
+    
     # ---- Error handlers ----
     @app.errorhandler(403)
     def page_abort(e):

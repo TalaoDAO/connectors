@@ -22,6 +22,13 @@ from jwcrypto.common import json_encode
 
 
 def init_app(app):
+    
+    # OAuth MCP server endpoint
+    app.add_url_rule('/.well-known/oauth-protected-resource', view_func=protected_resource_metadata, methods=['GET'])
+    app.add_url_rule('/.well-known/oauth-protected-resource/mcp', view_func=protected_resource_metadata, methods=['GET'])
+    
+    
+    # OIDC4VCI wallet endpoint
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
     app.add_url_rule('/<wallet_did>/credential_offer', view_func=credential_offer, methods=['GET'])
     app.add_url_rule('/callback', view_func=callback, methods=['GET', 'POST'])
@@ -29,6 +36,7 @@ def init_app(app):
     app.add_url_rule('/did/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
     app.add_url_rule('/.well-known/openid-configuration/did/<wallet_did>', view_func=web_wallet_openid_configuration, methods=['GET'])
     
+
     app.add_url_rule('/user/consent', view_func=user_consent, methods=['GET', 'POST'])
     
     return
@@ -36,6 +44,20 @@ def init_app(app):
 def get_configuration():
     f = open("wallet_configuration.json", 'r')
     return json.loads(f.read())
+
+
+
+# MCP server endpoint
+def protected_resource_metadata():
+    # https://www.rfc-editor.org/rfc/rfc9728.html
+    mode = current_app.config["MODE"]
+    config = {
+        "resource": mode.server + "mcp",
+        "bearer_method_supported": ["header"],
+        "tls_client_certificate_bound_access_tokens": True,
+        "authorization_servers": [mode.server]
+    }
+    return jsonify(config)
 
 
 def web_wallet_openid_configuration(wallet_did):

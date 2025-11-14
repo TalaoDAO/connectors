@@ -1,10 +1,9 @@
 import requests
-from jwcrypto import jwk, jwt, jws
+from jwcrypto import jwk, jwt
 import base58  # type: ignore
 import json
 from datetime import datetime, timezone
 import logging
-import math
 import hashlib
 from random import randbytes
 from utils import x509_attestation
@@ -17,6 +16,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, padding
 from cryptography.x509.oid import ExtensionOID
 from utils import signer
 import secrets
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import os
+
 
 """
 https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/EBSI+DID+Method
@@ -87,26 +89,60 @@ def alg(key):
         raise Exception("Key type not supported")
 
 
-def sign_mcp_bearer_token(vm, role, manager):
-    key_id = manager.create_or_get_key_for_tenant(vm)
-    did = vm.split("#")[0]
-    jwk, kid, alg = manager.get_public_key_jwk(key_id)
-    header = {
-        "typ": "JWT",
-        "kid": vm,
-        "alg": alg
-    }
+
+KEY_FILE = "keys.json"
+
+def load_local_key():
+    """
+    Loads a base64-encoded AES key from keys.json.
+    """
+    with open(KEY_FILE, "r") as f:
+        data = json.load(f)
+    key_b64 = data.get("encryption_key")
+    if not key_b64:
+        raise ValueError("encryption_key not found in keys.json")
+    return base64.urlsafe_b64decode(key_b64)
+
+
+def encrypt_string(plaintext: str) -> str:
+    """
+    Encrypt a string using AES-GCM and return a base64 ciphertext.
+    """
+    key = load_local_key()
+    aesgcm = AESGCM(key)
+    # 96-bit (12-byte) nonce recommended for AES-GCM
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
+    # Store nonce + ciphertext together (common convention)
+    blob = nonce + ciphertext
+    return base64.urlsafe_b64encode(blob).decode("ascii")
+
+
+def decrypt_string(ciphertext_b64: str) -> str:
+    """
+    Decrypt a base64 ciphertext produced by encrypt_string().
+    """
+    key = load_local_key()
+    aesgcm = AESGCM(key)
+    blob = base64.urlsafe_b64decode(ciphertext_b64)
+    nonce = blob[:12]
+    ciphertext = blob[12:]
+    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+    return plaintext.decode("utf-8")
+
+
+def generate_pat(did, role, duration=None):
     now = int(datetime.timestamp(datetime.now()))
     payload = {
-        "iss": did,
         "jti": secrets.token_hex(16),
-        "sub": did,
+        "agent_identifier": did,
         "iat": now,
-        "aud": "https://wallet4agent.com/mcp",
-        "role": role
+        "role": role,
     }
-    jwt_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
-    return jwt_token
+    if duration:
+        payload["exp"] = now + duration
+    pat = encrypt_string(json.dumps(payload))
+    return pat, payload["jti"]
 
 
 def extract_first_san_dns_from_der_b64(cert_b64: str) -> str:

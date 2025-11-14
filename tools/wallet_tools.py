@@ -3,15 +3,14 @@ from typing import Any, Dict, List, Optional
 from db_model import Wallet, db, User
 import secrets
 import logging
-from sqlalchemy import and_
 from routes import wallet
 from db_model import Attestation
-from utils import deterministic_jwk, oidc4vc, message
+from utils import oidc4vc, message
 import urllib
 import requests
 import base64
 from urllib.parse import unquote
-import tenant_kms
+import os, hashlib
 
 
 tools_guest = [
@@ -21,6 +20,12 @@ tools_guest = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "authentication": {
+                    "type": "string",
+                    "description": "Authentication between MCP client and MCP server for agent. Dev and admin use PAT",
+                    "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
+                    "default": "Personal Access Token (PAT)"
+                },
                 "agentcard_url": {
                     "type": "string",
                     "description": "Optional AgentCard URL."
@@ -30,10 +35,6 @@ tools_guest = [
                     "description": "Always human in the loop",
                     "default": True
                 },
-                "organization": {
-                    "type": "string",
-                    "description": "Optional company name of the Agent provider",
-                },
                 "owners_identity_provider": {
                     "type": "string",
                     "description": "Identity provider for owners",
@@ -42,7 +43,7 @@ tools_guest = [
                 },
                 "owners_login": {
                     "type": "string",
-                    "description": "One or more user login separated by a comma (Google email, Github login, personal wallet DID)"
+                    "description": "One or more user login separated by a comma (Google email, Github login, personal wallet DID). This login will be needed to accept new attestations offer."
                 },
                 "ecosystem": {
                     "type": "string",
@@ -165,16 +166,21 @@ tools_dev = [
         }
     },
     {
-        "name": "delete_wallet",
-        "description": "Delete the current wallet",
+        "name": "delete_identity",
+        "description": "Delete agent identifier and wallet",
         "inputSchema": {
             "type": "object",
-            "properties": {},
-            "required": []
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "Confirm agent identifier to delete."
+                }
+            },
+            "required": ["agent_identifier"]
         }
     },
     {
-        "name": "rotate_bearer_token",
+        "name": "rotate_personal_access_token",
         "description": "Rotate one of the bearer tokens",
         "inputSchema": {
             "type": "object",
@@ -204,7 +210,7 @@ tools_dev = [
         }
     },
     {
-        "name": "get_wallet_attestations",
+        "name": "get_attestations_of_this_wallet",
         "description": "Get all attestations of the wallet",
         "inputSchema": {
             "type": "object",
@@ -486,8 +492,8 @@ def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
     text = "Agent identifier is " + agent_identifier + " and wallet url is " + this_wallet.url
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
-
-def call_delete_wallet(wallet_did, config) -> Dict[str, Any]:
+# for dev
+def call_delete_identity(wallet_did) -> Dict[str, Any]:
     """
     Delete a wallet and its related data from the database.
 
@@ -556,12 +562,10 @@ def call_accept_credential_offer(arguments: Dict[str, Any], agent_identifier, co
 
 # dev tool
 def call_get_identity_data(agent_identifier, config) -> Dict[str, Any]:
-    mode = config["MODE"]
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     structured = {
         "agent_identifier": this_wallet.did,
-        "dev_bearer_token": this_wallet.dev_token,
-        "agent_bearer_token": this_wallet.agent_token,
+        "authentication": this_wallet.mcp_authentication,
         "wallet_url": this_wallet.url,
         "did_document": json.loads(this_wallet.did_document),
         "owners_login": this_wallet.owner_login,
@@ -572,22 +576,23 @@ def call_get_identity_data(agent_identifier, config) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
     
 
-def call_rotate_bearer_token(arguments, agent_identifier, config) -> Dict[str, Any]:
-    manager = config["MANAGER"]
+def call_rotate_personal_access_token(arguments, agent_identifier) -> Dict[str, Any]:
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-    vm = agent_identifier + "#key-1"
-    if arguments.get("role") == "dev":
-        this_wallet.dev_token = oidc4vc.sign_mcp_bearer_token(vm, "dev", manager)
-    else:
-        this_wallet.agent_token = oidc4vc.sign_mcp_bearer_token(vm, "agent")
-    db.session.commit()
-    text = "New token available"
     structured = {
-        "agent_identifier": this_wallet.did,
-        "dev_bearer_token": this_wallet.dev_token,
-        "agent_bearer_token": this_wallet.agent_token,
+        "agent_identifier": agent_identifier,
         "wallet_url": this_wallet.url
     }
+    if arguments.get("role") == "dev":
+        dev_pat, dev_pat_jti = oidc4vc.generate_pat(agent_identifier, "dev")
+        this_wallet.dev_pat_jti = dev_pat_jti
+        structured["dev_personal_access_token"] = dev_pat
+        text = "New personal access token available for dev. Copy this access token which is not stored."
+    else:
+        agent_pat, agent_pat_jti = oidc4vc.generate_pat(agent_identifier, "agent", duration=90*25*60*60)
+        this_wallet.agent_pat_jti = agent_pat_jti
+        structured["agent_personal_access_token"] = agent_pat
+        text = "New personal access token available for agent. Copy this access token which is not stored."
+    db.session.commit()
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
@@ -674,6 +679,21 @@ def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
+def hash_client_secret(secret: str, iterations: int = 200_000) -> str:
+    """
+    Hash the client_secret using PBKDF2-HMAC-SHA256.
+    Returns base64(salt + derived_key) for DB storage.
+    """
+    salt = os.urandom(16)  # 128-bit salt
+    dk = hashlib.pbkdf2_hmac(
+        "sha256",
+        secret.encode("utf-8"),
+        salt,
+        iterations
+    )
+    return base64.b64encode(salt + dk).decode("ascii")
+
+
 # guest tool
 def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
@@ -682,17 +702,20 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     owners_login = arguments.get("owners_login").split(",")
     agent_card_url = arguments.get("agentcard_url")
     agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
-    vm = agent_did + "#key-1"
-    key_id = manager.create_or_get_key_for_tenant(vm)
-    jwk, kid, alg = manager.get_public_key_jwk(key_id)
+    #key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")
+    #jwk, kid, alg = manager.get_public_key_jwk(key_id)
+    jwk = json.dumps({})
     url = mode.server + "did/" + agent_did
-    did_document = create_did_web_document(agent_did, jwk, url, agent_card_url=agent_card_url)
-    dev_token = oidc4vc.sign_mcp_bearer_token(vm, "dev", manager)
-    agent_token = oidc4vc.sign_mcp_bearer_token(vm, "agent", manager)
+    did_document = create_did_document(agent_did, jwk, url, agent_card_url=agent_card_url)
+    dev_pat, dev_pat_jti = oidc4vc.generate_pat(agent_did, "dev")
+    agent_pat, agent_pat_jti = oidc4vc.generate_pat(agent_did, "agent", duration=90*24*60*60)
+    mcp_authentication = arguments.get("authentication")
+    client_secret = secrets.token_urlsafe(64)
     wallet = Wallet(
-        dev_token=dev_token,
-        agent_token=agent_token,
-        owner_login=json.dumps(owners_login),
+        dev_pat_jti=dev_pat_jti,
+        agent_pat_jti=agent_pat_jti,
+        mcp_authentication=mcp_authentication,
+        client_secret_hash=hash_client_secret(client_secret),
         owner_identity_provider=owners_identity_provider,
         ecosystem_profile=arguments.get("ecosystem", "DIIP V4"),
         agent_framework=arguments.get("agent_framework", "None"),
@@ -726,21 +749,27 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         db.session.add(owner)  
     db.session.add(wallet)
     db.session.commit()
-    text = "New agent identifier and wallet created."
-    
     structured = {
-        "agent_identifier": wallet.did,
-        "dev_bearer_token": wallet.dev_token,
-        "agent_bearer_token": wallet.agent_token,
+        "agent_identifier": agent_did,
+        "dev_personal_access_token": dev_pat,
         "wallet_url": wallet.url
     }
+    if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
+        structured["client_id"] = agent_did
+        structured["client_secret"] = client_secret
+        structured["issuer"] = mode.server
+        text = "New agent identifier and wallet created. Copy dev personal access token as it is not stored. Use OAuth Client Credential flow with client_id and client_secret for agent."    
+    else:
+        text = "New agent identifier and wallet created. Copy agent personal access token and dev personal access token as they are not stored."
+        structured["agent_personal_access_token"] = agent_pat
+    
     # send message
-    message_text = json.dumps(owners_login) + " from " + owners_identity_provider
+    message_text = "Wallet created for " + " ".join(owners_login)
     message.message("A new wallet for AI Agent has been created", "thierry.thevenet@talao.io", message_text, mode)
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def create_did_web_document(did, jwk_1, url, agent_card_url=False):
+def create_did_document(did, jwk_1, url, agent_card_url=False):
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",

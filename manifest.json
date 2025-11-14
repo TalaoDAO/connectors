@@ -24,6 +24,7 @@
       "url": "https://wallet4agent.com/mcp/healthz"
     }
   },
+  
   "auth": {
     "type": "bearer",
     "scheme": "Bearer",

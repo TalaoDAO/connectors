@@ -6,8 +6,7 @@ import json
 from utils.kms import encrypt_json
 from utils import oidc4vc
 from sqlalchemy import CheckConstraint, Enum, UniqueConstraint, Index
-from utils import deterministic_jwk
-import urllib
+import logging
 
 db = SQLAlchemy()
 
@@ -183,10 +182,10 @@ class Credential(db.Model):
 
 class Wallet(db.Model):
     id = db.Column(db.Integer, primary_key=True)   # internal identifier
-    dev_token = db.Column(db.Text)
-    agent_token = db.Column(db.Text)
-    description = db.Column(db.Text)
-    name = db.Column(db.Text)
+    dev_pat_jti = db.Column(db.String(64))
+    agent_pat_jti = db.Column(db.String(64))
+    client_secret_hash = db.Column(db.String(64))
+    mcp_authentication = db.Column(db.String(256), default="Personal Access Token (PAT)")
     owner_identity_provider = db.Column(db.String(64))
     owner_login = db.Column(db.String(64))
     ecosystem_profile = db.Column(db.String(64), default="DIIP V4")
@@ -197,7 +196,6 @@ class Wallet(db.Model):
     linked_vp = db.Column(db.Text)
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
-    exp = db.Column(db.DateTime)
     
     
 class Attestation(db.Model):
@@ -222,10 +220,15 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo"
         url = mode.server + "did/" + did
-        default_wallet_1 = Wallet(
-            dev_token=oidc4vc.sign_mcp_bearer_token(vm, "dev", manager),
-            agent_token=oidc4vc.sign_mcp_bearer_token(vm, "agent", manager),
-            name="Wallet_for_demo_with_test",
+        dev_pat, dev_pat_jti = oidc4vc.generate_pat(did, "dev")
+        agent_pat, agent_pat_jti = oidc4vc.generate_pat(did, "dev", duration = 90*24*60*60)
+        print("---------------------")
+        logging.info("for %s dev_pat = %s", did, dev_pat)
+        print("---------------------")
+        logging.info("for %s agent_pat = %s", did, agent_pat)
+        wallet_1 = Wallet(
+            dev_pat_jti=dev_pat_jti,  # 365 days
+            agent_pat_jti=agent_pat_jti,
             always_human_in_the_loop=False,
             did=did,
             url=url,
@@ -233,16 +236,22 @@ def seed_wallet(mode, manager):
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )
-        db.session.add(default_wallet_1)
+        db.session.add(wallet_1)
+        
         vm = "did:web:wallet4agent.com:demo2#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo2"
         url = mode.server + "did/" + did
-        default_wallet_2 = Wallet(
-            dev_token=oidc4vc.sign_mcp_bearer_token(vm, "dev", manager),
-            agent_token=oidc4vc.sign_mcp_bearer_token(vm, "agent", manager),
-            name="Wallet_for_demo_with_test",
+        dev_pat, dev_pat_jti = oidc4vc.generate_pat(did, "dev")
+        agent_pat, agent_pat_jti = oidc4vc.generate_pat(did, "dev", duration = 90*24*60*60)
+        print("---------------------")
+        logging.info("for %s dev_pat = %s", did, dev_pat)
+        print("----------------------")
+        logging.info("for %s agent_pat = %s", did, agent_pat)
+        wallet_2 = Wallet(
+            dev_pat_jti=dev_pat_jti,
+            agent_pat_jti=agent_pat_jti,
             always_human_in_the_loop=True,
             did=did,
             url=url,
@@ -250,7 +259,7 @@ def seed_wallet(mode, manager):
             owner_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )
-        db.session.add(default_wallet_2)
+        db.session.add(wallet_2)
         db.session.commit()
 
 
