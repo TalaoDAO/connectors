@@ -131,18 +131,26 @@ def decrypt_string(ciphertext_b64: str) -> str:
     return plaintext.decode("utf-8")
 
 
-def generate_pat(did, role, duration=None):
+def hash_client_secret(text: str) -> str:
+    # Basic SHA-256 hash of the client secret (hex)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def generate_access_token(did, role, type, duration=None):
     now = int(datetime.timestamp(datetime.now()))
     payload = {
         "jti": secrets.token_hex(16),
-        "agent_identifier": did,
+        "sub": did,
         "iat": now,
+        "type": type,
         "role": role,
     }
     if duration:
         payload["exp"] = now + duration
-    pat = encrypt_string(json.dumps(payload))
-    return pat, payload["jti"]
+    if not duration and type == "oauth":
+        payload["exp"] = now + 1800
+    access_token = encrypt_string(json.dumps(payload))
+    return access_token, payload["jti"]
 
 
 def extract_first_san_dns_from_der_b64(cert_b64: str) -> str:

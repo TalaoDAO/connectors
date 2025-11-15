@@ -1,13 +1,12 @@
 import json
 from typing import Any, Dict, List, Optional
 import logging
-from flask import request, jsonify, current_app, make_response
+from flask import request, jsonify, current_app, make_response, Response
 from db_model import Verifier, Wallet
 from utils.kms import decrypt_json
 from tools import wallet_tools, verifier_tools
 from utils import oidc4vc
 import importlib
-import logging
 from datetime import datetime
 
 PROTOCOL_VERSION = "2025-06-18"
@@ -55,49 +54,66 @@ def init_app(app):
             return auth.split(" ", 1)[1].strip()
         return request.headers.get("X-API-KEY")
 
-    def _get_pat_exp():
-        encrypted_pat = _bearer_or_api_key()
-        pat = json.loads(oidc4vc.decrypt_string(encrypted_pat))
-        return pat.get("exp")
+    def expired_token_response():
+        body = {
+            "error": "invalid_token",
+            "error_description": "The access token expired",
+        }
+
+        return Response(
+            json.dumps(body),
+            status=401,
+            mimetype="application/json",
+            headers={
+                "WWW-Authenticate": (
+                    'Bearer error="invalid_token", '
+                    'error_description="The access token expired"'
+                )
+            },
+        )
         
     def get_role_and_agent_id() -> str:
         encrypted_pat = _bearer_or_api_key()
         if not encrypted_pat:
-            logging.warning("no PAT")
+            logging.warning("no access token")
             return "guest", None 
         try:
-            pat = json.loads(oidc4vc.decrypt_string(encrypted_pat))
+            access_token = json.loads(oidc4vc.decrypt_string(encrypted_pat))
         except Exception as e:
-            logging.warning("cannot decrypt PAT %s", str(e))
+            logging.warning("cannot decrypt access token %s", str(e))
             return "guest", None
-        role = pat.get("role")
-        agent_identifier = pat.get("agent_identifier")
-        jti = pat.get("jti")
-        exp = pat.get("exp")
-        logging.info("agent = %s and role = %s",agent_identifier, role)
+        role = access_token.get("role")
+        agent_identifier = access_token.get("sub")
+        jti = access_token.get("jti")
+        exp = access_token.get("exp")
+        type = access_token.get("type")
+        logging.info("agent = %s and role = %s and type = %s",agent_identifier, role, type)
         
         # check expiration date
         now = int(datetime.timestamp(datetime.now()))
         if exp and exp < now:
-            logging.warning("PAT expired")
-            return "guest", None
+            logging.warning("access token expired")
+            return "expired", None
         
         # check role
         if not role:
             return "guest", None
         
-        # check if token is still valid for this agent_identifier
         this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-        try:
-            if jti == this_wallet.dev_pat_jti and role == "dev":
-                return role, agent_identifier
-            elif jti == this_wallet.dev_agent_jti and role == "agent":
-                return role, agent_identifier
-            else:
+        # if pat check if token is still valid for this agent_identifier
+        if type == "pat":
+            try:
+                if jti == this_wallet.dev_pat_jti and role == "dev":
+                    return role, agent_identifier
+                elif jti == this_wallet.dev_agent_jti and role == "agent":
+                    return role, agent_identifier
+                else:
+                    return "guest", None
+            except Exception as e:
+                logging.warning(str(e))
                 return "guest", None
-        except Exception as e:
-            logging.warning(str(e))
-            return "guest", None
+        else:
+            return role, agent_identifier
         
     
     
@@ -205,9 +221,14 @@ def init_app(app):
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
-        logging.info("header = %s", request.headers)
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
+        
+        # check https authorization
+        role, agent_identifier = get_role_and_agent_id()
+        if role == "expired":
+            return expired_token_response()
+        logging.info("role = %s",role)
     
         req = request.get_json(force=True, silent=False)
         logging.info("request received = %s", json.dumps(req, indent=2))
@@ -240,8 +261,6 @@ def init_app(app):
 
         # tools/list
         elif method == "tools/list":
-            role, agent_identifier = get_role_and_agent_id()
-            logging.info("role = %s",role)
             return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
                 
     
@@ -259,8 +278,6 @@ def init_app(app):
         elif method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments") or {}         
-            role, agent_identifier = get_role_and_agent_id()
-
     
             if name == "start_user_verification":
                 if role != "agent":
@@ -297,11 +314,17 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: public_key missing "}}  
                 out = wallet_tools.call_add_authentication_key(arguments, agent_identifier, config())
             
-            elif name == "get_identity_data":
+            elif name == "get_configuration":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_identity_data(agent_identifier, config())
+                out = wallet_tools.call_get_configuration(agent_identifier, config())
+                
+            elif name == "update_configuration":
+                if role != "dev":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_update_configuration(arguments, agent_identifier, config())
                 
             elif name == "get_this_wallet_data":
                 if role != "agent":
@@ -339,11 +362,14 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_attestations_of_another_agent(target_agent_identifier)
-                     
+                    
             elif name == "rotate_personal_access_token":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if agent_identifier != arguments.get("agent_identifier"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: agent_identifier missing "}}
                 out = wallet_tools.call_rotate_personal_access_token(arguments, agent_identifier)
             
             elif name == "accept_credential_offer":

@@ -16,7 +16,7 @@ import os, hashlib
 tools_guest = [
     {
         "name": "create_agent_identifier_and_wallet",
-        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent digital credentials",
+        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent digital credentials as verifiable credentials.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -26,36 +26,15 @@ tools_guest = [
                     "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
                     "default": "Personal Access Token (PAT)"
                 },
-                "agentcard_url": {
-                    "type": "string",
-                    "description": "Optional AgentCard URL."
-                },
-                "always_human_in_the_loop": {
-                    "type": "boolean",
-                    "description": "Always human in the loop",
-                    "default": True
-                },
                 "owners_identity_provider": {
                     "type": "string",
                     "description": "Identity provider for owners",
-                    "enum": ["google", "github", "wallet"],
+                    "enum": ["google", "github", "personal data wallet"],
                     "default": "google"
                 },
                 "owners_login": {
                     "type": "string",
                     "description": "One or more user login separated by a comma (Google email, Github login, personal wallet DID). This login will be needed to accept new attestations offer."
-                },
-                "ecosystem": {
-                    "type": "string",
-                    "description": "Ecosystem profile",
-                    "enum": ["EBSI V3", "DIIP V4", "DIIP V3", "ARF"],
-                    "default": "DIIP V4"
-                },
-                "agent_framework": {
-                    "type": "string",
-                    "description": "Agent framework",
-                    "enum": ["None", "Agntcy"],
-                    "default": "None"
                 }
             },
             "required": ["owners_identity_provider", "owners_login"]
@@ -157,12 +136,56 @@ tools_agent = [
 
 tools_dev = [
     {
-        "name": "get_identity_data",
-        "description": "Get all information about an agent identity",
+        "name": "get_configuration",
+        "description": "Get the configuration data.",
         "inputSchema": {
             "type": "object",
             "properties": {},
             "required": []
+        }
+    },
+    {
+        "name": "update_configuration",
+        "description": (
+            "Add configuration for OAuth between MCP client and server and "
+            "specific features for VCs and the OIDC4VC protocol. "
+            "You can also register a public key for OAuth2 private_key_jwt "
+            "client authentication."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "always_human_in_the_loop": {
+                    "type": "boolean",
+                    "description": "Always human in the loop",
+                    "default": True
+                },
+                "ecosystem": {
+                    "type": "string",
+                    "description": "Ecosystem profile",
+                    "enum": ["EBSI V3", "DIIP V4", "DIIP V3", "ARF"],
+                    "default": "DIIP V4"
+                },
+                "agent_framework": {
+                    "type": "string",
+                    "description": "Agent framework",
+                    "enum": ["None", "Agntcy"],
+                    "default": "None"
+                },
+                "agentcard_url": {
+                    "type": "string",
+                    "description": "Optional AgentCard URL."
+                },
+                "client_public_key": {
+                    "type": "string",
+                    "description": (
+                        "Public key as a JWK (JSON Web Key) encoded as a JSON string. "
+                        "This key will be stored in the wallet as 'client_public_key' "
+                        "and can be used for OAuth 2.0 private_key_jwt client "
+                        "authentication to the Authorization Server."
+                    )
+                }
+            }
         }
     },
     {
@@ -190,20 +213,24 @@ tools_dev = [
                     "description": "Choose the token to rotate",
                     "enum": ["agent", "dev"],
                     "default": "dev"
+                },
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "Confirm agent identifier."
                 }
             },
-            "required": []
+            "required": ["agent_identifier"]
         }
     },
     {
         "name": "add_authentication_key",
-        "description": "Add an authentication public key",
+        "description": "Add an authentication public key. This key will be published in the DID Document but not stored by the wallet.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "public_key": {
                     "type": "string",
-                    "description": "Public key as a JWK (JSON Web Key) encoded as a JSON string"
+                    "description": "Public key as a JWK (JSON Web Key) encoded as a JSON string. "
                 }
             },
             "required": ["public_key"]
@@ -559,21 +586,30 @@ def call_accept_credential_offer(arguments: Dict[str, Any], agent_identifier, co
     text = "Attestation successfully received (not stored automatically)."
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
-
 # dev tool
-def call_get_identity_data(agent_identifier, config) -> Dict[str, Any]:
+def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+
+    # Turn all DB columns into a dict
     structured = {
-        "agent_identifier": this_wallet.did,
-        "authentication": this_wallet.mcp_authentication,
-        "wallet_url": this_wallet.url,
-        "did_document": json.loads(this_wallet.did_document),
-        "owners_login": this_wallet.owner_login,
-        "ecosystem_profile": this_wallet.ecosystem_profile,
-        "agent_framework": this_wallet.agent_framework,
-        "owners_identity_provider": this_wallet.owner_identity_provider
+        column.name: getattr(this_wallet, column.name)
+        for column in Wallet.__table__.columns
     }
-    return _ok_content([{"type": "text", "text": "All data"}], structured=structured)
+    if structured.get("created_at"):
+        structured["created_at"] = structured.get("created_at").isoformat()
+    if structured.get("did_document"):
+        structured["did_document"] = json.loads(structured["did_document"])
+    
+    structured.pop("id", None)
+
+    # You can also keep your old, explicit keys if you like:
+    structured["agent_identifier"] = this_wallet.did
+    structured["authentication"] = this_wallet.mcp_authentication
+
+    return _ok_content(
+        [{"type": "text", "text": "All data"}],
+        structured=structured,
+    )
     
 
 def call_rotate_personal_access_token(arguments, agent_identifier) -> Dict[str, Any]:
@@ -583,12 +619,12 @@ def call_rotate_personal_access_token(arguments, agent_identifier) -> Dict[str, 
         "wallet_url": this_wallet.url
     }
     if arguments.get("role") == "dev":
-        dev_pat, dev_pat_jti = oidc4vc.generate_pat(agent_identifier, "dev")
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_identifier, "dev", "pat")
         this_wallet.dev_pat_jti = dev_pat_jti
         structured["dev_personal_access_token"] = dev_pat
         text = "New personal access token available for dev. Copy this access token which is not stored."
     else:
-        agent_pat, agent_pat_jti = oidc4vc.generate_pat(agent_identifier, "agent", duration=90*25*60*60)
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_identifier, "agent", "pat", duration=90*25*60*60)
         this_wallet.agent_pat_jti = agent_pat_jti
         structured["agent_personal_access_token"] = agent_pat
         text = "New personal access token available for agent. Copy this access token which is not stored."
@@ -679,19 +715,10 @@ def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-def hash_client_secret(secret: str, iterations: int = 200_000) -> str:
-    """
-    Hash the client_secret using PBKDF2-HMAC-SHA256.
-    Returns base64(salt + derived_key) for DB storage.
-    """
-    salt = os.urandom(16)  # 128-bit salt
-    dk = hashlib.pbkdf2_hmac(
-        "sha256",
-        secret.encode("utf-8"),
-        salt,
-        iterations
-    )
-    return base64.b64encode(salt + dk).decode("ascii")
+
+def hash_client_secret(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
 
 
 # guest tool
@@ -707,18 +734,18 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     jwk = json.dumps({})
     url = mode.server + "did/" + agent_did
     did_document = create_did_document(agent_did, jwk, url, agent_card_url=agent_card_url)
-    dev_pat, dev_pat_jti = oidc4vc.generate_pat(agent_did, "dev")
-    agent_pat, agent_pat_jti = oidc4vc.generate_pat(agent_did, "agent", duration=90*24*60*60)
+    dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_did, "dev", "pat")
+    agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_did, "agent", "pat", duration=90*24*60*60)
     mcp_authentication = arguments.get("authentication")
     client_secret = secrets.token_urlsafe(64)
     wallet = Wallet(
         dev_pat_jti=dev_pat_jti,
         agent_pat_jti=agent_pat_jti,
         mcp_authentication=mcp_authentication,
-        client_secret_hash=hash_client_secret(client_secret),
-        owner_identity_provider=owners_identity_provider,
-        ecosystem_profile=arguments.get("ecosystem", "DIIP V4"),
-        agent_framework=arguments.get("agent_framework", "None"),
+        client_secret_hash=oidc4vc.hash_client_secret(client_secret),
+        owners_identity_provider=owners_identity_provider,
+        owners_login=json.dumps(owners_login),
+        agent_framework="None",
         did=agent_did,
         did_document=json.dumps(did_document),
         url=url
@@ -755,10 +782,11 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         "wallet_url": wallet.url
     }
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
-        structured["client_id"] = agent_did
-        structured["client_secret"] = client_secret
-        structured["issuer"] = mode.server
-        text = "New agent identifier and wallet created. Copy dev personal access token as it is not stored. Use OAuth Client Credential flow with client_id and client_secret for agent."    
+        structured["agent_client_id"] = agent_did
+        structured["agent_client_secret"] = client_secret
+        structured["authorization_server"] = mode.server
+        text = "New agent identifier and wallet created. Copy dev personal access token for dev and admin.\
+            Use OAuth Client Credential flow with client_id and client_secret for agent only. Use personal access token for dev and admin"
     else:
         text = "New agent identifier and wallet created. Copy agent personal access token and dev personal access token as they are not stored."
         structured["agent_personal_access_token"] = agent_pat
@@ -862,6 +890,149 @@ def call_describe_wallet4agent() -> Dict[str, Any]:
             ],
         },
     }
+
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        structured=structured,
+    )
+
+def call_update_configuration(
+    arguments: Dict[str, Any],
+    agent_identifier: str,
+    config: dict = None,
+) -> Dict[str, Any]:
+    """
+    Update this Agent's wallet configuration.
+
+    Can update:
+      - always_human_in_the_loop (bool)
+      - ecosystem_profile (via 'ecosystem' string)
+      - agent_framework (string)
+      - agentcard_url (A2AService in DID Document, id = did + '#a2a')
+      - client_public_key (public JWK for OAuth2 private_key_jwt client auth)
+    """
+    # 0. Load wallet
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet:
+        return _ok_content(
+            [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
+            is_error=True,
+        )
+
+    updated: Dict[str, Any] = {}
+
+    # 1. human-in-the-loop
+    if "always_human_in_the_loop" in arguments:
+        value = bool(arguments.get("always_human_in_the_loop"))
+        this_wallet.always_human_in_the_loop = value
+        updated["always_human_in_the_loop"] = value
+
+    # 2. ecosystem profile
+    if "ecosystem" in arguments and arguments.get("ecosystem"):
+        eco = arguments["ecosystem"]
+        this_wallet.ecosystem_profile = eco
+        updated["ecosystem_profile"] = eco
+
+    # 3. agent framework
+    if "agent_framework" in arguments and arguments.get("agent_framework"):
+        af = arguments["agent_framework"]
+        this_wallet.agent_framework = af
+        updated["agent_framework"] = af
+
+    # 4. agentcard_url (stored in DID Document as A2AService with id did + '#a2a')
+    if "agentcard_url" in arguments:
+        agentcard_url = arguments.get("agentcard_url") or None
+
+        # Load DID Document strictly; if it is broken we fail rather than wipe it.
+        try:
+            did_document = (
+                json.loads(this_wallet.did_document)
+                if isinstance(this_wallet.did_document, str) and this_wallet.did_document
+                else {}
+            )
+        except Exception:
+            logging.exception("Invalid DID Document in wallet while updating configuration")
+            return _ok_content(
+                [{"type": "text", "text": "Stored DID Document is invalid JSON; cannot update AgentCard URL."}],
+                is_error=True,
+            )
+
+        services = did_document.get("service", []) or []
+        a2a_id = f"{this_wallet.did}#a2a"
+
+        # Remove existing A2AService entries for that id
+        new_services = [s for s in services if s.get("id") != a2a_id]
+
+        if agentcard_url:
+            # Keep the same ID and type as in create_did_document()
+            new_services.append(
+                {
+                    "id": a2a_id,
+                    "type": "A2AService",
+                    "serviceEndpoint": agentcard_url,
+                }
+            )
+
+        did_document["service"] = new_services
+        this_wallet.did_document = json.dumps(did_document)
+        updated["agentcard_url"] = agentcard_url
+
+    # 5. client_public_key for JWT client authentication (private_key_jwt)
+    if "client_public_key" in arguments and arguments.get("client_public_key"):
+        public_key_raw = arguments["client_public_key"]
+
+        # Accept either a JSON string or already-parsed dict
+        if isinstance(public_key_raw, str):
+            try:
+                jwk_obj = json.loads(public_key_raw)
+            except Exception:
+                logging.exception("Invalid JSON for client_public_key")
+                return _ok_content(
+                    [{"type": "text", "text": "Invalid JSON for 'client_public_key' (expected JWK)"}],
+                    is_error=True,
+                )
+        elif isinstance(public_key_raw, dict):
+            jwk_obj = public_key_raw
+        else:
+            return _ok_content(
+                [{"type": "text", "text": "client_public_key must be a JSON string or object (JWK)"}],
+                is_error=True,
+            )
+
+        # Strip any private JWK params, just in case
+        for k in ["d", "p", "q", "dp", "dq", "qi", "oth", "k"]:
+            jwk_obj.pop(k, None)
+
+        # Store canonical JSON in DB
+        this_wallet.client_public_key = json.dumps(jwk_obj)
+        updated["client_public_key"] = jwk_obj
+
+    # 6. Persist
+    db.session.commit()
+
+    # 7. Build a structured response (JSON-safe)
+    client_pk = None
+    if this_wallet.client_public_key:
+        try:
+            client_pk = json.loads(this_wallet.client_public_key)
+        except Exception:
+            client_pk = None
+
+    structured = {
+        "agent_identifier": this_wallet.did,
+        "wallet_url": this_wallet.url,
+        "ecosystem_profile": this_wallet.ecosystem_profile,
+        "agent_framework": this_wallet.agent_framework,
+        "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
+        "client_public_key": client_pk,
+        "updated_fields": updated,
+    }
+
+    text = (
+        "Wallet configuration has been updated."
+        if updated
+        else "No configuration changes were applied (no updatable fields provided)."
+    )
 
     return _ok_content(
         [{"type": "text", "text": text}],

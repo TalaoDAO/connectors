@@ -66,11 +66,11 @@ def register():
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     
-    if wallet.owner_identity_provider == "google":
+    if wallet.owners_identity_provider == "google":
         return redirect(url_for("login_with_google", session_id=session_id))
-    elif wallet.owner_identity_provider == "github":
+    elif wallet.owners_identity_provider == "github":
         return redirect(url_for("login_with_github", session_id=session_id))
-    elif wallet.owner_identity_provider == "wallet":
+    elif wallet.owners_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
     
     logging.warning("wallet identity provider unknonw")

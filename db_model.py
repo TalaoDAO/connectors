@@ -185,9 +185,10 @@ class Wallet(db.Model):
     dev_pat_jti = db.Column(db.String(64))
     agent_pat_jti = db.Column(db.String(64))
     client_secret_hash = db.Column(db.String(64))
+    client_public_key = db.Column(db.Text)
     mcp_authentication = db.Column(db.String(256), default="Personal Access Token (PAT)")
-    owner_identity_provider = db.Column(db.String(64))
-    owner_login = db.Column(db.String(64))
+    owners_identity_provider = db.Column(db.String(64))
+    owners_login = db.Column(db.String(64))
     ecosystem_profile = db.Column(db.String(64), default="DIIP V4")
     agent_framework = db.Column(db.String(64), default="None")
     url = db.Column(db.Text)
@@ -220,8 +221,8 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo"
         url = mode.server + "did/" + did
-        dev_pat, dev_pat_jti = oidc4vc.generate_pat(did, "dev")
-        agent_pat, agent_pat_jti = oidc4vc.generate_pat(did, "dev", duration = 90*24*60*60)
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", duration = 90*24*60*60)
         print("---------------------")
         logging.info("for %s dev_pat = %s", did, dev_pat)
         print("---------------------")
@@ -232,8 +233,8 @@ def seed_wallet(mode, manager):
             always_human_in_the_loop=False,
             did=did,
             url=url,
-            owner_identity_provider="google",
-            owner_login=json.dumps(["thierry.thevenet@talao.io"]),
+            owners_identity_provider="google",
+            owners_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )
         db.session.add(wallet_1)
@@ -243,8 +244,8 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo2"
         url = mode.server + "did/" + did
-        dev_pat, dev_pat_jti = oidc4vc.generate_pat(did, "dev")
-        agent_pat, agent_pat_jti = oidc4vc.generate_pat(did, "dev", duration = 90*24*60*60)
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", duration = 90*24*60*60)
         print("---------------------")
         logging.info("for %s dev_pat = %s", did, dev_pat)
         print("----------------------")
@@ -255,8 +256,8 @@ def seed_wallet(mode, manager):
             always_human_in_the_loop=True,
             did=did,
             url=url,
-            owner_identity_provider="google",
-            owner_login=json.dumps(["thierry.thevenet@talao.io"]),
+            owners_identity_provider="google",
+            owners_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
         )
         db.session.add(wallet_2)
