@@ -477,5 +477,5 @@ Then use the MCP panel to:
 
 ---
 
-**Maintainer:** [Talao DAO](https://github.com/TalaoDAO) • MCP Wallet4Agent  
+**Maintainer:** [Talao](https://github.com/TalaoDAO) • MCP Wallet4Agent  
 Issues / feedback: via the contact form linked on the home page.

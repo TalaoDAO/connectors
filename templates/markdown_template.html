@@ -3,27 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VC-REGISTRY</title>
+  <title>WALLET4AGENT</title>
 
   <!-- Brand font only for logo/title; body uses system font for readability -->
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
 
- 
-
   <style>
     :root{
       /* base palette */
-      --bg: #f6f7fb;
+      --bg: #f3f4f6;
       --card: #ffffff;
-      --border: #e5e7eb;
+      --border: #d1d5db;
       --text: #111827;
       --muted: #6b7280;
-      --accent: #0057FF;
-      --link: #0a58ff;
-      --shadow: 0 2px 10px rgba(0,0,0,.05);
-      /* brand */
-      --brand-font: Orbitron, ui-sans-serif, system-ui;
+      --accent: #2563eb;
+      --link: #1d4ed8;
+      --shadow: 0 1px 6px rgba(15,23,42,.12);
+
+      /* layout */
+      --brand-font: "Orbitron", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     @media (prefers-color-scheme: dark){
@@ -43,52 +42,185 @@
     html, body{height:100%}
     html{scroll-behavior:smooth}
     body{
-      margin:0; background:var(--bg); color:var(--text);
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji";
+      overflow-x:hidden; /* avoid global horizontal scroll */
     }
 
     /* Accessible skip link */
     .skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
-    .skip-link:focus{position:fixed;left:1rem;top:1rem;width:auto;height:auto;padding:.5rem .75rem;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);z-index:1000}
+    .skip-link:focus{
+      position:fixed;left:1rem;top:1rem;width:auto;height:auto;
+      padding:.4rem .7rem;background:var(--card);color:var(--text);
+      border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);z-index:1000;
+    }
 
     /* Header */
-    header.page{position:sticky;top:0;z-index:10;background:var(--card);border-bottom:1px solid var(--border);box-shadow:var(--shadow)}
-    .page-inner{max-width:1100px;margin:0 auto;padding:.85rem 1rem;display:flex;align-items:center;justify-content:space-between}
-    .brand{font-family:var(--brand-font);letter-spacing:.5px;color:var(--text);text-decoration:none;font-weight:700}
-    .crumbs{color:var(--muted);font-size:.95rem}
+    header.page{
+      position:sticky;top:0;z-index:10;
+      background:var(--card);
+      border-bottom:1px solid var(--border);
+      box-shadow:var(--shadow);
+    }
+    .page-inner{
+      max-width:1100px;
+      margin:0 auto;
+      padding:.85rem 1rem;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .brand{
+      font-family:var(--brand-font);
+      letter-spacing:.5px;
+      color:var(--text);
+      text-decoration:none;
+      font-weight:700;
+    }
+    .crumbs{
+      color:var(--muted);
+      font-size:.95rem;
+    }
 
     /* Layout */
-    .container{max-width:1100px;margin:1.25rem auto 2rem;padding:0 1rem;display:grid;grid-template-columns:260px 1fr;gap:1.25rem}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+    .container{
+      max-width:1100px;
+      margin:1.25rem auto 2rem;
+      padding:0 1rem;
+      display:grid;
+      grid-template-columns:260px 1fr;
+      gap:1.25rem;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow:var(--shadow);
+    }
 
     /* TOC */
-    .toc{position:sticky;top:84px;align-self:start;padding:1rem}
-    .toc h2{margin:0 0 .5rem 0;font-size:1rem;letter-spacing:.2px;color:var(--muted)}
-    .toc nav a{display:block;padding:.35rem .5rem;margin:.1rem 0;border-radius:8px;text-decoration:none;color:var(--text);border:1px solid transparent}
+    .toc{
+      position:sticky;
+      top:84px;
+      align-self:start;
+      padding:1rem;
+    }
+    .toc h2{
+      margin:0 0 .5rem 0;
+      font-size:1rem;
+      letter-spacing:.2px;
+      color:var(--muted);
+    }
+    .toc nav a{
+      display:block;
+      padding:.35rem .5rem;
+      margin:.1rem 0;
+      border-radius:8px;
+      text-decoration:none;
+      color:var(--text);
+      border:1px solid transparent;
+      font-size:.92rem;
+    }
     .toc nav a.depth-2{padding-left:1.25rem;font-size:.95rem}
     .toc nav a.depth-3{padding-left:2rem;font-size:.9rem}
-    .toc nav a:hover{background:rgba(0,0,0,.03);border-color:var(--border)}
-    .toc nav a.active{background:rgba(0,87,255,.08);border-color:rgba(0,87,255,.2)}
+    .toc nav a:hover{
+      background:rgba(0,0,0,.03);
+      border-color:var(--border);
+    }
+    .toc nav a.active{
+      background:rgba(0,87,255,.08);
+      border-color:rgba(0,87,255,.2);
+    }
 
     /* Article */
-    .article{padding:1.25rem 1.25rem 2rem}
+    .article{
+      padding:1.25rem 1.25rem 2rem;
+      overflow-x:hidden; /* ensure children don't cause page overflow */
+    }
     .article :is(h1,h2,h3,h4){scroll-margin-top:88px}
     .article h1{margin-top:0}
     .article a{color:var(--link)}
 
+    /* Article meta (download link) */
+    .article-meta{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:.75rem;
+      margin-bottom:0.75rem;
+      font-size:.86rem;
+      color:var(--muted);
+      border-bottom:1px solid var(--border);
+      padding-bottom:.5rem;
+    }
+    .article-meta-left{
+      font-weight:500;
+    }
+    .download-link{
+      display:inline-flex;
+      align-items:center;
+      gap:.3rem;
+      padding:.25rem .6rem;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(0,0,0,.02);
+      color:var(--muted);
+      text-decoration:none;
+      font-size:.8rem;
+      white-space:nowrap;
+    }
+    .download-link:hover{
+      border-color:var(--accent);
+      color:var(--accent);
+      background:rgba(37,99,235,.04);
+    }
+
     /* Prose helpers layered on markdown.css */
-    .article pre{background:#0b1220;color:#e5e7eb;border-radius:10px;padding:.85rem 1rem;overflow:auto}
-    .article code:not(pre code){background:rgba(0,0,0,.06);padding:.15rem .35rem;border-radius:6px}
-    @media (prefers-color-scheme: dark){.article code:not(pre code){background:rgba(255,255,255,.08)}}
+    .article pre{
+      background:#0b1220;
+      color:#e5e7eb;
+      border-radius:10px;
+      padding:.85rem 1rem;
+      overflow-x:auto;   /* allow horizontal scroll inside block */
+      overflow-y:hidden;
+      max-width:100%;    /* never exceed card width */
+      box-sizing:border-box;
+    }
+    .article code:not(pre code){
+      background:rgba(0,0,0,.06);
+      padding:.15rem .35rem;
+      border-radius:6px;
+    }
+    @media (prefers-color-scheme: dark){
+      .article code:not(pre code){background:rgba(255,255,255,.08)}
+    }
 
     /* Floating top button */
-    .to-top{position:fixed;right:18px;bottom:18px;border:1px solid var(--border);background:var(--card);border-radius:9999px;padding:.6rem .85rem;box-shadow:var(--shadow);cursor:pointer;font-weight:700}
+    .to-top{
+      position:fixed;
+      right:18px;
+      bottom:18px;
+      border:1px solid var(--border);
+      background:var(--card);
+      color:var(--text);
+      border-radius:999px;
+      padding:.4rem .85rem;
+      box-shadow:var(--shadow);
+      cursor:pointer;
+      font-weight:700;
+    }
     .to-top:hover{filter:brightness(1.03)}
 
     /* Mobile */
     @media (max-width:880px){
       .container{grid-template-columns:1fr}
       .toc{position:relative;top:0}
+      .article-meta{
+        flex-direction:column;
+        align-items:flex-start;
+      }
     }
   </style>
 </head>
@@ -98,7 +230,9 @@
   <header class="page">
     <div class="page-inner">
       <a class="brand" href="/">Home</a>
-      <div class="crumbs"></div>
+      <div class="crumbs">
+        Documentation / {{ page }}
+      </div>
     </div>
   </header>
 
@@ -111,60 +245,63 @@
     </aside>
 
     <article class="card article" id="article">
+      <div class="article-meta">
+        <div class="article-meta-left">
+          Page: <strong>{{ page }}</strong>
+        </div>
+        <!-- Adjust href if your .md is served from another path -->
+        <a class="download-link" href="/documentation/{{ page }}.md" download>
+          ⬇ Download Markdown
+        </a>
+      </div>
+
       {{ html_content | safe }}
     </article>
   </main>
 
   <button class="to-top" id="toTop" aria-label="Back to top" title="Back to top">↑</button>
 
-   {% include "footer.html" %}
+  {% include "footer.html" %}
 
   <script>
     // Build a TOC from h2/h3 headings and track active section
     (function(){
       const content = document.getElementById('article');
       const nav = document.getElementById('tocNav');
-      const tocBox = document.getElementById('toc');
-      if (!content || !nav || !tocBox) return;
+      if (!content || !nav) return;
 
       const headings = content.querySelectorAll('h2, h3');
-      if (!headings.length) { tocBox.style.display = 'none'; return; }
+      if (!headings.length) {
+        nav.innerHTML = '<p class="muted">No headings to display.</p>';
+        return;
+      }
 
-      // Robust slugger: trims, strips accents, drops punctuation, collapses spaces
-      const slug = (str) => {
-        return str
-          .toString()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove diacritics
-          .toLowerCase().trim()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-');
-      };
-
-      headings.forEach(h => {
-        if (!h.id) h.id = slug(h.textContent || h.innerText || 'section');
+      const map = [];
+      headings.forEach((h, index) => {
+        const level = h.tagName === 'H2' ? 2 : 3;
+        if (!h.id) {
+          h.id = 'section-' + index;
+        }
         const a = document.createElement('a');
         a.href = '#' + h.id;
         a.textContent = h.textContent;
-        a.className = 'depth-' + (h.tagName === 'H2' ? '2' : '3');
+        a.classList.add('depth-' + level);
         nav.appendChild(a);
+        map.push({heading: h, link: a});
       });
-
-      // Highlight current section using IntersectionObserver
-      const links = Array.from(nav.querySelectorAll('a'));
-      const map = new Map();
-      content.querySelectorAll('h2, h3').forEach(h => map.set('#' + h.id, h));
 
       const io = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
+          const item = map.find(m => m.heading === entry.target);
+          if (!item) return;
           if (entry.isIntersecting) {
-            const id = '#' + entry.target.id;
-            links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === id));
+            map.forEach(m => m.link.classList.remove('active'));
+            item.link.classList.add('active');
           }
         });
       }, { rootMargin: '0px 0px -70% 0px', threshold: 0.1 });
 
-      map.forEach(h => io.observe(h));
+      map.forEach(h => io.observe(h.heading));
     })();
 
     // Back to top
