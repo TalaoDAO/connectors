@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "com.wallet4agent/mcp-server",
-  "description": "Wallet4Agent MCP server for decentralized and regulated identity: DIDs, Verifiable Credentials (SD-JWT VC & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, and Linked Verifiable Presentations — enabling trust and auditability for the Agentic Web.",
-  "version": "1.2.0",
+  "description": "Wallet4Agent MCP server for decentralized and regulated identity: DIDs, Verifiable Credentials (SD-JWT VC & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, Linked Verifiable Presentations, and verifier flows for data wallets (QR-based proofs of over-18, verified email, and verified identity profile) — enabling trust and auditability for the Agentic Web.",
+  "version": "1.4.0",
   "homepage": "https://wallet4agent.com/",
   "documentation": "https://wallet4agent.com/documentation/get_started",
   "repository": {
@@ -35,6 +35,12 @@
     "Linked VP",
     "eIDAS v2",
     "identity",
-    "trust"
+    "trust",
+    "verifier",
+    "data wallet",
+    "age verification",
+    "email verification",
+    "profile verification",
+    "QR"
   ]
 }

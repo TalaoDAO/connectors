@@ -95,8 +95,6 @@ class Verifier(db.Model):
     log = db.Column(db.Boolean, default=False, nullable=False)
     test = db.Column(db.String(256), default="")
     dc_api = db.Column(db.Boolean, default=False, nullable=False)
-    webhook_url = db.Column(db.String(256), default="")
-    webhook_api_key = db.Column(db.String(256), default="")
 
 
 
@@ -341,7 +339,7 @@ def seed_verifier_for_demo(mode):
         }
         verifier_0 = Verifier(
             user_id=1,
-            name="Verifier for demon profile DIIP V3",
+            name="Verifier for demon profile DIIP V3 with scheme redirect_uri",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo and swagger",
@@ -349,7 +347,6 @@ def seed_verifier_for_demo(mode):
             client_id=mode.server + "verifier/wallet/callback",
             response_mode="direct_post",
             credential_id="signature_key_1",
-            webhook_url="http://example.com",
             application_api=encrypt_json(application_api_0),
             application_api_verifier_id="0000",
             response_encryption=False,
@@ -364,15 +361,14 @@ def seed_verifier_for_demo(mode):
         }
         verifier_1 = Verifier(
             user_id=1,
-            name="talao wallet draft 20",
+            name="talao wallet draft 20 with scheme DID",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
             client_id_scheme="did",
-            client_id=mode.server + "verifier/wallet/callback",
+            client_id="did:web:talao.co",
             response_mode="direct_post",
             credential_id="signature_key_1",
-            webhook_url="http://example.com",
             application_api=encrypt_json(application_api_1),
             application_api_verifier_id="0001",
             response_encryption=False,
@@ -387,15 +383,14 @@ def seed_verifier_for_demo(mode):
         }
         verifier_2 = Verifier(
             user_id=1,
-            name="oidc4vp draft 20",
+            name="oidc4vp draft 20 with DID",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
             client_id_scheme="did",
-            client_id=mode.server + "verifier/wallet/callback",
+            client_id="did:web:talao.co",
             response_mode="direct_post",
             credential_id="signature_key_1",
-            webhook_url="http://example.com",
             application_api=encrypt_json(application_api_2),
             application_api_verifier_id="0002",
             response_encryption=False,
@@ -410,15 +405,14 @@ def seed_verifier_for_demo(mode):
         }
         verifier_3 = Verifier(
             user_id=1,
-            name="oidc4vp draft 28",
+            name="oidc4vp draft 28 and DID",
             draft="28",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
             client_id_scheme="did",
-            client_id=mode.server + "verifier/wallet/callback",
+            client_id="did:web:talao.co",
             response_mode="direct_post",
             credential_id="signature_key_1",
-            webhook_url="http://example.com",
             application_api=encrypt_json(application_api_3),
             application_api_verifier_id="0003",
             response_encryption=False,

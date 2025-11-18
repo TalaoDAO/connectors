@@ -4,16 +4,19 @@ import logging
 from flask import request, jsonify, current_app, make_response, Response
 from db_model import Verifier, Wallet
 from utils.kms import decrypt_json
-from tools import wallet_tools, verifier_tools
+from tools import wallet_tools, verifier_tools, wallet_tools_for_agent
 from utils import oidc4vc
 import importlib
 from datetime import datetime
+from prompts import wallet_prompts, verifier_prompts, wallet_prompts_for_guest
+import uuid
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
-SERVER_VERSION = "1.3.0"
+SERVER_VERSION = "1.4.0"
+AGENT_PROMPT_MODULES = [wallet_prompts, verifier_prompts]
+GUEST_PROMPT_MODULES = [wallet_prompts_for_guest]
 
- 
 LEVELS = {
     "trace":   logging.DEBUG,   # MCP may send "trace"; map it to DEBUG
     "debug":   logging.DEBUG,
@@ -31,9 +34,6 @@ def init_app(app):
     def jrpc_ok(_id):
         return jrpc_result(_id, {})
 
-    def jrpc_error(_id, code=-32603, message="Internal error"):
-        return {"jsonrpc":"2.0","id":_id,"error":{"code":code,"message":message}}, 200, {"Content-Type":"application/json"}
-    
         # --------- helpers ---------
         
     def config() -> dict:
@@ -105,7 +105,7 @@ def init_app(app):
             try:
                 if jti == this_wallet.dev_pat_jti and role == "dev":
                     return role, agent_identifier
-                elif jti == this_wallet.dev_agent_jti and role == "agent":
+                elif jti == this_wallet.agent_pat_jti and role == "agent":
                     return role, agent_identifier
                 else:
                     return "guest", None
@@ -114,17 +114,8 @@ def init_app(app):
                 return "guest", None
         else:
             return role, agent_identifier
-        
     
-    
-    def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any]] = None, is_error: bool = False) -> Dict[str, Any]:
-        out: Dict[str, Any] = {"content": blocks}
-        if structured is not None:
-            out["structuredContent"] = structured
-        if is_error:
-            out["isError"] = True
-        return out
-
+       
     def _error(code: int, message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         e = {"code": code, "message": message}
         if data is not None:
@@ -169,7 +160,7 @@ def init_app(app):
     @app.get("/manifest.json")
     def manifest():
         manifest = json.load(open("manifest.json", "r"))
-        manifest["tools"].extend(wallet_tools.tools_agent)
+        manifest["tools"].extend(wallet_tools_for_agent.tools_agent)
         manifest["tools"].extend(verifier_tools.tools_agent)
         return jsonify(manifest)
             
@@ -209,7 +200,7 @@ def init_app(app):
 
     # --------- Tool catalog ---------
     def _tools_list(role) -> Dict[str, Any]:
-        modules = ["tools.wallet_tools", "tools.verifier_tools"]
+        modules = ["tools.wallet_tools", "tools.wallet_tools_for_agent", "tools.verifier_tools"]
         constant = "tools_" + role
         tools_list = {"tools": []}
         for module_name in modules:
@@ -218,11 +209,27 @@ def init_app(app):
                 tools_list["tools"].extend(getattr(module, constant))
         return tools_list
 
+    # --------- Prompt catalog ---------
+    def _prompts_list(role) -> Dict[str, Any]:
+        prompts = []
+        if role == "agent":
+            if hasattr(wallet_prompts, "prompts_agent"):
+                prompts.extend(wallet_prompts.prompts_agent)
+            if hasattr(verifier_prompts, "prompts_agent"):
+                prompts.extend(verifier_prompts.prompts_agent)
+        elif role == "guest":
+            if hasattr(wallet_prompts_for_guest, "prompts_guest"):
+                prompts.extend(wallet_prompts_for_guest.prompts_guest)
+        return {"prompts": prompts}
+
+    
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
+        print(request.headers)
+        print(request.form)
         
         # check https authorization
         role, agent_identifier = get_role_and_agent_id()
@@ -247,23 +254,29 @@ def init_app(app):
         elif method == "ping":
             return jsonify({"jsonrpc": "2.0", "result": {}, "id": req_id})
 
-        # initialize handshake
         elif method == "initialize":
             result = {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {
                     "tools": {"listChanged": True},
+                    "prompts": {"listChanged": True},
                     "logging": {}
                 },
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
             }
-            return jsonify({"jsonrpc": "2.0", "result": result, "id": req_id})
+            resp = jsonify({"jsonrpc": "2.0", "result": result, "id": req_id})
+            resp.headers["MCP-Session-Id"] = str(uuid.uuid4())
+            return resp
+
 
         # tools/list
         elif method == "tools/list":
             return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
+        
+        # prompts/list
+        elif method == "prompts/list":
+            return jsonify({"jsonrpc": "2.0", "result": _prompts_list(role), "id": req_id})
                 
-    
         # trace and debug
         elif method == "logging/setLevel":
             level_str = (params.get("level") or "").lower()
@@ -273,6 +286,48 @@ def init_app(app):
             logging.getLogger().setLevel(py_level)
 
             return jrpc_ok(req_id)
+        
+        elif method == "prompts/get":
+            name = params.get("name")
+            arguments = params.get("arguments") or {}
+
+            if not name:
+                return jsonify(_error(-32602, "Missing prompt name") | {"id": req_id})
+
+            prompt_result = None
+            any_builder = False
+
+            # Try each prompt module (wallet_prompts, verifier_prompts, ...)
+            if role == "agent":
+                modules = AGENT_PROMPT_MODULES
+            elif role == "guest":
+                modules = GUEST_PROMPT_MODULES
+            else:
+                modules = []
+            for mod in modules:
+                builder = getattr(mod, "build_prompt_messages", None)
+                if builder is None:
+                    continue
+                any_builder = True
+                try:
+                    prompt_result = builder(name, arguments)
+                    break  # found it
+                except KeyError:
+                    # This module doesn't know this prompt name; try the next one
+                    continue
+
+            if not any_builder:
+                return jsonify(
+                    _error(-32601, "Prompts not configured on server") | {"id": req_id}
+                )
+
+            if prompt_result is None:
+                return jsonify(
+                    _error(-32601, f"Unknown prompt: {name}") | {"id": req_id}
+                )
+
+            return jsonify({"jsonrpc": "2.0", "result": prompt_result, "id": req_id})
+
 
         # tools/call
         elif method == "tools/call":
@@ -294,12 +349,17 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("user_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: user_id is missing "}}
                 out = verifier_tools.call_poll_user_verification(arguments, config())
             
             elif name == "create_agent_identifier_and_wallet":
-                if role == "agent":
+                
+                if role != "guest":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                
                 if not arguments.get("owners_login") or not arguments.get("owners_identity_provider"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: owner_login or owner_identity_provider missing "}}        
@@ -330,13 +390,13 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_this_wallet_data(agent_identifier)
+                out = wallet_tools_for_agent.call_get_this_wallet_data(agent_identifier)
             
             elif name == "describe_wallet4agent":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_describe_wallet4agent()
+                out = wallet_tools_for_agent.call_describe_wallet4agent()
             
             elif name == "delete_identity":
                 if role != "dev":
@@ -351,7 +411,7 @@ def init_app(app):
                 if role not in ["dev", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_attestations_of_this_wallet(agent_identifier, config())
+                out = wallet_tools_for_agent.call_get_attestations_of_this_wallet(agent_identifier, config())
                 
             elif name == "get_attestations_of_another_agent":
                 target_agent_identifier = arguments.get("agent_identifier")
@@ -361,7 +421,7 @@ def init_app(app):
                 if role not in ["agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_get_attestations_of_another_agent(target_agent_identifier)
+                out = wallet_tools_for_agent.call_get_attestations_of_another_agent(target_agent_identifier)
                     
             elif name == "rotate_personal_access_token":
                 if role != "dev":
@@ -379,7 +439,7 @@ def init_app(app):
                 if not arguments.get("credential_offer"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing credential_offer"}}
-                out = wallet_tools.call_accept_credential_offer(arguments, agent_identifier, config())
+                out = wallet_tools_for_agent.call_accept_credential_offer(arguments, agent_identifier, config())
 
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})

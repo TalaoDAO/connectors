@@ -2,9 +2,9 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-06-18/manifest.schema.json",
   "name": "Wallet4Agent MCP Server",
   "id": "wallet4agent-mcp",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "protocolVersion": "2025-06-18",
-  "description": "Wallet4Agent MCP Server provides decentralized and regulated identity tools for AI Agents, Companies, and Users — powered by DIDs, Verifiable Credentials (SD-JWT & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, and Linked Verifiable Presentations.",
+  "description": "Wallet4Agent MCP Server provides decentralized and regulated identity tools for AI Agents, Companies, and Users — powered by DIDs, Verifiable Credentials (SD-JWT & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, Linked Verifiable Presentations, and QR-based verifier flows for data wallets (proof of being over 18, verified email, and verified identity profile).",
   "homepage": "https://wallet4agent.com",
   "license": "Apache-2.0",
   "maintainer": {

@@ -16,10 +16,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 # customer application 
-CODE_LIFE = 2000
+CODE_LIFE = 300
 
 # wallet
-QRCODE_LIFE = 2000
+QRCODE_LIFE = 300
 
 # OpenID key of the OP for customer application
 RSA_KEY_DICT = json.load(open("keys.json", "r"))['RSA_key']
@@ -103,9 +103,10 @@ def build_verifier_metadata(verifier_id) -> dict:
 
 
 # build the authorization request                                      
-def oidc4vp_qrcode(verifier_id, session_id, mcp_scope, red, mode):
+def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
 
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
+    logging.info("verifier name = ", verifier.name)
     if not verifier:
         logging.warning("verifier not found: %s", verifier_id)
         return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
@@ -114,8 +115,8 @@ def oidc4vp_qrcode(verifier_id, session_id, mcp_scope, red, mode):
         logging.warning("Presentation is not provided")
         return {"error": "invalid_request", "error_description": "A presentation object (PEX or DCQL) is required"}, 400
 
-    # we dont use session_id as nonce
-    nonce = str(uuid.uuid4()) # body["session_id"]
+    # we dont use user_id as nonce
+    nonce = str(uuid.uuid4()) # body["user_id"]
 
     # authorization request
     authorization_request = { 
@@ -160,15 +161,15 @@ def oidc4vp_qrcode(verifier_id, session_id, mcp_scope, red, mode):
     # store data in redis attached to the nonce to bind with the wallet response
     data = { 
         "verifier_id": verifier_id,
-        "session_id": session_id,
+        "user_id": mcp_user_id,
         "mcp_scope": mcp_scope
     }
     data.update(authorization_request)
     red.setex(nonce, QRCODE_LIFE, json.dumps(data))
-    red.setex(session_id, QRCODE_LIFE, json.dumps(data)) # fallback
+    red.setex(mcp_user_id, QRCODE_LIFE, json.dumps(data)) # fallback
 
     # NEW: initialize a pull status key for this flow (so we can detect expiry)
-    red.setex(session_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
+    red.setex(mcp_user_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
 
     # signature key of the request object
     credential_id = verifier.credential_id
@@ -198,7 +199,7 @@ def oidc4vp_qrcode(verifier_id, session_id, mcp_scope, red, mode):
 
     return {
         "url": url,
-        "session_id": session_id
+        "user_id": mcp_user_id
     }
 
 def verifier_request_uri(stream_id):
@@ -342,7 +343,7 @@ async def verifier_response():
         
     try:
         data = json.loads(red.get(nonce).decode())
-        session_id = data["session_id"]
+        user_id = data["user_id"]
     except Exception:
         logging.warning("Missing or invalid nonce; cannot bind response")
         return jsonify({"error": "invalid_request", "error_description": "missing_nonce"}), 400
@@ -365,7 +366,7 @@ async def verifier_response():
         except Exception:
             sub = "Error"
 
-    # data for MCP client or webhook (To be defined)
+    # data for MCP client
     wallet_data = {"credential_status":"VALID", "scope": data["mcp_scope"]}
     if data["mcp_scope"] == "wallet_identifier":
         wallet_data["wallet_identifier"] = sub
@@ -375,21 +376,21 @@ async def verifier_response():
     if data["mcp_scope"] == "raw":
         wallet_data["raw"] = request.form
         
-    red.setex(session_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
+    red.setex(user_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
 
     # Update pull status for MCP clients
-    red.setex(session_id + "_status", CODE_LIFE, json.dumps({"status": "verified" if access else "denied"}))
+    red.setex(user_id + "_status", CODE_LIFE, json.dumps({"status": "verified" if access else "denied"}))
 
     return jsonify(response), status_code
 
 
 # ------------- Pull -------------
-def wallet_pull_status(session_id, red):
+def wallet_pull_status(user_id, red):
     
     try:
-        data = json.loads(red.get(session_id).decode())
+        data = json.loads(red.get(user_id).decode())
     except Exception:
-        return {"status":"not_found","session_id":session_id}
+        return {"status":"not_found","user_id":user_id}
     
     verifier_id = data.get("verifier_id")    
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
@@ -398,19 +399,19 @@ def wallet_pull_status(session_id, red):
         return {"error": "unauthorized", "error_description": "Unknown verifier_id"}
     
     # Fetch status first
-    status_raw = red.get(session_id + "_status")
+    status_raw = red.get(user_id + "_status")
     if not status_raw:
-        return {"status": "not_found", "session_id": session_id}
+        return {"status": "not_found", "user_id": user_id}
     try:
         status = json.loads(status_raw.decode()).get("status", "pending")
     except Exception:
         status = "pending"
 
     if status == "pending":
-        return {"status": "pending", "session_id": session_id}
+        return {"status": "pending", "user_id": user_id}
 
     # verified or denied -> try to include wallet_data if present
-    wd_raw = red.get(session_id + "_wallet_data")
+    wd_raw = red.get(user_id + "_wallet_data")
     wallet_data = None
     if wd_raw:
         try:
@@ -420,7 +421,7 @@ def wallet_pull_status(session_id, red):
     
     response = {
         "status": status,
-        "session_id": session_id,
+        "user_id": user_id,
     }
     if wallet_data is not None:
         response.update(wallet_data)

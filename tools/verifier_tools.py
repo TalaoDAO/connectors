@@ -23,9 +23,9 @@ tools_agent = [
                     "enum": ["email", "over18", "profile", "wallet_identifier"],
                     "default": "email"
                 },
-                "session_id": {
+                "user_id": {
                     "type": "string",
-                    "description": "Optional caller-provided user session id."
+                    "description": "Optional caller-provided user_id."
                 }
             },
             "required": ["scope"]
@@ -37,11 +37,11 @@ tools_agent = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "session_id": {
+                "user_id": {
                     "type": "string"
                 }
             },
-            "required": ["session_id"]
+            "required": ["user_id"]
         }
     }
 ]
@@ -80,21 +80,23 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     }
     verifier_id = verifier_id_for_scope.get(scope, "custom")
     
-    print(scope, verifier_id)
-    
-    # optional session_id
-    session_id = arguments.get("session_id") or str(uuid.uuid4())
+    # optional user_id
+    mcp_user_id = arguments.get("user_id") or str(uuid.uuid4())
         
-    data = oidc4vp.oidc4vp_qrcode(verifier_id, session_id, scope, red, mode)
+    data = oidc4vp.oidc4vp_qrcode(verifier_id, mcp_user_id, scope, red, mode)
     
     link = data.get("url")
-    session_id = data.get("session_id", session_id)
+    user_id = data.get("user_id")
+    
+    if mcp_user_id != user_id:
+        logging.error("see verifier_tools.py line 92") 
 
     # Build structured flow info
     flow = {
-        "session_id": session_id,
+        "user_id": user_id,
         "oidc4vp_request": link,
     }
+    
 
     blocks: List[Dict[str, Any]] = []
     b64 = _qr_png_b64(link) if link else None
@@ -108,22 +110,15 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
 
 def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     red = config["REDIS"]
-    session_id = arguments.get("session_id")
-    if not session_id:
-        return _ok_content(
-            [{"type": "text", "text": "session_id is required"}],
-            structured={"error": "invalid_arguments", "missing": ["session_id"]},
-            is_error=True
-        )
+    user_id = arguments.get("user_id")
     
-    payload = oidc4vp.wallet_pull_status(session_id, red)
-    print("payload = ", payload)
+    payload = oidc4vp.wallet_pull_status(user_id, red)
     status = payload.get("status", "pending")
 
-    # current oidc4vp: claims merged at the top level (exclude status/session_id)
-    claims = {k: v for k, v in payload.items() if k not in ("status", "session_id")}
+    # current oidc4vp: claims merged at the top level (exclude status/user_id)
+    claims = {k: v for k, v in payload.items() if k not in ("status", "user_id")}
 
-    structured = {"status": status, "session_id": session_id, **claims}
+    structured = {"status": status, "user_id": user_id, **claims}
 
     # Human-friendly text block (special hint for wallet_identifier scope)
     text_blocks = []
