@@ -65,8 +65,6 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 # --------- Tool implementations ---------
 def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
-    pull_status_base = config["PULL_STATUS_BASE"]
-    public_base_url = config["PUBLIC_BASE_URL"]
     red = config["REDIS"]
     mode = config["MODE"]
 
@@ -84,20 +82,19 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     mcp_user_id = arguments.get("user_id") or str(uuid.uuid4())
         
     data = oidc4vp.oidc4vp_qrcode(verifier_id, mcp_user_id, scope, red, mode)
+    if not data:
+        return _ok_content(
+            [{"type": "text", "text": "Server error"}],
+            is_error=True,
+        )
     
     link = data.get("url")
-    user_id = data.get("user_id")
-    
-    if mcp_user_id != user_id:
-        logging.error("see verifier_tools.py line 92") 
-
     # Build structured flow info
     flow = {
-        "user_id": user_id,
-        "oidc4vp_request": link,
+        "user_id": mcp_user_id,
+        "link": link,
     }
     
-
     blocks: List[Dict[str, Any]] = []
     b64 = _qr_png_b64(link) if link else None
     if b64:

@@ -229,7 +229,7 @@ def get_prompt_verify_profile_with_data_wallet(arguments: Dict[str, Any]) -> Dic
         "4. If the user refuses or cannot scan, stop presenting the QR code and "
         "   explain that profile verification cannot be completed.\n"
         "5. Once the user confirms completion:\n"
-        "   a. Call `poll_user_verification` with the `user_id` from the "
+        "   a. Call `poll_user_verification` with the `user_idcan you retyr` from the "
         "      initial call.\n"
         "   b. Inspect the returned structured data and extract the profile "
         "      attributes (first name, last name, birth date, and any others).\n"
