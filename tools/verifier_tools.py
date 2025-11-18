@@ -97,8 +97,8 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     
     blocks: List[Dict[str, Any]] = []
     b64 = _qr_png_b64(link) if link else None
-    if b64:
-        blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
+    #if b64:
+    #    blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
     # Always include a text hint
     text_hint = f"Scan the QR code (if shown) or clic to this link to open your wallet :\n{link}" if link else "No link returned."
     blocks.append({"type": "text", "text": text_hint})
