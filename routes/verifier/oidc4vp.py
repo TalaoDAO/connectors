@@ -106,7 +106,7 @@ def build_verifier_metadata(verifier_id) -> dict:
 def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
 
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
-    logging.info("verifier name = ", verifier.name)
+    logging.info("verifier name = %s", verifier.name)
     if not verifier:
         logging.warning("verifier not found: %s", verifier_id)
         return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401

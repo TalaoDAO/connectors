@@ -103,7 +103,7 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     if b64:
         blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
     # Always include a text hint
-    text_hint = f"Scan the QR code (if shown) or open wallet link:\n{link}" if link else "No deeplink URL returned."
+    text_hint = f"Scan the QR code (if shown) or clic to this link to open your wallet :\n{link}" if link else "No link returned."
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
 
