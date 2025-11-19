@@ -13,6 +13,7 @@ from urllib.parse import unquote
 import os, hashlib
 
 
+# do not provide this tool to an LLM
 tools_guest = [
     {
         "name": "create_agent_identifier_and_wallet",
@@ -510,12 +511,25 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         structured["agent_client_id"] = agent_did
         structured["agent_client_secret"] = client_secret
         structured["authorization_server"] = mode.server
-        text = "New agent identifier and wallet created. Copy dev personal access token for dev and admin.\
-            Use OAuth Client Credential flow with client_id and client_secret for agent only. Use personal access token for dev and admin"
+
+        text = (
+            "New agent identifier and wallet created.\n"
+            f"Agent DID: {agent_did}\n"
+            f"Wallet URL: {wallet.url}\n"
+            "Copy your dev personal access token and OAuth client credentials from the secure console; "
+            "they are not stored and will not be shown again."
+        )
     else:
-        text = "New agent identifier and wallet created. Copy agent personal access token and dev personal access token as they are not stored."
         structured["agent_personal_access_token"] = agent_pat
-    
+
+        text = (
+            "New agent identifier and wallet created.\n"
+            f"Agent DID: {agent_did}\n"
+            f"Wallet URL: {wallet.url}\n"
+            "Copy the agent personal access token and the dev personal access token from the secure console; "
+            "they are not stored and will not be shown again."
+        )
+
     # send message
     message_text = "Wallet created for " + " ".join(owners_login)
     message.message("A new wallet for AI Agent has been created", "thierry.thevenet@talao.io", message_text, mode)
