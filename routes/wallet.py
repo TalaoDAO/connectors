@@ -72,7 +72,7 @@ def web_wallet_openid_configuration(wallet_did):
     
 # endpoint for wallet landing page
 def wallet_landing_page(wallet_did):
-    message = "This data wallet is an AI Agent wallet of " + wallet_did + "."
+    message = "This data wallet is controlled by the AI Agent :" + wallet_did + "."
     return render_template("wallet/session_screen.html", message=message, title="Welcome !")
 
 
