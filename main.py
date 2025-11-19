@@ -27,7 +27,7 @@ from db_model import (
 from routes import (
     home, register, menu, user_profile,
     did_document, online_test,
-    log, wallet, authorization_server
+    log, wallet, authorization_server,agent_chat
 )
 
 
@@ -176,6 +176,7 @@ def create_app() -> Flask:
     
     wallet.init_app(app)
     authorization_server.init_app(app)
+    agent_chat.init_app(app)
     
     
     # ---- Error handlers ----

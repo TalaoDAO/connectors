@@ -1,16 +1,12 @@
 import json
 from typing import Any, Dict, List, Optional
-from db_model import Wallet, db, User
-import secrets
+from db_model import Wallet
 import logging
 from routes import wallet
 from db_model import Attestation
-from utils import oidc4vc, message
-import urllib
 import requests
 import base64
 from urllib.parse import unquote
-import os, hashlib
 
 
 
@@ -103,6 +99,20 @@ tools_agent = [
             "required": []
         }
     },
+    {
+        "name": "explain_how_to_install_wallet4agent",
+        "description": (
+            "Explain to a human developer how to install and use the Wallet4Agent MCP "
+            "server with their own agent. Describe at a high level how to use the "
+            "manifest.json, how to connect as guest, how to obtain a dev personal "
+            "access token, and how to then configure their own agent wallet safely."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
 ]
 
 
@@ -478,3 +488,42 @@ def call_describe_wallet4agent() -> Dict[str, Any]:
         [{"type": "text", "text": text}],
         structured=structured,
     )
+
+
+def call_explain_how_to_install_wallet4agent() -> Dict[str, Any]:
+    """
+    Agent tool: serve the up-to-date 'get_started.md' documentation to a developer.
+
+    This reads the markdown file from disk and returns it as text so the LLM
+    (or MCP Inspector) can present the actual, current documentation.
+    """
+    try:
+        with open("documentation/get_started.md", "r", encoding="utf-8") as f:
+            md_text = f.read()
+
+        text = md_text
+        structured = {
+            "topic": "installation_and_integration",
+            "audience": "developer",
+            "format": "markdown",
+            "source": "get_started.md",
+        }
+
+        return _ok_content(
+            [{"type": "text", "text": text}],
+            structured=structured,
+        )
+
+    except Exception as e:
+        # Fallback: simple error message if the file cannot be read
+        fallback_text = (
+            "I tried to load the developer guide 'get_started.md' from the server, "
+            "but an error occurred while reading the file. "
+            "Please check that get_started.md is deployed alongside the MCP server "
+            f"code. (Details: {str(e)})"
+        )
+        return _ok_content(
+            [{"type": "text", "text": fallback_text}],
+            structured={"error": "cannot_read_get_started_md"},
+            is_error=True,
+        )

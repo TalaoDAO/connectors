@@ -602,10 +602,10 @@ def init_app(app):
                 out = wallet_tools_for_agent.call_get_this_wallet_data(agent_identifier)
             
             elif name == "describe_wallet4agent":
-                if role != "agent":
-                    return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools_for_agent.call_describe_wallet4agent()
+            
+            elif name == "explain_how_to_install_wallet4agent":
+                out = wallet_tools_for_agent.call_explain_how_to_install_wallet4agent()
             
             elif name == "delete_identity":
                 if role != "dev":
