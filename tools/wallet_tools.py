@@ -455,8 +455,8 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     owners_login = arguments.get("owners_login").split(",")
     agent_card_url = arguments.get("agentcard_url")
     agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
-    #key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")  # remove for testing
-    #jwk, kid, alg = manager.get_public_key_jwk(key_id) # remove for testing
+    key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")  # remove for testing
+    jwk, kid, alg = manager.get_public_key_jwk(key_id) # remove for testing
     jwk = json.dumps({})
     url = mode.server + "did/" + agent_did
     did_document = create_did_document(agent_did, jwk, url, agent_card_url=agent_card_url)

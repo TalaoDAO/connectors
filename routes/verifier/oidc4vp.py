@@ -35,21 +35,6 @@ def init_app(app):
     app.add_url_rule('/verification_email/<verif_id>',  view_func=verification_email, methods=['GET'])
     return
 
-"""
-def get_verifier_key(verifier_id):
-    if not verifier_id:
-        return {"error": "invalid_request", "error_description": "issuer_id missing"}, 400        
-    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
-    if not verifier:
-        logging.warning("verifier not found: %s", verifier_id)
-        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
-    api_key = decrypt_json(verifier.application_api)["verifier_secret"]
-    return {"key": api_key} 
-"""
-
-
-
-
 
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")

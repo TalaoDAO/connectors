@@ -172,7 +172,7 @@ def build_session_config(agent_id: str, credential_offer, mode):
         "issuer_state": issuer_state,
         "wallet_did": this_wallet.did,
         "wallet_url": this_wallet.url,
-        "owner_login": json.loads(this_wallet.owner_login),
+        "owners_login": json.loads(this_wallet.owners_login),
         "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
         "server": mode.server
     }

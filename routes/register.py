@@ -108,7 +108,7 @@ def register_google_callback(db):
     user = User.query.filter_by(email=userinfo.get("email")).first()
     session_config = json.loads(red.get(session_id).decode())
     if user:
-        if userinfo.get("email") in session_config["owner_login"]:
+        if userinfo.get("email") in session_config["owners_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
@@ -165,7 +165,7 @@ def register_github_callback(db):
     user = User.query.filter_by(login=userinfo.get("login")).first()
     session_config = json.loads(red.get(session_id).decode())
     if user:
-        if userinfo.get("login") in session_config["owner_login"]:
+        if userinfo.get("login") in session_config["owners_login"]:
             logout_user()
             login_user(user)
             logging.info("owner is now authenticated")
@@ -264,7 +264,7 @@ def register_wallet_callback(db):
     if user:
         session_config = json.loads(red.get(session_id).decode())
         # check if user is authorized for this session
-        if sub in session_config["owner_login"]:
+        if sub in session_config["owners_login"]:
             logout_user()
             login_user(user)
             logging.info("dev of the agent is now authenticated")
