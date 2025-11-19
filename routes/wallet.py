@@ -36,7 +36,9 @@ def init_app(app):
     app.add_url_rule('/did/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
     app.add_url_rule('/.well-known/openid-configuration/did/<wallet_did>', view_func=web_wallet_openid_configuration, methods=['GET'])
     
-
+    # wallet landing page
+    app.add_url_rule('/did/<wallet_did>', view_func=wallet_landing_page, methods=['GET'])
+    # user consent for credential offer
     app.add_url_rule('/user/consent', view_func=user_consent, methods=['GET', 'POST'])
     
     return
@@ -59,7 +61,7 @@ def protected_resource_metadata():
     }
     return jsonify(config)
 
-
+# endpoint
 def web_wallet_openid_configuration(wallet_did):
     mode = current_app.config["MODE"]
     config = {
@@ -68,6 +70,12 @@ def web_wallet_openid_configuration(wallet_did):
     return jsonify(config)
 
     
+# endpoint for wallet landing page
+def wallet_landing_page():
+    message = "This data wallet is an AI Agent wallet."
+    return render_template("wallet/session_screen.html", message=message, title="Welcome !")
+
+
 def build_session_config(agent_id: str, credential_offer, mode):
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
     if not this_wallet:
