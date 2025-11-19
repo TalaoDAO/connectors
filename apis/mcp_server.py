@@ -115,7 +115,7 @@ def init_app(app):
         else:
             return role, agent_identifier
     
-       
+    
     def _error(code: int, message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         e = {"code": code, "message": message}
         if data is not None:
@@ -229,7 +229,7 @@ def init_app(app):
         For now we only expose resources to 'agent' role.
         """
         resources: List[Dict[str, Any]] = []
-        if role == "guest":
+        if role in ["guest", "agent"]:
             # Developer-specific documentation
             resources.append({
                 "uri": "wallet4agent/docs/get_started",
@@ -299,8 +299,6 @@ def init_app(app):
     def mcp():
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
-        print(request.headers)
-        print(request.form)
         
         # check https authorization
         role, agent_identifier = get_role_and_agent_id()

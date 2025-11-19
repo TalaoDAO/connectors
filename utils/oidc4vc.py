@@ -151,6 +151,7 @@ def generate_access_token(did, role, type, jti=None, duration=None):
         payload["exp"] = now + duration
     if not duration and type == "oauth":
         payload["exp"] = now + 1800
+    print("payload = ", payload)
     access_token = encrypt_string(json.dumps(payload))
     return access_token, payload["jti"]
 
