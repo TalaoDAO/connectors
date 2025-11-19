@@ -244,23 +244,25 @@ def init_app(app):
         elif role == "agent":
             # 1) This agent's wallet overview
             resources.append({
-                "uri": "wallet4agent/this_wallet",
-                "name": "This agent wallet",
+                "uri": "wallet4agent/this_agent",
+                "name": "This agent identity and wallet",
                 "description": (
-                    "High-level overview of this agent's wallet: agent_identifier, "
-                    "wallet URL, number of attestations, and whether a human is "
-                    "always kept in the loop."
+                    "High-level overview of this Agent's identity (its DID) and its attached "
+                    "wallet: the Agent DID, the wallet endpoint URL, number of attestations, "
+                    "and whether a human is always kept in the loop."
                 ),
                 "mimeType": "application/json",
             })
 
             # 2) This agent's wallet attestations
             resources.append({
-                "uri": "wallet4agent/this_wallet/attestations",
-                "name": "This agent wallet attestations",
+                "uri": "wallet4agent/this_agent/attestations",
+                "name": "This Agent's attestations",
                 "description": (
-                    "List of all attestations (verifiable credentials) currently "
-                    "stored in this agent's wallet."
+                    "All attestations (verifiable credentials) currently held by this Agent. "
+                    "The Agent is identified by its DID; the credentials are stored in its "
+                    "attached wallet. Use this resource to see what has been issued about "
+                    "this Agent (or its human/organization owner)."
                 ),
                 "mimeType": "application/json",
             })
@@ -268,11 +270,12 @@ def init_app(app):
             # 3) Another agent's attestations (templated by DID)
             resources.append({
                 "uri": "wallet4agent/agent/{did}/attestations",
-                "name": "Another agent's attestations",
+                "name": "Another Agent's published attestations",
                 "description": (
-                    "Template resource. Replace {did} with a concrete agent DID, e.g. "
-                    "'wallet4agent/agent/did:web:wallet4agent.com:demo:abc/attestations', "
-                    "to retrieve published attestations of that agent."
+                    "Template resource. Replace {did} with a specific Agent DID to retrieve "
+                    "the attestations that Agent has published (for example via Linked "
+                    "Verifiable Presentations in its DID Document). These attestations are "
+                    "about the Agent identified by that DID, not about a particular wallet."
                 ),
                 "mimeType": "application/json",
             })
@@ -445,7 +448,7 @@ def init_app(app):
 
 
             # 1) This agent's wallet
-            if uri == "wallet4agent/this_wallet":
+            if uri == "wallet4agent/this_agent":
                 if not agent_identifier:
                     return jsonify(
                         _error(-32001, "Missing agent identifier for this_wallet") | {"id": req_id}
@@ -458,7 +461,7 @@ def init_app(app):
                 })
 
             # 2) This agent's wallet attestations
-            if uri == "wallet4agent/this_wallet/attestations":
+            if uri == "wallet4agent/this_agent/attestations":
                 if not agent_identifier:
                     return jsonify(
                         _error(-32001, "Missing agent identifier for attestations") | {"id": req_id}

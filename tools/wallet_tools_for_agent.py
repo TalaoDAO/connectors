@@ -38,14 +38,13 @@ tools_agent = [
         }
     },
     {
-        "name": "get_this_wallet_data",
+        "name": "get_this_wallet_data",  # get agent identity ?
         "description": (
-            "Retrieve a high-level overview of this Agent's wallet. The wallet is a "
-            "secure software component that stores and manages digital and verifiable "
-            "credentials (for example, W3C VCs or SD-JWT VCs) for the Agent and the "
-            "humans or organizations it represents. This tool returns metadata such as "
-            "the agent identifier, the wallet URL, number of stored attestations, and "
-            "whether a human is always kept in the loop."
+            "Retrieve a high-level overview of this Agent's identity and its attached wallet. "
+            "The Agent is identified by its DID. The wallet is a secure component attached "
+            "to the Agent that stores verifiable credentials on its behalf. "
+            "This tool returns metadata such as the Agent's DID, the wallet endpoint URL, "
+            "the number of stored attestations, and whether a human is always kept in the loop."
         ),
         "inputSchema": {
             "type": "object",
@@ -56,10 +55,10 @@ tools_agent = [
     {
         "name": "get_attestations_of_this_wallet",
         "description": (
-            "List all attestations (verifiable credentials) currently stored in this "
-            "Agent's wallet. Use this to understand what has been issued about the "
-            "Agent (or its owner), such as AgentCards, proofs of delegation, "
-            "capabilities, or organizational attributes."
+            "List all attestations (verifiable credentials) stored in the wallet that is "
+            "attached to this Agent. The Agent is identified by its DID, while the wallet "
+            "serves as the secure storage and credential manager. Use this tool to inspect "
+            "what credentials the Agent currently holds."
         ),
         "inputSchema": {
             "type": "object",
@@ -71,10 +70,10 @@ tools_agent = [
         "name": "get_attestations_of_another_agent",
         "description": (
             "Resolve another Agent's DID and retrieve its published attestations. "
-            "These are digital credentials that the Agent has chosen to expose "
-            "publicly, typically via Linked Verifiable Presentations (VPs) in its "
-            "DID Document—for example AgentCards, proofs of authorization, capability "
-            "statements, or certificates."
+            "The DID identifies the Agent itself. The returned attestations are "
+            "verifiable credentials or linked verifiable presentations that the "
+            "Agent has chosen to expose publicly (for example AgentCards, proofs "
+            "of authorization, capability statements, or certificates)."
         ),
         "inputSchema": {
             "type": "object",
@@ -364,18 +363,41 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-# for agent
+
 def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
-    # Query attestations linked to this wallet
+    """
+    Return a high-level overview of this Agent's identity (DID) and its attached wallet.
+
+    The DID identifies the Agent itself.
+    The wallet is a secure component attached to this Agent that stores credentials.
+    """
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     attestations_list = Attestation.query.filter_by(wallet_did=agent_identifier).all()
+
     structured = {
-        "agent_identifier": agent_identifier,
-        "wallet_url": this_wallet.url,
-        "number_of_attestations": len(attestations_list),
-        "human_in_the_loop": this_wallet. always_human_in_the_loop
-        }
-    text = "Agent identifier is " + agent_identifier + " and wallet url is " + this_wallet.url
+        "agent": {
+            "did": agent_identifier,
+        },
+        "wallet": {
+            "endpoint": this_wallet.url if this_wallet else None,
+            "number_of_attestations": len(attestations_list),
+            "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,
+        },
+    }
+
+    if this_wallet:
+        text = (
+            f"This Agent's DID is {agent_identifier}. "
+            f"It has an attached wallet at {this_wallet.url} "
+            f"with {len(attestations_list)} attestations. "
+            f"Human in the loop: {'yes' if this_wallet.always_human_in_the_loop else 'no'}."
+        )
+    else:
+        text = (
+            f"This Agent's DID is {agent_identifier}, but no wallet record "
+            "was found in the database."
+        )
+
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
