@@ -12,8 +12,10 @@ signature = '\r\n\r\n\r\nThe Altme team.\r\nhttps://altme.io/'
 
 
 # dict of HTML templates with commented formating needed
-HTML_templates = {'code_auth_en' : 'templates/code_auth_en.html', # code
-				'code_auth_fr' : 'templates/code_auth_fr.html', # code
+HTML_templates = {
+    'code_auth_en' : 'templates/code_auth_en.html',
+	'code_auth_fr' : 'templates/code_auth_fr.html',
+    'verification_en' : 'templates/verification_en.html'
 } 
 
 def messageHTML(subject, to, HTML_key, format_dict, mode)  :

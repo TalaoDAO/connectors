@@ -1,6 +1,6 @@
 
 from flask import request, current_app
-from flask import session, Response, jsonify
+from flask import session, Response, jsonify, render_template
 import json, base64
 import uuid
 import logging
@@ -30,7 +30,9 @@ def init_app(app):
     # endpoints for wallet
     app.add_url_rule('/verifier/wallet/callback',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
     app.add_url_rule('/verifier/wallet/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
-   
+    
+    # to manage the verification through a link sent
+    app.add_url_rule('/verification_email/<verif_id>',  view_func=verification_email, methods=['GET'])
     return
 
 """
@@ -196,11 +198,19 @@ def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
     url = verifier.prefix + '?' + urlencode(authorization_request_for_qrcode)
-
+    verif_id = str(uuid.uuid4())
+    red.setex(verif_id, 1000, url)
     return {
         "url": url,
-        "user_id": mcp_user_id
+        "user_id": mcp_user_id,
+        "verif_id": verif_id
     }
+
+def verification_email(verif_id):
+    red = current_app.config["REDIS"]
+    uri = red.get(verif_id).decode()
+    return  render_template("email_verification.html", uri=uri)
+
 
 def verifier_request_uri(stream_id):
     red = current_app.config["REDIS"]

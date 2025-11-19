@@ -44,7 +44,7 @@ tools_agent = [
             "secure software component that stores and manages digital and verifiable "
             "credentials (for example, W3C VCs or SD-JWT VCs) for the Agent and the "
             "humans or organizations it represents. This tool returns metadata such as "
-            "the wallet URL, ecosystem profile, number of stored attestations, and "
+            "the agent identifier, the wallet URL, number of stored attestations, and "
             "whether a human is always kept in the loop."
         ),
         "inputSchema": {

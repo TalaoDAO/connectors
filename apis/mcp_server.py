@@ -222,7 +222,75 @@ def init_app(app):
                 prompts.extend(wallet_prompts_for_guest.prompts_guest)
         return {"prompts": prompts}
 
-    
+    # --------- Resource catalog ---------
+    def _resources_list(role) -> Dict[str, Any]:
+        """
+        List MCP resources visible for this role.
+        For now we only expose resources to 'agent' role.
+        """
+        resources: List[Dict[str, Any]] = []
+        if role == "guest":
+            # Developer-specific documentation
+            resources.append({
+                "uri": "wallet4agent/docs/get_started",
+                "name": "Wallet4Agent – Getting Started for Developers",
+                "description": (
+                    "Markdown documentation that explains how to create an agent "
+                    "identity and wallet, use the dev personal access token, and "
+                    "configure authentication (PAT or OAuth 2.0)."
+                ),
+                "mimeType": "text/markdown",
+            })
+        elif role == "agent":
+            # 1) This agent's wallet overview
+            resources.append({
+                "uri": "wallet4agent/this_wallet",
+                "name": "This agent wallet",
+                "description": (
+                    "High-level overview of this agent's wallet: agent_identifier, "
+                    "wallet URL, number of attestations, and whether a human is "
+                    "always kept in the loop."
+                ),
+                "mimeType": "application/json",
+            })
+
+            # 2) This agent's wallet attestations
+            resources.append({
+                "uri": "wallet4agent/this_wallet/attestations",
+                "name": "This agent wallet attestations",
+                "description": (
+                    "List of all attestations (verifiable credentials) currently "
+                    "stored in this agent's wallet."
+                ),
+                "mimeType": "application/json",
+            })
+
+            # 3) Another agent's attestations (templated by DID)
+            resources.append({
+                "uri": "wallet4agent/agent/{did}/attestations",
+                "name": "Another agent's attestations",
+                "description": (
+                    "Template resource. Replace {did} with a concrete agent DID, e.g. "
+                    "'wallet4agent/agent/did:web:wallet4agent.com:demo:abc/attestations', "
+                    "to retrieve published attestations of that agent."
+                ),
+                "mimeType": "application/json",
+            })
+
+            # 4) Self-description of the Wallet4Agent MCP server
+            resources.append({
+                "uri": "wallet4agent/description",
+                "name": "Wallet4Agent server description",
+                "description": (
+                    "Human-readable description of what the Wallet4Agent MCP server "
+                    "and its wallet do, plus structured information about the role "
+                    "of the wallet for AI agents."
+                ),
+                "mimeType": "application/json",
+            })
+
+        return {"resources": resources}
+
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
@@ -253,13 +321,14 @@ def init_app(app):
         # ping basic 
         elif method == "ping":
             return jsonify({"jsonrpc": "2.0", "result": {}, "id": req_id})
-
+        
         elif method == "initialize":
             result = {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {
                     "tools": {"listChanged": True},
                     "prompts": {"listChanged": True},
+                    "resources": {"listChanged": True},
                     "logging": {}
                 },
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
@@ -268,7 +337,6 @@ def init_app(app):
             resp.headers["MCP-Session-Id"] = str(uuid.uuid4())
             return resp
 
-
         # tools/list
         elif method == "tools/list":
             return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
@@ -276,7 +344,11 @@ def init_app(app):
         # prompts/list
         elif method == "prompts/list":
             return jsonify({"jsonrpc": "2.0", "result": _prompts_list(role), "id": req_id})
-                
+        
+        # resources/list
+        elif method == "resources/list":
+            return jsonify({"jsonrpc": "2.0", "result": _resources_list(role), "id": req_id})
+            
         # trace and debug
         elif method == "logging/setLevel":
             level_str = (params.get("level") or "").lower()
@@ -284,7 +356,6 @@ def init_app(app):
             if py_level is None:
                 py_level = logging.INFO
             logging.getLogger().setLevel(py_level)
-
             return jrpc_ok(req_id)
         
         elif method == "prompts/get":
@@ -328,6 +399,139 @@ def init_app(app):
 
             return jsonify({"jsonrpc": "2.0", "result": prompt_result, "id": req_id})
 
+        # resources/template
+        elif method.startswith("resources/template"):
+            return jsonify(
+                    _error(-32602, "Unauthorized: resources template are not available.")
+                    | {"id": req_id}
+                )
+        
+        # resources/read    
+        elif method == "resources/read":
+            uri = params.get("uri")
+            if not uri:
+                return jsonify(_error(-32602, "Missing resource uri") | {"id": req_id})
+
+            if not role in ["agent", "guest"]:
+                return jsonify(
+                    _error(-32001, "Unauthorized: resources are only available to agent role")
+                    | {"id": req_id}
+                )
+
+            # Helper to adapt tool-style output to resources/read output
+            def _resource_result_from_tool_output(tool_out: Dict[str, Any], uri: str) -> Dict[str, Any]:
+                # Concatenate all text blocks from the tool output
+                texts = []
+                for block in tool_out.get("content", []):
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        txt = block.get("text", "")
+                        if txt:
+                            texts.append(txt)
+
+                text_payload = "\n".join(texts) if texts else ""
+
+                contents = [
+                    {
+                        "uri": uri,
+                        "mimeType": "text/plain",
+                        "text": text_payload,
+                    }
+                ]
+
+                result: Dict[str, Any] = {"contents": contents}
+                if "structuredContent" in tool_out:
+                    result["structuredContent"] = tool_out["structuredContent"]
+                return result
+
+
+            # 1) This agent's wallet
+            if uri == "wallet4agent/this_wallet":
+                if not agent_identifier:
+                    return jsonify(
+                        _error(-32001, "Missing agent identifier for this_wallet") | {"id": req_id}
+                    )
+                tool_out = wallet_tools_for_agent.call_get_this_wallet_data(agent_identifier)
+                return jsonify({
+                    "jsonrpc": "2.0",
+                    "result": _resource_result_from_tool_output(tool_out, uri),
+                    "id": req_id,
+                })
+
+            # 2) This agent's wallet attestations
+            if uri == "wallet4agent/this_wallet/attestations":
+                if not agent_identifier:
+                    return jsonify(
+                        _error(-32001, "Missing agent identifier for attestations") | {"id": req_id}
+                    )
+                tool_out = wallet_tools_for_agent.call_get_attestations_of_this_wallet(
+                    agent_identifier, config()
+                )
+                return jsonify({
+                    "jsonrpc": "2.0",
+                    "result": _resource_result_from_tool_output(tool_out, uri),
+                    "id": req_id,
+                })
+
+            # 3) Another agent's attestations: wallet4agent/agent/{did}/attestations
+            if uri.startswith("wallet4agent/agent/") and uri.endswith("/attestations"):
+                # uri = wallet4agent/agent/<did>/attestations
+                parts = uri.split("/")
+                if len(parts) < 4:
+                    return jsonify(
+                        _error(-32602, "Invalid agent attestations uri") | {"id": req_id}
+                    )
+                target_did = "/".join(parts[2:-1])  # support ':' etc. inside DID
+                tool_out = wallet_tools_for_agent.call_get_attestations_of_another_agent(
+                    target_did
+                )
+                return jsonify({
+                    "jsonrpc": "2.0",
+                    "result": _resource_result_from_tool_output(tool_out, uri),
+                    "id": req_id,
+                })
+
+            # 4) Wallet4Agent description
+            if uri == "wallet4agent/description":
+                tool_out = wallet_tools_for_agent.call_describe_wallet4agent()
+                return jsonify({
+                    "jsonrpc": "2.0",
+                    "result": _resource_result_from_tool_output(tool_out, uri),
+                    "id": req_id,
+                })
+                
+            # 5) Developer documentation: get_started.md
+            if uri == "wallet4agent/docs/get_started":
+                try:
+                    # Adjust path if get_started.md is in a different directory
+                    with open("documentation/get_started.md", "r", encoding="utf-8") as f:
+                        md_text = f.read()
+                except Exception as e:
+                    return jsonify(
+                        _error(-32001, "Could not read developer documentation", {"detail": str(e)})
+                        | {"id": req_id}
+                    )
+
+                result = {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "text/markdown",
+                            "text": md_text,
+                        }
+                    ]
+                }
+                # Optionally add a small structuredContent hint
+                result["structuredContent"] = {
+                    "title": "Wallet4Agent — Getting Started from Zero to Agent",
+                    "role": "guest",
+                    "format": "markdown",
+                }
+                return jsonify({"jsonrpc": "2.0", "result": result, "id": req_id})
+            
+            # Unknown resource
+            return jsonify(
+                _error(-32601, f"Unknown resource uri: {uri}") | {"id": req_id}
+            )
 
         # tools/call
         elif method == "tools/call":
@@ -335,6 +539,9 @@ def init_app(app):
             arguments = params.get("arguments") or {}         
     
             if name == "start_user_verification":
+                if not arguments.get("user_email"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"User email missing"}}
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}

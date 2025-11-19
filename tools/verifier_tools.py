@@ -6,45 +6,73 @@ from typing import Any, Dict, List, Optional
 import logging
 import qrcode
 from routes.verifier import oidc4vp
+from utils import message
 
 tools_dev = []
 tools_guest = []
-
 tools_agent = [
     {
         "name": "start_user_verification",
-        "description": "Create a user wallet request as a QR code image or link.",
+        "description": (
+            "Start a user verification by email invitation. "
+            "The agent MUST first ask the user for their email address. "
+            "An email is sent with a special link that opens the user's identity "
+            "wallet and starts the verification process (no QR code is used)."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "scope": {
                     "type": "string",
-                    "description": "User scope to verify. Profile is first name, last name and birth date.",
-                    "enum": ["email", "over18", "profile", "wallet_identifier"],
-                    "default": "email"
+                    "description": (
+                        "What should be verified in the user's wallet. "
+                        "'profile' is first name, last name and birth date; "
+                        "'over18' is a proof that the user is older than 18; "
+                        "'wallet_identifier' is a stable identifier of the wallet."
+                    ),
+                    "enum": ["over18", "profile", "wallet_identifier"],
+                    "default": "profile"
                 },
                 "user_id": {
                     "type": "string",
-                    "description": "Optional caller-provided user_id."
+                    "description": (
+                        "Optional caller-provided user_id that identifies this user "
+                        "for follow-up polling."
+                    )
+                },
+                "user_email": {
+                    "type": "string",
+                    "description": (
+                        "Email address of the user. The verification invitation "
+                        "will be sent to this email, and the link in that email "
+                        "will open the user's identity wallet to start verification."
+                    )
                 }
             },
-            "required": ["scope"]
+            "required": ["scope", "user_email"]
         }
     },
     {
         "name": "poll_user_verification",
-        "description": "Poll current verification status for a user verification; returns user wallet data.",
+        "description": (
+            "Poll the current verification status for a given user_id. "
+            "Use this after the user has received the email invitation and "
+            "completed (or is completing) the verification in their wallet. "
+            "Returns the verification status and any verified wallet data."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "user_id": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "The user_id associated with the verification session."
                 }
             },
             "required": ["user_id"]
         }
     }
 ]
+
 
 def _qr_png_b64(text: str) -> Optional[str]:
         """Return base64 PNG of QR for 'text'; None if qrcode not available."""
@@ -72,7 +100,6 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     
     verifier_id_for_scope = {
         "wallet_identifier": "0000",
-        "email": "0001",
         "over18": "0002",
         "profile": "0003"
     }
@@ -87,20 +114,36 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
             [{"type": "text", "text": "Server error"}],
             is_error=True,
         )
+    print("data = ", data)
+    openid_vc_uri = data.get('url')
+    verif_id = data.get("verif_id")
+    email_page_link = mode.server + "verification_email/" + verif_id
     
-    link = data.get("url")
+    # Sed email
+    success = message.messageHTML(
+        subject="Your verification link",
+        to=arguments.get("user_email"),
+        HTML_key="verification_en",  # register it in HTML_templates
+        format_dict={
+            "openid_vc_uri": openid_vc_uri,
+            "email_page_link": email_page_link
+        },
+        mode=mode
+    )
+    
     # Build structured flow info
     flow = {
         "user_id": mcp_user_id,
-        "link": link,
+        "email_sent": success
     }
     
     blocks: List[Dict[str, Any]] = []
-    b64 = _qr_png_b64(link) if link else None
+    
+    #b64 = _qr_png_b64(link) if link else None
     #if b64:
     #    blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
-    # Always include a text hint
-    text_hint = f"Scan the QR code (if shown) or clic to this link to open your wallet :\n{link}" if link else "No link returned."
+    
+    text_hint = f"An email has been sent to you.  Clic on the link in your to open your wallet and present your credential." if success else "No email sent."
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
 
