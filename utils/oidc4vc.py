@@ -136,10 +136,12 @@ def hash_client_secret(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def generate_access_token(did, role, type, duration=None):
+def generate_access_token(did, role, type, jti=None, duration=None):
     now = int(datetime.timestamp(datetime.now()))
+    if not jti:
+        jti = secrets.token_hex(16)
     payload = {
-        "jti": secrets.token_hex(16),
+        "jti": jti,
         "sub": did,
         "iat": now,
         "type": type,

@@ -219,12 +219,8 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo"
         url = mode.server + "did/" + did
-        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", duration = 90*24*60*60)
-        print("---------------------")
-        logging.info("for %s dev_pat = %s", did, dev_pat)
-        print("---------------------")
-        logging.info("for %s agent_pat = %s", did, agent_pat)
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo", duration=90*24*60*60)
         wallet_1 = Wallet(
             dev_pat_jti=dev_pat_jti,  # 365 days
             agent_pat_jti=agent_pat_jti,
@@ -242,12 +238,8 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo2"
         url = mode.server + "did/" + did
-        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", duration = 90*24*60*60)
-        print("---------------------")
-        logging.info("for %s dev_pat = %s", did, dev_pat)
-        print("----------------------")
-        logging.info("for %s agent_pat = %s", did, agent_pat)
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo2")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo2", duration=90*24*60*60)
         wallet_2 = Wallet(
             dev_pat_jti=dev_pat_jti,
             agent_pat_jti=agent_pat_jti,
