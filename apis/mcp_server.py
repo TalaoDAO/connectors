@@ -559,7 +559,7 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                if not arguments.get("user_id"):
+                if not arguments.get("user_email"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: user_id is missing "}}
                 out = verifier_tools.call_poll_user_verification(arguments, config())

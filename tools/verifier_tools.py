@@ -33,13 +33,6 @@ tools_agent = [
                     "enum": ["over18", "profile", "wallet_identifier"],
                     "default": "profile"
                 },
-                "user_id": {
-                    "type": "string",
-                    "description": (
-                        "Optional caller-provided user_id that identifies this user "
-                        "for follow-up polling."
-                    )
-                },
                 "user_email": {
                     "type": "string",
                     "description": (
@@ -55,7 +48,7 @@ tools_agent = [
     {
         "name": "poll_user_verification",
         "description": (
-            "Poll the current verification status for a given user_id. "
+            "Poll the current verification status for a given user_email. "
             "Use this after the user has received the email invitation and "
             "completed (or is completing) the verification in their wallet. "
             "Returns the verification status and any verified wallet data."
@@ -63,12 +56,12 @@ tools_agent = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "user_id": {
+                "user_email": {
                     "type": "string",
-                    "description": "The user_id associated with the verification session."
+                    "description": "The user_email associated with the verification session."
                 }
             },
-            "required": ["user_id"]
+            "required": ["user_email"]
         }
     }
 ]
@@ -106,15 +99,14 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     verifier_id = verifier_id_for_scope.get(scope, "custom")
     
     # optional user_id
-    mcp_user_id = arguments.get("user_id") or str(uuid.uuid4())
+    user_email = arguments.get("user_email")
         
-    data = oidc4vp.oidc4vp_qrcode(verifier_id, mcp_user_id, scope, red, mode)
+    data = oidc4vp.oidc4vp_qrcode(verifier_id, user_email, scope, red, mode)
     if not data:
         return _ok_content(
             [{"type": "text", "text": "Server error"}],
             is_error=True,
         )
-    print("data = ", data)
     openid_vc_uri = data.get('url')
     verif_id = data.get("verif_id")
     email_page_link = mode.server + "verification_email/" + verif_id
@@ -133,7 +125,7 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     
     # Build structured flow info
     flow = {
-        "user_id": mcp_user_id,
+        "user_email": user_email,
         "email_sent": success
     }
     
@@ -150,15 +142,15 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
 
 def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     red = config["REDIS"]
-    user_id = arguments.get("user_id")
+    user_email = arguments.get("user_email")
     
-    payload = oidc4vp.wallet_pull_status(user_id, red)
+    payload = oidc4vp.wallet_pull_status(user_email, red)
     status = payload.get("status", "pending")
 
     # current oidc4vp: claims merged at the top level (exclude status/user_id)
     claims = {k: v for k, v in payload.items() if k not in ("status", "user_id")}
 
-    structured = {"status": status, "user_id": user_id, **claims}
+    structured = {"status": status, "user_email": user_email, **claims}
 
     # Human-friendly text block (special hint for wallet_identifier scope)
     text_blocks = []
@@ -171,4 +163,9 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
     # Always include the full JSON as text for debugging/visibility
     text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
 
+    if status == "verified":
+        logging.info("verification data attached to %s are deleted from REDIS", user_email)
+        red.delete(user_email)
+        red.delete(user_email + "_wallet_data")
+        red.delete(user_email + "_status")
     return _ok_content(text_blocks, structured=structured)

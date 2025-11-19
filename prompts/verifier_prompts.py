@@ -6,7 +6,7 @@ No QR code is ever referenced. The only flow is:
 2. start_user_verification(scope, user_email)
 3. Inform the user that an email was sent
 4. User opens the email on smartphone → wallet opens
-5. poll_user_verification(user_id)
+5. poll_user_verification(user_email)
 6. Summarize verified information
 """
 
@@ -56,7 +56,7 @@ def get_prompt_verify_over18_with_data_wallet(arguments: Dict[str, Any]) -> Dict
         "3. Tell the user: \"I have sent you an email. Open it on your smartphone and "
         "tap the link to start the verification in your identity wallet.\"\n"
         "4. After the user indicates they have clicked the link and completed the wallet "
-        "flow, call poll_user_verification(user_id).\n"
+        "flow, call poll_user_verification(user_email).\n"
         "5. Interpret the result: if the wallet confirms the user is over 18, summarize "
         "success. If incomplete or failed, explain clearly.\n\n"
         "Rules:\n"
@@ -88,7 +88,7 @@ def get_prompt_verify_profile_with_data_wallet(arguments: Dict[str, Any]) -> Dic
         "   This sends a verification email.\n"
         "3. Tell the user to open the email on their smartphone and tap the link, which "
         "opens their identity wallet.\n"
-        "4. After they confirm completion, call poll_user_verification(user_id).\n"
+        "4. After they confirm completion, call poll_user_verification(user_email).\n"
         "5. Extract the verified profile data (first name, last name, birth date) from "
         "the result and summarize it.\n\n"
         "Rules:\n"
