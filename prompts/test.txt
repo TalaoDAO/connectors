@@ -1,7 +1,0 @@
-
-{
-  "agent_identifier": "did:web:wallet4agent.com:465047f65f4dd3e75ec9f77246934c4a",
-  "agent_personal_access_token": "FRAu3ntr1FixwOpZEwyLjlUQjxVsJ-k38zg2SO9HgLyQhagbD8_ERWM7SlBE1_uQUbrAdbWeqJgx8bSVfI-ZQlF3ii0RAzlGlljVcCFW3bSoC_2ssYFufq_IGknPdSyyPgCG50S0oKeI0BkmyVpEMttamKzaGY2Fh7AIeU4lNp90iyujzZAl7aENFX-nCfRwVsHp_xln2iXYMjXWapnO_dAmg37tTh_Z2-c2IE_4aqFC6LnzYE41OJQMRb0rleedC3F9DWJfpdbyp0iPMG52tNY=",
-  "dev_personal_access_token": "_2yFp-6krtWxD-K2O3meggSAybrbdFaZwu8iLEXzA0Hb3NA1zGx-Tq0kz3grop-Vzrr9CrS11UTlRTxWymFsxjiUQ3UTgGelR2SFH_zitJDdGWu9TrsFkKgGfz-WA-6MG6L3G6KYsmk2-92-24bA1e3rVyOYwEvvMfPY4MF636Kwduspo7a0eebcGAmPEU145G1h48p0NJvBywZOmrZKtoIMog64Ja9DPEEnYEamvZL_EILckGroFBBx-Qw=",
-  "wallet_url": "http://192.168.0.65:4000/did/did:web:wallet4agent.com:465047f65f4dd3e75ec9f77246934c4a"
-}
