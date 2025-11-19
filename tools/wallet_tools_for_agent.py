@@ -151,7 +151,7 @@ def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
     if not wallet_attestations:
         text = "0 attestation found"
     else:
-        text = "All attestations of the Agent"
+        text = str(len(wallet_attestations)) +  " attestations found in the wallet : " + json.dumps(wallet_attestations)
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
