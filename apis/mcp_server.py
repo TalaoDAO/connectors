@@ -224,6 +224,7 @@ def init_app(app):
 
     # --------- Resource catalog ---------
     def _resources_list(role) -> Dict[str, Any]:
+        logging.info("resources have been called")
         """
         List MCP resources visible for this role.
         For now we only expose resources to 'agent' role.
