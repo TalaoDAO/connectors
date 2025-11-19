@@ -126,29 +126,33 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 
 def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
-    # Query attestations linked to this wallet
+    # Query attestations linked to this wallet, published or not 
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
     wallet_attestations = []
     for attestation in attestations_list:
         validity = "active"
+        decoded_vc = _decode_jwt_payload(attestation.vc)
         wallet_attestations.append(
             {
                 "attestation_id": attestation.id,
-                "vc": attestation.vc,
+                "attestation_content": decoded_vc,
                 "name": attestation.name,
                 "description": attestation.description,
                 "issuer": attestation.issuer,
                 "iat": attestation.created_at.isoformat() if attestation.created_at else None,
-                "validity": validity
+                "validity": validity,
+                "is_published": attestation.published
             }
         )        
-    structured = {"attestations": wallet_attestations}
+    structured = {
+        "nb_of_attestations": len(wallet_attestations),
+        "attestations": wallet_attestations
+    }
     if not wallet_attestations:
-        text = "No attestation found"
+        text = "0 attestation found"
     else:
         text = "All attestations of the Agent"
     return _ok_content([{"type": "text", "text": text}], structured=structured)
-
 
 
 def _parse_data_uri(data_uri: str) -> (Optional[str], Optional[str]):
