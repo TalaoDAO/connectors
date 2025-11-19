@@ -71,7 +71,7 @@ def default_verifier_request_key():
 class Verifier(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    name = db.Column(db.String(128), nullable=False, unique=True)
+    name = db.Column(db.Text)
     description = db.Column(db.Text)
     verifier_type = db.Column(Enum("sandbox", "qualified", name="verifier_type"))
     created_at = db.Column(db.DateTime(timezone=True), default=datetime.now, nullable=False)
@@ -331,7 +331,7 @@ def seed_verifier_for_demo(mode):
         }
         verifier_0 = Verifier(
             user_id=1,
-            name="Verifier for demon profile DIIP V3 with scheme redirect_uri",
+            name="Verifier for demo DIIP V3 with scheme redirect_uri",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo and swagger",
@@ -353,7 +353,7 @@ def seed_verifier_for_demo(mode):
         }
         verifier_1 = Verifier(
             user_id=1,
-            name="talao wallet draft 20 with scheme DID",
+            name="fo demo with draft 20 with scheme DID",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
@@ -375,7 +375,7 @@ def seed_verifier_for_demo(mode):
         }
         verifier_2 = Verifier(
             user_id=1,
-            name="oidc4vp draft 20 with DID",
+            name="demo draft 20 with DID",
             draft="20",
             verifier_type="sandbox",
             description="This is a verifier for demo mcp server",
@@ -397,10 +397,10 @@ def seed_verifier_for_demo(mode):
         }
         verifier_3 = Verifier(
             user_id=1,
-            name="oidc4vp draft 28 and DID",
+            name="demo draft 28 and DID",
             draft="28",
             verifier_type="sandbox",
-            description="This is a verifier for demo mcp server",
+            description="This is a verifier for demo",
             client_id_scheme="did",
             client_id="did:web:talao.co",
             response_mode="direct_post",
