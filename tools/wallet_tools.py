@@ -3,14 +3,11 @@ from typing import Any, Dict, List, Optional
 from db_model import Wallet, db, User
 import secrets
 import logging
-from routes import wallet
 from db_model import Attestation
 from utils import oidc4vc, message
-import urllib
-import requests
 import base64
 from urllib.parse import unquote
-import os, hashlib
+import hashlib
 
 
 # do not provide this tool to an LLM

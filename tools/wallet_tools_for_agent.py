@@ -34,6 +34,24 @@ tools_agent = [
         }
     },
     {
+        "name": "sign_text_message",
+        "description": (
+            "Sign a text message using this Agent's DID and "
+            "return the base64-encoded signature bytes. Use this when an "
+            "external Agent or Identity needs a DID-backed signature from the Agent for instance."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "The text message to sign (UTF-8)."
+                }
+            },
+            "required": ["message"]
+        }
+    },
+    {
         "name": "get_this_wallet_data",  # get agent identity ?
         "description": (
             "Retrieve a high-level overview of this Agent's identity and its attached wallet. "
@@ -531,3 +549,33 @@ def call_explain_how_to_install_wallet4agent() -> Dict[str, Any]:
             structured={"error": "cannot_read_get_started_md"},
             is_error=True,
         )
+        
+
+def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
+    message = arguments.get("message", "")
+    if not isinstance(message, str):
+        message = str(message)
+
+    # Prefer injected manager
+    manager = config.get("MANAGER")
+
+    try:
+        # lazily create or fetch tenant key
+        key_id = manager.create_or_get_key_for_tenant(agent_identifier)
+
+        sig, _ = manager.sign_message(key_id, message.encode("utf-8"))
+        sig_b64 = base64.b64encode(sig).decode("ascii")
+
+        structured = {
+            "agent_did": agent_identifier,
+            "message": message,
+            "signature_base64": sig_b64,
+            "signing_algorithm": "ECDSA_SHA_256",
+        }
+        text = f"Signed message for Agent {agent_identifier}. Base64 signature: {sig_b64}"
+        return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+    except Exception as e:
+        logging.exception("Failed to sign text message with KMS")
+        text = f"Failed to sign message with KMS: {str(e)}"
+        return _ok_content([{"type": "text", "text": text}], is_error=True)

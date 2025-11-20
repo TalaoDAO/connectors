@@ -1,7 +1,7 @@
 
 import base64
 from flask import Flask, request, jsonify, render_template, redirect, session, current_app
-from flask_login import login_required, current_user, logout_user
+from flask_login import current_user, logout_user
 from jwcrypto import jwk, jwt
 import requests
 from urllib.parse import urlencode,parse_qs, urlparse
@@ -17,8 +17,6 @@ import json
 import base64
 import hashlib
 
-from jwcrypto import jwk, jwt
-from jwcrypto.common import json_encode
 
 
 def init_app(app):
@@ -33,13 +31,14 @@ def init_app(app):
     app.add_url_rule('/<wallet_did>/credential_offer', view_func=credential_offer, methods=['GET'])
     app.add_url_rule('/callback', view_func=callback, methods=['GET', 'POST'])
     
+    # openid configuration endpoint of the web wallet
     app.add_url_rule('/did/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
     app.add_url_rule('/.well-known/openid-configuration/did/<wallet_did>', view_func=web_wallet_openid_configuration, methods=['GET'])
     
     # wallet landing page
     app.add_url_rule('/did/<wallet_did>', view_func=wallet_landing_page, methods=['GET'])
     # user consent for credential offer
-    app.add_url_rule('/user/consent', view_func=user_consent, methods=['GET', 'POST'])
+    app.add_url_rule('/user/consent', view_func=user_consent, methods=['POST'])
     
     return
 
@@ -61,7 +60,7 @@ def protected_resource_metadata():
     }
     return jsonify(config)
 
-# endpoint
+# openid configuration endpoint for web wallet 
 def web_wallet_openid_configuration(wallet_did):
     mode = current_app.config["MODE"]
     config = {
@@ -173,13 +172,13 @@ def build_session_config(agent_id: str, credential_offer, mode):
         "credential_configuration_id": credential_configuration_id,
         "format": format,
         "scope": scope,
-        "type": type,
-        "vct": vct,
+        "type": type,  # not used
+        "vct": vct,  # not used
         "grant_type": grant_type,
         "code": code,
-        "issuer_state": issuer_state,
+        "issuer_state": issuer_state,  # not used
         "wallet_did": this_wallet.did,
-        "wallet_url": this_wallet.url,
+        "wallet_url": this_wallet.url, # not used
         "owners_login": json.loads(this_wallet.owners_login),
         "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
         "server": mode.server
@@ -220,7 +219,7 @@ def credential_offer(wallet_did):
     mode = current_app.config["MODE"]
     manager = current_app.config["MANAGER"]
     
-    # if user is logged (user in the loop)
+    # if user is logged -> human in the loop
     if current_user.is_authenticated:
         logging.info("user is now logged")
         session_id = request.args.get("session_id")
@@ -251,7 +250,7 @@ def credential_offer(wallet_did):
                 message = "The attestation cannot be issued"
                 return render_template("wallet/session_screen.html", message=text, title="Sorry !")
     
-    # user is not logged
+    # if user is not logged
     logging.info("user is not logged") 
     # get credential offer
     if credential_offer_uri := request.args.get('credential_offer_uri'):
@@ -285,18 +284,18 @@ def credential_offer(wallet_did):
         message = "The attestation offer has expired"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     
-    # if user in the loop, redirect user to regisration
+    # if human is in the loop -> redirect user to registration
     if session_config["always_human_in_the_loop"]:
         session_id = secrets.token_hex(16)
         red.setex(session_id, 1000, json.dumps(session_config))
         return redirect("/register?session_id=" + session_id)
     
-    # no user in the loop, Start the pre authorized code flow only
+    # if human not in the loop and pre authorized code flow
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
         attestation, message = code_flow(session_config, mode, manager)
         if attestation:
-            # store attestation and publish it
-            result, message = store(attestation, session_config, manager, published=True)
+            # store attestation
+            result, message = store_and_publish(attestation, session_config, manager, published=True)
             if result:
                 message = "Attestation has been issued, stored and published successfully"
                 return render_template("wallet/session_screen.html", message=message, title="Congrats !")
@@ -307,6 +306,8 @@ def credential_offer(wallet_did):
         logging.warning("no attestation")
         message = "The attestation issuance failed"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
+    
+    # if human not in the loop and authorization code flow
     else:
         logging.warning("attestation is missing %s", message)
         message = "This attestation cannot been issued without human consent."
@@ -336,7 +337,7 @@ def user_consent():
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
 
     if public_url == "public":
-        result, message = store(attestation, session_config, manager, published=True)
+        result, message = store_and_publish(attestation, session_config, manager, published=True)
         if result:
             message = "Attestation has been issued, stored an published successfully"
             return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
@@ -346,7 +347,7 @@ def user_consent():
             return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
             
     else:
-        result, message = store(attestation, session_config, manager, published=False)
+        result, message = store_and_publish(attestation, session_config, manager, published=False)
         if result:
             message = "Attestation has been issued and stored successfully"
             return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
@@ -537,7 +538,7 @@ def code_flow(session_config, mode, manager):
     return cred, "ok"
 
 
-def store(cred, session_config, manager, published=False):
+def store_and_publish(cred, session_config, manager, published=False):
     # store attestation
     vcsd = cred.split("~") 
     vcsd_jwt = vcsd[0]

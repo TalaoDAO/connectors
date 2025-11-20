@@ -597,15 +597,16 @@
       </div>
     </section>
 
-    <!-- Get started -->
+       <!-- Get started -->
     <section class="section" id="get-started">
       <div class="section-header">
         <div class="section-kicker">Developer quickstart</div>
         <h2 class="section-title">Get Started</h2>
         <p class="section-description">
-          It’s simple to spin up an attached identity for an agent. You can either
+          It’s simple to spin up an attached identity for an agent and start issuing or verifying
+          credentials. You can either
           <strong>call a public MCP tool (no bearer token required)</strong>
-          or use an <strong>MCP Inspector</strong> to try all tools interactively.
+          or use an <strong>MCP Inspector</strong> to try all wallet and verifier tools interactively.
           The MCP endpoint is available at
           <a href="https://wallet4agent.com/mcp/info" target="_blank" rel="noopener">https://wallet4agent.com/mcp</a>.
         </p>
@@ -724,8 +725,10 @@
             (including <code>client_secret_basic</code>, <code>client_secret_post</code>, or
             <code>private_key_jwt</code> with JWK keys).
             From the agent role, use tools such as:
+            <code>describe_wallet4agent</code>, <code>explain_how_to_install_wallet4agent</code>,
             <code>get_this_wallet_data</code>, <code>get_attestations_of_this_wallet</code>,
-            <code>get_attestations_of_another_agent</code>, and <code>accept_credential_offer</code>.
+            <code>get_attestations_of_another_agent</code>, <code>accept_credential_offer</code>,
+            and <code>sign_text_message</code>.
           </p>
           <p style="margin:0.5rem 0 0.35rem; font-weight:600;">Example: agent reads its wallet metadata</p>
           <pre><code>curl -s https://wallet4agent.com/mcp \
@@ -757,26 +760,46 @@
             and experiment:
           </p>
           <ul class="tech-list" style="margin-top:0.4rem;">
-            <li><strong>Guest:</strong> Call <code>describe_wallet4agent</code> to understand the concepts, then <code>create_agent_identifier_and_wallet</code> to bootstrap a new agent.</li>
-            <li><strong>Developer:</strong> Use your <code>dev_personal_access_token</code> to call <code>get_configuration</code>, <code>update_configuration</code>, <code>rotate_personal_access_token</code>, and <code>add_authentication_key</code>.</li>
-            <li><strong>Agent:</strong> With an agent PAT or OAuth2 access token, call <code>get_this_wallet_data</code>, <code>get_attestations_of_this_wallet</code>, <code>get_attestations_of_another_agent</code>, or <code>accept_credential_offer</code> to receive new VCs.</li>
+            <li>
+              <strong>Guest:</strong>
+              Call <code>create_agent_identifier_and_wallet</code> to bootstrap a new agent and wallet.
+            </li>
+            <li>
+              <strong>Developer:</strong>
+              Use your <code>dev_personal_access_token</code> to call
+              <code>get_configuration</code>, <code>update_configuration</code>,
+              <code>rotate_personal_access_token</code>, <code>add_authentication_key</code>,
+              <code>get_attestations_of_this_wallet</code>, and <code>delete_identity</code>.
+            </li>
+            <li>
+              <strong>Agent:</strong>
+              With an agent PAT or OAuth2 access token, call
+              <code>describe_wallet4agent</code>, <code>explain_how_to_install_wallet4agent</code>,
+              <code>get_this_wallet_data</code>, <code>get_attestations_of_this_wallet</code>,
+              <code>get_attestations_of_another_agent</code>, <code>accept_credential_offer</code>,
+              or <code>sign_text_message</code> to sign arbitrary text with the Agent's DID-backed key.
+            </li>
+            <li>
+              <strong>Verifier (agent verifying a human user):</strong>
+              Use <code>start_user_verification</code> to send a verification link by email,
+              then <code>poll_user_verification</code> to retrieve the verification status
+              and verified wallet data.
+            </li>
           </ul>
         </article>
       </div>
 
       <div style="text-align:center;">
-            <a class="btn btn-outline" href="/documentation/get_started">Documentation</a>
-          
-        </div>
+        <a class="btn btn-outline" href="/documentation/get_started">Documentation</a>
+      </div>
 
       <p class="get-started-note">
-        Tool availability and returned fields depend on who calls the MCP server (guest, developer, or agent)
+        Tool availability and returned fields depend on who calls the MCP server (guest, developer, agent or verifier)
         and on the configured authentication mode (PAT vs OAuth2). The server advertises its capabilities
         through standard MCP routes, and enforces role-based access to keep responsibilities clearly separated.
       </p>
-
-       
     </section>
+
 
   </main>
 

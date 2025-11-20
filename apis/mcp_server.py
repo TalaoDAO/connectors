@@ -622,6 +622,15 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools_for_agent.call_get_attestations_of_this_wallet(agent_identifier, config())
                 
+            elif name == "sign_text_message":
+                if role not in ["agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("message"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: message missing "}}
+                out = wallet_tools_for_agent.call_sign_text_message(arguments, agent_identifier, config())
+                
             elif name == "get_attestations_of_another_agent":
                 target_agent_identifier = arguments.get("agent_identifier")
                 if not target_agent_identifier:

@@ -27,6 +27,7 @@ DEMO_AGENT_DID = "did:web:wallet4agent.com:demo"
 
 # Encrypted PAT for the demo agent did:web:wallet4agent.com:demo
 MCP_AGENT_PAT, _jti = oidc4vc.generate_access_token(DEMO_AGENT_DID, "agent", "pat", jti="demo", duration=360*24*60*60)
+print("agent pat fr demo  ", MCP_AGENT_PAT)
 
 # --------- FLASK APP ---------
 
