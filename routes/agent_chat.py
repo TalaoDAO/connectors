@@ -109,6 +109,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
             "get_attestations_of_this_wallet",
             "get_attestations_of_another_agent",
             "accept_credential_offer",
+            "sign_text_message",
             # Agent-level verifier tools (to check human users)
             "start_user_verification",
             "poll_user_verification",

@@ -1,22 +1,19 @@
 
-import base64
-from flask import Flask, request, jsonify, render_template, redirect, session, current_app
+from flask import Flask, request, jsonify, render_template, redirect, current_app
 from flask_login import current_user, logout_user
-from jwcrypto import jwk, jwt
 import requests
 from urllib.parse import urlencode,parse_qs, urlparse
 import pkce
 import logging
 from datetime import datetime
-logging.basicConfig(level=logging.INFO)
-from datetime import datetime
 from db_model import Wallet, Attestation, db
-from utils import deterministic_jwk, oidc4vc
+from utils import oidc4vc
 import secrets
 import json
 import base64
 import hashlib
 
+logging.basicConfig(level=logging.INFO)
 
 
 def init_app(app):
@@ -37,16 +34,11 @@ def init_app(app):
     
     # wallet landing page
     app.add_url_rule('/did/<wallet_did>', view_func=wallet_landing_page, methods=['GET'])
+    
     # user consent for credential offer
     app.add_url_rule('/user/consent', view_func=user_consent, methods=['POST'])
     
     return
-
-def get_configuration():
-    f = open("wallet_configuration.json", 'r')
-    return json.loads(f.read())
-
-
 
 # MCP server endpoint
 def protected_resource_metadata():
@@ -64,7 +56,8 @@ def protected_resource_metadata():
 def web_wallet_openid_configuration(wallet_did):
     mode = current_app.config["MODE"]
     config = {
-        "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer"   
+        "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer"
+        #"authorization_endpoint": mode.server + "/authorize"
     }
     return jsonify(config)
 

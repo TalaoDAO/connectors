@@ -63,6 +63,42 @@ tools_agent = [
             },
             "required": ["user_email"]
         }
+    },
+    {
+        "name": "poll_agent_authentication",
+        "description": (
+            "Poll the current authentication status of another Agent. "
+            "Returns the status."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "The other agent DID as identifier."
+                }
+            },
+            "required": ["user_email"]
+        }
+    },
+    {
+        "name": "start_agent_authentication",
+        "description": (
+            "Start another agent authentication. "
+            "wallet and starts the authentication process."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": (
+                        "DID of the other agent."
+                    )
+                }
+            },
+            "required": ["agent_identifier"]
+        }
     }
 ]
 

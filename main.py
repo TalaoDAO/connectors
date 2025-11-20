@@ -233,7 +233,7 @@ def create_app() -> Flask:
         return render_template_string(html)
 
 
-    # .well-known DID API
+    # .well-known DID API to serve DID Document as did:web
     @app.get('/<optional_path>/did.json')
     def well_known_did(optional_path):
         wallet_did = "did:web:wallet4agent.com:" + optional_path

@@ -1,3 +1,4 @@
+
 import json
 from typing import Any, Dict, List, Optional
 from db_model import Wallet
@@ -7,6 +8,9 @@ from db_model import Attestation
 import requests
 import base64
 from urllib.parse import unquote
+import time                       # <-- ADD
+from datetime import datetime      # <-- ADD
+
 
 
 
@@ -143,6 +147,153 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     return out
 
 
+def _parse_iso8601_to_timestamp(value: str) -> Optional[float]:
+    """
+    Parse an ISO8601 datetime string into a UNIX timestamp (seconds since epoch).
+    Handles nanosecond precision by truncating to 6 fractional digits (microseconds).
+    Returns None if parsing still fails.
+    """
+    try:
+        original = value
+
+        # Normalize trailing 'Z' to '+00:00' so datetime.fromisoformat can handle it
+        tz_suffix = ""
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+
+        # Split off timezone offset if present (+HH:MM or -HH:MM)
+        # e.g. "2025-04-05T16:12:06.056491516+00:00"
+        tz_pos = max(value.rfind("+"), value.rfind("-"))
+        if tz_pos > value.find("T"):
+            datetime_part = value[:tz_pos]
+            tz_suffix = value[tz_pos:]
+        else:
+            datetime_part = value
+
+        # Truncate fractional seconds to at most 6 digits
+        if "." in datetime_part:
+            date_part, frac_part = datetime_part.split(".", 1)
+            # frac_part might still contain something like "056491516"
+            # (only digits) so just cut to 6 digits
+            digits = "".join(ch for ch in frac_part if ch.isdigit())
+            digits = digits[:6]  # microseconds precision
+            datetime_part = f"{date_part}.{digits}"
+        # Rebuild full string for fromisoformat
+        norm = datetime_part + tz_suffix
+
+        dt = datetime.fromisoformat(norm)
+        return dt.timestamp()
+    except Exception:
+        logging.exception("Failed to parse ISO8601 datetime %s", value)
+        return None
+
+
+def _extract_vc_from_jwt_vp(jwt_vp: str) -> Optional[Dict[str, Any]]:
+    """
+    From a VP in compact JWT format, extract the embedded VC
+    and compute a simple date-based validity for that VC.
+
+    Returns a dict that can be merged into an attestation, e.g.:
+      {
+        "vc": { ... VC JSON ... },
+        "credentialSubject": { ... },
+        "vc_valid": True/False,
+        "vc_validity_status": "valid" | "expired" | "not_yet_valid" | "invalid_date_format",
+        "vc_validity_reasons": [ ...optional text reasons... ]
+      }
+    """
+    # 1. Decode VP payload (full, no claim stripping)
+    vp_payload = _decode_jwt_payload_full(jwt_vp)
+    if not isinstance(vp_payload, dict):
+        logging.warning("VP-JWT payload is not a JSON object")
+        return None
+
+    vp_obj = vp_payload.get("vp") or {}
+    if not isinstance(vp_obj, dict):
+        logging.warning("VP-JWT has no 'vp' object")
+        return None
+
+    vcs = vp_obj.get("verifiableCredential") or []
+    if not vcs or not isinstance(vcs, list):
+        logging.warning("VP-JWT 'vp.verifiableCredential' is missing or not a list")
+        return None
+
+    vc_jwt = vcs[0]
+    if not isinstance(vc_jwt, str):
+        logging.warning("First verifiableCredential in VP is not a string JWT")
+        return None
+
+    # 2. Decode VC payload
+    vc_payload_full = _decode_jwt_payload_full(vc_jwt)
+    if not isinstance(vc_payload_full, dict):
+        logging.warning("VC-JWT payload is not a JSON object")
+        return None
+
+    # VC data itself is usually under "vc"
+    vc_data = vc_payload_full.get("vc", vc_payload_full)
+    if not isinstance(vc_data, dict):
+        logging.warning("VC data is not a JSON object")
+        return None
+
+    # 3. Date-based validity check
+    now_ts = time.time()
+    status = "valid"
+    reasons: List[str] = []
+
+    # Check VC-JWT level nbf / exp
+    nbf = vc_payload_full.get("nbf")
+    exp = vc_payload_full.get("exp")
+
+    if isinstance(nbf, (int, float)) and now_ts < nbf:
+        status = "not_yet_valid"
+        reasons.append(f"VC not yet valid (nbf={nbf}, now={int(now_ts)})")
+
+    if isinstance(exp, (int, float)) and now_ts > exp:
+        status = "expired"
+        reasons.append(f"VC expired (exp={exp}, now={int(now_ts)})")
+
+    # Check VC-level validFrom / expirationDate (ISO8601)
+    valid_from_str = vc_data.get("validFrom") or vc_data.get("issuanceDate")
+    expiration_str = vc_data.get("expirationDate")
+
+    if valid_from_str:
+        ts = _parse_iso8601_to_timestamp(valid_from_str)
+        if ts is None:
+            if status == "valid":
+                status = "invalid_date_format"
+            reasons.append(f"Cannot parse validFrom/issuanceDate: {valid_from_str}")
+        elif now_ts < ts and status == "valid":
+            status = "not_yet_valid"
+            reasons.append(f"VC not yet valid (validFrom={valid_from_str})")
+
+    if expiration_str:
+        ts = _parse_iso8601_to_timestamp(expiration_str)
+        if ts is None:
+            if status == "valid":
+                status = "invalid_date_format"
+            reasons.append(f"Cannot parse expirationDate: {expiration_str}")
+        elif now_ts > ts and status == "valid":
+            status = "expired"
+            reasons.append(f"VC expired (expirationDate={expiration_str})")
+
+    # 4. Build result to merge into attestation
+    result: Dict[str, Any] = {
+        "vc": vc_data,
+        "vc_jwt": vc_jwt,  
+        "vc_valid": (status == "valid"),
+        "vc_validity_status": status,
+    }
+    if reasons:
+        result["vc_validity_reasons"] = reasons
+
+    credential_subject = vc_data.get("credentialSubject")
+    if isinstance(credential_subject, dict):
+        # Expose credentialSubject at top level too (often what you want to see)
+        result["credentialSubject"] = credential_subject
+
+    return result
+
+
 def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet, published or not 
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
@@ -193,6 +344,25 @@ def _parse_data_uri(data_uri: str) -> (Optional[str], Optional[str]):
     # Data might be URL-encoded
     data_str = unquote(data_part)
     return media_type, data_str
+
+
+def _decode_jwt_payload_full(jwt_token: str) -> Optional[Dict[str, Any]]:
+    """
+    Decode a JWT payload without removing any claims.
+    Used when we need access to exp/nbf or other meta fields.
+    """
+    try:
+        parts = jwt_token.split(".")
+        if len(parts) < 2:
+            return None
+        payload_b64 = parts[1]
+        padding = "=" * (-len(payload_b64) % 4)
+        payload_bytes = base64.urlsafe_b64decode(payload_b64 + padding)
+        payload_json = json.loads(payload_bytes.decode("utf-8"))
+        return payload_json
+    except Exception:
+        logging.exception("Failed to decode JWT payload (full)")
+        return None
 
 
 def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
@@ -307,23 +477,43 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
             #"validity": "active",  # assumption; revocation could be checked in a registry
         }
 
-        # 2.a Fetch VP from serviceEndpoint (if HTTP(S))
-        vp_json = None
+         # 2.a Fetch VP from serviceEndpoint (if HTTP(S))
+        vp_json: Optional[Dict[str, Any]] = None
+        vp_jwt: Optional[str] = None
+
         if isinstance(service_endpoint, str):
             if service_endpoint.startswith("data:"):
-                # Endpoint itself is a data: URI
-                vp_json = None  # handled below as enveloped only
+                # Endpoint itself is a data: URI; handled later by SD-JWT extractor
+                vp_json = None
             else:
                 try:
                     logging.info("Fetching VP from serviceEndpoint %s", service_endpoint)
                     resp = requests.get(service_endpoint, timeout=10)
                     resp.raise_for_status()
-                    # Expect a JSON VP envelope by default
-                    try:
-                        vp_json = resp.json()
-                    except Exception:
-                        logging.exception("Failed to parse VP JSON from %s", service_endpoint)
-                        vp_json = None
+                    body = (resp.text or "").strip()
+                    content_type = (resp.headers.get("Content-Type") or "").lower()
+
+                    # Try JSON first if Content-Type suggests it
+                    if "application/json" in content_type or "ld+json" in content_type:
+                        try:
+                            vp_json = resp.json()
+                        except Exception:
+                            logging.exception("Failed to parse VP JSON from %s", service_endpoint)
+                            vp_json = None
+                    else:
+                        # Try JSON anyway if it looks like JSON
+                        if body.startswith("{") or body.startswith("["):
+                            try:
+                                vp_json = resp.json()
+                            except Exception:
+                                logging.exception("Failed to parse VP JSON from %s", service_endpoint)
+                                vp_json = None
+
+                        # If not JSON, check if it looks like a compact JWT VP
+                        if vp_json is None and body.count(".") == 2:
+                            logging.info("ServiceEndpoint %s returned compact JWT VP", service_endpoint)
+                            vp_jwt = body
+
                 except Exception:
                     logging.exception("Failed to fetch serviceEndpoint %s", service_endpoint)
 
@@ -331,47 +521,57 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
 
         # Case 1: JSON-LD VP / Enveloped VP JSON object
         if isinstance(vp_json, dict):
-            vp_type = vp_json.get("type", [])
-            if isinstance(vp_type, str):
-                vp_type_list = [vp_type]
-            else:
-                vp_type_list = vp_type or []
-
-            # EnvelopedVerifiablePresentation per VCDM 2.0.:contentReference[oaicite:2]{index=2}
-            if "EnvelopedVerifiablePresentation" in vp_type_list:
-                data_uri = vp_json.get("id")
-                payload = None
-                if isinstance(data_uri, str) and data_uri.startswith("data:"):
-                    payload = _extract_sd_jwt_payload_from_data_uri(data_uri)
-
-                if payload is not None:
-                    #attestation["format"] = "sd_jwt_vc"
-                    #attestation["payload"] = payload
-                    attestation.update(payload)
+            # Special case: new jwt_vp_json format:
+            # the endpoint returns a JSON wrapper that contains a VP-JWT.
+            jwt_vp_candidate = vp_json.get("jwt_vp_json") or vp_json.get("vp_jwt")
+            if isinstance(jwt_vp_candidate, str) and jwt_vp_candidate.count(".") == 2:
+                logging.info("Detected jwt_vp_json wrapper at %s", service_endpoint)
+                vc_info = _extract_vc_from_jwt_vp(jwt_vp_candidate)
+                if vc_info is not None:
+                    attestation.update(vc_info)
                 else:
-                    # Fallback: store the raw envelope
-                    #attestation["format"] = "enveloped_vp"
-                    attestation["envelope"] = vp_json
-
-            # Non-enveloped VerifiablePresentation JSON-LD
-            elif "VerifiablePresentation" in vp_type_list:
-                #attestation["format"] = "vp_jsonld"
-                attestation["verifiable_presentation"] = vp_json
-
+                    attestation["raw"] = vp_json
             else:
-                # Unknown type, but still JSON; keep for debugging
-                #attestation["format"] = "unknown_json"
-                attestation["raw"] = vp_json
+                vp_type = vp_json.get("type", [])
+                if isinstance(vp_type, str):
+                    vp_type_list = [vp_type]
+                else:
+                    vp_type_list = vp_type or []
 
-        # Case 2: serviceEndpoint itself is a data: URI (no JSON wrapper)
+                # EnvelopedVerifiablePresentation per VCDM 2.0
+                if "EnvelopedVerifiablePresentation" in vp_type_list:
+                    data_uri = vp_json.get("id")
+                    payload = None
+                    if isinstance(data_uri, str) and data_uri.startswith("data:"):
+                        payload = _extract_sd_jwt_payload_from_data_uri(data_uri)
+
+                    if payload is not None:
+                        attestation.update(payload)
+                    else:
+                        attestation["envelope"] = vp_json
+
+                # Non-enveloped VerifiablePresentation JSON-LD
+                elif "VerifiablePresentation" in vp_type_list:
+                    attestation["verifiable_presentation"] = vp_json
+
+                else:
+                    # Unknown type, but still JSON; keep for debugging
+                    attestation["raw"] = vp_json
+
+        # Case 2: HTTP(S) endpoint returned a compact JWT VP directly
+        elif isinstance(vp_jwt, str):
+            vc_info = _extract_vc_from_jwt_vp(vp_jwt)
+            if vc_info is not None:
+                attestation.update(vc_info)
+            else:
+                attestation["raw"] = vp_jwt
+
+        # Case 3: serviceEndpoint itself is a data: URI (no JSON wrapper)
         elif isinstance(service_endpoint, str) and service_endpoint.startswith("data:"):
             payload = _extract_sd_jwt_payload_from_data_uri(service_endpoint)
             if payload is not None:
-                #attestation["format"] = "sd_jwt_vc"
-                #attestation["payload"] = payload
                 attestation.update(payload)
             else:
-                #attestation["format"] = "unknown_data_uri"
                 attestation["raw"] = service_endpoint
 
         else:
