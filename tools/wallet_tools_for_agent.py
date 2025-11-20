@@ -385,29 +385,107 @@ def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
         logging.exception("Failed to decode JWT payload")
         return None
 
-
 def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, Any]]:
     """
-    From a data: URI that contains an SD-JWT or SD-JWT+KB, extract the
-    Issuer-signed JWT payload as JSON.
-    We assume format:
-      - SD-JWT:    <issuer-jwt>~<disclosure>~...~
-      - SD-JWT+KB: <issuer-jwt>~<disclosure>~...~<kb-jwt>
+    From a data: URI that contains an SD-JWT or SD-JWT+KB, extract the embedded
+    VC-JWT and compute the same date-based validity as _extract_vc_from_jwt_vp.
+
+    The returned dict has the same shape as _extract_vc_from_jwt_vp, so callers
+    (like call_get_attestations_of_another_agent) see a consistent structure:
+      {
+        "vc": { ... },
+        "vc_jwt": "<issuer VC-JWT>",
+        "vc_valid": True/False,
+        "vc_validity_status": "...",
+        "vc_validity_reasons": [...],
+        "credentialSubject": { ... }  # if present
+      }
     """
     media_type, data_str = _parse_data_uri(data_uri)
     if media_type is None or data_str is None:
         return None
 
-    # Only handle SD-JWT / VC-JWT-like media types here
-    # (dc+sd-jwt is used for SD-JWT VC; vc+sd-jwt is legacy).:contentReference[oaicite:1]{index=1}
     lowered = media_type.lower()
+    # Only handle SD-JWT / JWT-like media types
     if "sd-jwt" not in lowered and "jwt" not in lowered:
         return None
 
-    # If SD-JWT(+KB), first segment before the first "~" is the issuer JWT.
-    issuer_jwt = data_str.split("~", 1)[0]
-    payload = _decode_jwt_payload(issuer_jwt)
-    return payload
+    # SD-JWT(+KB): first segment before "~" is the issuer-signed JWT
+    parts = data_str.split("~", 1)
+    if not parts or not parts[0]:
+        return None
+
+    issuer_jwt = parts[0]
+
+    # Decode the issuer VC-JWT with all claims preserved
+    vc_payload_full = _decode_jwt_payload_full(issuer_jwt)
+    if not isinstance(vc_payload_full, dict):
+        logging.warning("SD-JWT issuer JWT payload is not a JSON object")
+        return None
+
+    # VC data itself is usually under "vc"; fall back to full payload if absent
+    vc_data = vc_payload_full.get("vc", vc_payload_full)
+    if not isinstance(vc_data, dict):
+        logging.warning("SD-JWT VC data is not a JSON object")
+        return None
+
+    # --- Date-based validity checks (same logic as _extract_vc_from_jwt_vp) ---
+    now_ts = time.time()
+    status = "valid"
+    reasons: List[str] = []
+
+    # Check VC-JWT level nbf / exp
+    nbf = vc_payload_full.get("nbf")
+    exp = vc_payload_full.get("exp")
+
+    if isinstance(nbf, (int, float)) and now_ts < nbf:
+        status = "not_yet_valid"
+        reasons.append(f"VC not yet valid (nbf={nbf}, now={int(now_ts)})")
+
+    if isinstance(exp, (int, float)) and now_ts > exp:
+        status = "expired"
+        reasons.append(f"VC expired (exp={exp}, now={int(now_ts)})")
+
+    # Check VC-level validFrom / issuanceDate / expirationDate (ISO8601)
+    valid_from_str = vc_data.get("validFrom") or vc_data.get("issuanceDate")
+    expiration_str = vc_data.get("expirationDate")
+
+    if valid_from_str:
+        ts = _parse_iso8601_to_timestamp(valid_from_str)
+        if ts is None:
+            if status == "valid":
+                status = "invalid_date_format"
+            reasons.append(f"Cannot parse validFrom/issuanceDate: {valid_from_str}")
+        elif now_ts < ts and status == "valid":
+            status = "not_yet_valid"
+            reasons.append(f"VC not yet valid (validFrom={valid_from_str})")
+
+    if expiration_str:
+        ts = _parse_iso8601_to_timestamp(expiration_str)
+        if ts is None:
+            if status == "valid":
+                status = "invalid_date_format"
+            reasons.append(f"Cannot parse expirationDate: {expiration_str}")
+        elif now_ts > ts and status == "valid":
+            status = "expired"
+            reasons.append(f"VC expired (expirationDate={expiration_str})")
+
+    # --- Build result in the same shape as _extract_vc_from_jwt_vp ---
+    result: Dict[str, Any] = {
+        "vc": vc_data,
+        "vc_jwt": issuer_jwt,
+        "vc_valid": (status == "valid"),
+        "vc_validity_status": status,
+    }
+    if reasons:
+        result["vc_validity_reasons"] = reasons
+
+    credential_subject = vc_data.get("credentialSubject")
+    if isinstance(credential_subject, dict):
+        result["credentialSubject"] = credential_subject
+
+    return result
+
 
 
 def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
@@ -521,8 +599,7 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
 
         # Case 1: JSON-LD VP / Enveloped VP JSON object
         if isinstance(vp_json, dict):
-            # Special case: new jwt_vp_json format:
-            # the endpoint returns a JSON wrapper that contains a VP-JWT.
+            # case: jwt_vp_json format:
             jwt_vp_candidate = vp_json.get("jwt_vp_json") or vp_json.get("vp_jwt")
             if isinstance(jwt_vp_candidate, str) and jwt_vp_candidate.count(".") == 2:
                 logging.info("Detected jwt_vp_json wrapper at %s", service_endpoint)
