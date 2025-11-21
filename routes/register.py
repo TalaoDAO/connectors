@@ -9,8 +9,9 @@ from requests.exceptions import RequestException, HTTPError
 from utils.kms import encrypt_json, decrypt_json
 from utils import message
 import urllib
+import sys
 
-ngrok =  "https://c8e7a2920835.ngrok.app"
+
 
 try:
     with open('keys.json') as f:
@@ -34,7 +35,6 @@ google_client = WebApplicationClient(GOOGLE_CLIENT_ID)
 github_client = WebApplicationClient(GITHUB_CLIENT_ID)
 #talao_client = WebApplicationClient(TALAO_CLIENT_ID)
 
-ENTRY = "/verifier/select/sandbox"
 ENTRY = "/menu"
 
 def init_app(app, db):
@@ -94,19 +94,24 @@ def register_google_callback(db):
     mode = current_app.config["MODE"]
     red = current_app.config["REDIS"]
     session_id = request.args.get("state")
-    google_config = requests.get(GOOGLE_DISCOVERY_URL).json()
+    google_config = requests.get(GOOGLE_DISCOVERY_URL, timeout=10).json()
     token_url, headers, body = google_client.prepare_token_request(
         google_config["token_endpoint"],
         authorization_response=request.url,
         redirect_url=GOOGLE_CALLBACK
     )
-    token_response = requests.post(token_url, headers=headers, data=body, auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET))
+    token_response = requests.post(token_url, headers=headers, data=body, auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET), timeout=10)
     google_client.parse_request_body_response(json.dumps(token_response.json()))
     userinfo_endpoint = google_config["userinfo_endpoint"]
     uri, headers, body = google_client.add_token(userinfo_endpoint)
-    userinfo = requests.get(uri, headers=headers, data=body).json()
+    userinfo = requests.get(uri, headers=headers, data=body, timeout=10).json()
     user = User.query.filter_by(email=userinfo.get("email")).first()
-    session_config = json.loads(red.get(session_id).decode())
+    try:
+        session_config = json.loads(red.get(session_id).decode())
+    except Exception:
+        logging.warning("session not found")
+        return redirect("/")
+        
     if user:
         if userinfo.get("email") in session_config["owners_login"]:
             logout_user()
@@ -119,24 +124,7 @@ def register_google_callback(db):
             return redirect("/")
     logging.warning("user not found in DB")
     return redirect("/")
-    
-    # not used
-    new_user = User(
-        email=userinfo["email"],
-        given_name=userinfo["given_name"],
-        family_name=userinfo["family_name"],
-        name=userinfo["given_name"] + " " + userinfo["family_name"],
-        registration="google",
-        subscription="free"
-    )
-    db.session.add(new_user)
-    db.session.commit()
-    try:
-        message.message("New user on Wallet Connectors", "thierry.thevenet@talao.io", json.dumps(userinfo), mode)
-    except Exception as x:
-        logging.warning("message() failed: %s", x)
-    login_user(new_user)
-    return redirect(ENTRY)
+
 
 
 def login_with_github():
@@ -163,7 +151,11 @@ def register_github_callback(db):
     headers = {'Authorization': f'token {token_resp.get("access_token")}'}
     userinfo = requests.get("https://api.github.com/user", headers=headers).json()
     user = User.query.filter_by(login=userinfo.get("login")).first()
-    session_config = json.loads(red.get(session_id).decode())
+    try:
+        session_config = json.loads(red.get(session_id).decode())
+    except Exception:
+        logging.warning("session not found")
+        return redirect("/")
     if user:
         if userinfo.get("login") in session_config["owners_login"]:
             logout_user()
@@ -178,20 +170,6 @@ def register_github_callback(db):
     logging.warning("user is not found in DB")
     return redirect("/")
     
-    new_user = User(
-        login=userinfo["login"],
-        registration="github",
-        subscription="free",
-        name=userinfo["login"]
-    )
-    db.session.add(new_user)
-    db.session.commit()
-    try:
-        message.message("New user on Wallet Connectors", "thierry.thevenet@talao.io", json.dumps(userinfo), mode)
-    except Exception as x:
-        logging.warning("message() failed: %s", x)
-    login_user(new_user)
-    return redirect(ENTRY)
 
 
 def login_with_wallet():
