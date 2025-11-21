@@ -338,18 +338,20 @@ def call_poll_agent_authentication(target_agent, config: dict) -> Dict[str, Any]
     payload = oidc4vp.wallet_pull_status(target_agent, red)
     status = payload.get("status", "pending")
 
-    # current oidc4vp: claims merged at the top level (exclude status/user_id)
-    claims = {k: v for k, v in payload.items() if k not in ("status", "id")}
 
-    structured = {"status": status, "agent_identifier": target_agent, **claims}
+    structured = {"status": status, "agent_identifier": target_agent}
 
     # Human-friendly text block (special hint for wallet_identifier scope)
-   
     text_blocks = []
+    if status := "verified":
+        text = f"Agent identifier: {target_agent} has status {status}."
+    else: 
+        text = f"Agent {target_agent} is authenticated."
+    
     text_blocks.append({
             "type": "text",
-            "text": f'Agent identifier: {claims.get("wallet_identifier")}'
-        })
+            "text": text
+            })
     # Always include the full JSON as text for debugging/visibility
     text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
 
