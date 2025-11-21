@@ -112,6 +112,8 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
             # Agent-level verifier tools (to check human users)
             "start_user_verification",
             "poll_user_verification",
+            "start_agent_authentication",
+            "poll_agent_authentication"
         ],
         "require_approval": "never",
     }

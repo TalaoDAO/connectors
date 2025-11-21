@@ -105,20 +105,19 @@ def authorize():
             resp.raise_for_status()
             # The endpoint may return a plain JWT or a JSON {"request": "<jwt>"}
             body_text = resp.text.strip()
-            try:
-                body_json = resp.json()
-                if isinstance(body_json, dict) and body_json.get("request"):
-                    req_jwt = body_json["request"]
-                else:
-                    # Fallback: treat the whole body as JWT string
-                    req_jwt = body_text
-            except Exception:
-                # Not JSON => assume it's directly a compact JWS request object
-                req_jwt = body_text
         except Exception as e:
-            message = f"Cannot fetch request object from request_uri: {str(e)}"
-            logging.exception(message)
-            return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+            logging.error("cannot fetch request from request_uri %s", request_uri)
+            return jsonify({"error": str(e)}), 401
+        try:
+            body_json = resp.json()
+            if isinstance(body_json, dict) and body_json.get("request"):
+                req_jwt = body_json["request"]
+            else:
+                # Fallback: treat the whole body as JWT string
+                req_jwt = body_text
+        except Exception:
+            # Not JSON => assume it's directly a compact JWS request object
+            req_jwt = body_text
 
     # 2. Decode request object JWT
     try:
