@@ -82,12 +82,12 @@ tools_agent = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "poll_id": {
+                "agent_identifier": {
                     "type": "string",
-                    "description": "The poll identifier received when starting the authentication."
+                    "description": "The agent DID we want authenticate."
                 }
             },
-            "required": ["user_email"]
+            "required": ["agent_identifier"]
         }
     },
     {
@@ -272,7 +272,6 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
     #    as argument. We use 'request_uri' as a conventional parameter name.
     request = authorization_endpoint + oidc4vp_request.split("//")[1] 
     flow["request"] = request
-    flow["poll_id"] = poll_id
 
     try:
         auth_resp = requests.get(request, timeout=5)
@@ -280,9 +279,9 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
         flow["authorization_response_ok"] = auth_resp.ok
         success = auth_resp.ok
     except Exception as e:
-        logging.exception("Failed to call authorization_endpoint %s", authorization_endpoint)
+        logging.exception("Failed to call authorization_endpoint %s %s", authorization_endpoint, str(e))
         return _ok_content(
-            [{"type": "text", "text": f"Failed to call authorization_endpoint: {e}"}],
+            [{"type": "text", "text": f"Failed to call agent : {target_agent}"}],
             structured=flow,
             is_error=True,
         )
@@ -311,7 +310,7 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
     status = payload.get("status", "pending")
 
     # current oidc4vp: claims merged at the top level (exclude status/user_id)
-    claims = {k: v for k, v in payload.items() if k not in ("status", "user_id")}
+    claims = {k: v for k, v in payload.items() if k not in ("status", "id")}
 
     structured = {"status": status, "user_email": user_email, **claims}
 
@@ -331,4 +330,33 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
         red.delete(user_email)
         red.delete(user_email + "_wallet_data")
         red.delete(user_email + "_status")
+    return _ok_content(text_blocks, structured=structured)
+
+
+def call_poll_agent_authentication(target_agent, config: dict) -> Dict[str, Any]:
+    red = config["REDIS"]
+    
+    payload = oidc4vp.wallet_pull_status(target_agent, red)
+    status = payload.get("status", "pending")
+
+    # current oidc4vp: claims merged at the top level (exclude status/user_id)
+    claims = {k: v for k, v in payload.items() if k not in ("status", "id")}
+
+    structured = {"status": status, "agent_identifier": target_agent, **claims}
+
+    # Human-friendly text block (special hint for wallet_identifier scope)
+   
+    text_blocks = []
+    text_blocks.append({
+            "type": "text",
+            "text": f'Agent identifier: {claims.get("wallet_identifier")}'
+        })
+    # Always include the full JSON as text for debugging/visibility
+    text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
+
+    if status == "verified":
+        logging.info("verification data attached to %s are deleted from REDIS", target_agent)
+        red.delete(target_agent)
+        red.delete(target_agent + "_wallet_data")
+        red.delete(target_agent + "_status")
     return _ok_content(text_blocks, structured=structured)

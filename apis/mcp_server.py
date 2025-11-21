@@ -580,10 +580,11 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                if not arguments.get("poll_id"):
+                target_agent = arguments.get("agent_identifier")
+                if not target_agent:
                     return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: poll_id is missing "}}
-                out = verifier_tools.call_poll_user_verification(arguments, config())
+                                "error":{"code":-32001,"message":"Unauthorized: agent_identifier is missing "}}
+                out = verifier_tools.call_poll_agent_authentication(target_agent, config())
             
             elif name == "create_agent_identifier_and_wallet":
                 

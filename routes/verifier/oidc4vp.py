@@ -256,11 +256,9 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
     oidc4vp_request = "openid4vp://?" + urlencode(authorization_request_for_qrcode)
-    poll_id = str(uuid.uuid4())
-    red.setex(poll_id, 1000, oidc4vp_request)
+    red.setex(nonce, 1000, json.dumps(authorization_request))
     return {
         "oidc4vp_request": oidc4vp_request,
-        "poll_id": poll_id
     }
     
 
@@ -454,6 +452,7 @@ async def verifier_response():
 
 # ------------- Pull -------------
 def wallet_pull_status(user_id, red):
+    # uer email  or target agent
     
     try:
         data = json.loads(red.get(user_id).decode())
@@ -489,7 +488,7 @@ def wallet_pull_status(user_id, red):
     
     response = {
         "status": status,
-        "user_id": user_id,
+        "id": id,
     }
     if wallet_data is not None:
         response.update(wallet_data)
