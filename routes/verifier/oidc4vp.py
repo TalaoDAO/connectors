@@ -256,7 +256,6 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
     oidc4vp_request = "openid4vp://?" + urlencode(authorization_request_for_qrcode)
-    red.setex(nonce, 1000, json.dumps(authorization_request))
     return {
         "oidc4vp_request": oidc4vp_request,
     }
@@ -391,7 +390,7 @@ async def verifier_response():
             # TODO
             
 
-    # get data from nonce binding
+    # fetch nonce for binding
     nonce = None
     if vp_token:
         logging.info("cnf in vp_token = %s",oidc4vc.get_payload_from_token(vp_token_list[0])['cnf'])
@@ -406,7 +405,8 @@ async def verifier_response():
     if not nonce:
         logging.warning("Missing or invalid nonce; cannot bind response")
         return jsonify({"error": "invalid_request", "error_description": "missing_nonce"}), 400
-        
+    
+    # get data from nonce
     try:
         data = json.loads(red.get(nonce).decode())
         user_id = data["user_id"]
@@ -433,7 +433,11 @@ async def verifier_response():
             sub = "Error"
 
     # data for MCP client
-    wallet_data = {"credential_status":"VALID", "scope": data["mcp_scope"]}
+    wallet_data = {
+        "credential_status":"VALID",
+        "scope": data["mcp_scope"]
+    }
+    
     if data["mcp_scope"] == "wallet_identifier":
         wallet_data["wallet_identifier"] = sub
         
