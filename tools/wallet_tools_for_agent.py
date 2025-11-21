@@ -40,16 +40,15 @@ tools_agent = [
     {
         "name": "sign_text_message",
         "description": (
-            "Sign a text message using this Agent's DID and "
-            "return the base64-encoded signature bytes. Use this when an "
-            "external Agent or Identity needs a DID-backed signature from the Agent for instance."
+            "Sign a text message using this Agent's DID and private keys."
+            "Return the base64-encoded signature bytes. Use this tool to prove you are the owner of your DID and private keys."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
-                    "description": "The text message to sign (UTF-8)."
+                    "description": "The text message to sign."
                 }
             },
             "required": ["message"]

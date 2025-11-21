@@ -242,7 +242,7 @@ def create_app() -> Flask:
             "Content-Type": "application/did+ld+json",
             "Cache-Control": "no-cache"
         }
-        if not wallet:
+        if not this_wallet:
             resp = {"error": "notFound"}
             return Response(json.dumps(resp), headers=headers)
         did_doc = this_wallet.did_document

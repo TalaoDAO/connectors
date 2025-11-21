@@ -8,6 +8,7 @@ from utils import oidc4vc, message
 import base64
 from urllib.parse import unquote
 import hashlib
+import random, string
 
 
 # do not provide this tool to an LLM
@@ -18,7 +19,11 @@ tools_guest = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "authentication": {
+                "agent_name": {
+                    "type": "string",
+                    "description": "Optional agent name. If it exists this name will be used to create the DID of the Agent."                    
+                },
+                "mcp_client_authentication": {
                     "type": "string",
                     "description": "Authentication between MCP client and MCP server for agent. Dev and admin use PAT",
                     "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
@@ -164,75 +169,6 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     return out
 
 
-
-def _parse_data_uri(data_uri: str) -> (Optional[str], Optional[str]):
-    """
-    Parse a data: URI into (media_type, data_string).
-    Example: data:application/dc+sd-jwt,eyJhbGciOi...
-    """
-    if not isinstance(data_uri, str) or not data_uri.startswith("data:"):
-        return None, None
-
-    # Strip "data:"
-    body = data_uri[5:]
-    # Split media type and data
-    if "," not in body:
-        return None, None
-    media_type, data_part = body.split(",", 1)
-    if not media_type:
-        media_type = "text/plain;charset=US-ASCII"
-
-    # Data might be URL-encoded
-    data_str = unquote(data_part)
-    return media_type, data_str
-
-
-def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
-    """
-    Decode JWT payload (no signature verification).
-    """
-    try:
-        parts = jwt_token.split(".")
-        if len(parts) < 2:
-            return None
-        payload_b64 = parts[1]
-        # add padding if needed
-        padding = "=" * (-len(payload_b64) % 4)
-        payload_bytes = base64.urlsafe_b64decode(payload_b64 + padding)
-        payload_json = json.loads(payload_bytes.decode("utf-8"))
-        for claim in ["vct", "iat", "exp", "cnf", "_sd", "_sd_alg", "iss", "status"]:
-            payload_json.pop(claim, None)
-        return payload_json
-    except Exception:
-        logging.exception("Failed to decode JWT payload")
-        return None
-
-
-def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, Any]]:
-    """
-    From a data: URI that contains an SD-JWT or SD-JWT+KB, extract the
-    Issuer-signed JWT payload as JSON.
-    We assume format:
-      - SD-JWT:    <issuer-jwt>~<disclosure>~...~
-      - SD-JWT+KB: <issuer-jwt>~<disclosure>~...~<kb-jwt>
-    """
-    media_type, data_str = _parse_data_uri(data_uri)
-    if media_type is None or data_str is None:
-        return None
-
-    # Only handle SD-JWT / VC-JWT-like media types here
-    # (dc+sd-jwt is used for SD-JWT VC; vc+sd-jwt is legacy).:contentReference[oaicite:1]{index=1}
-    lowered = media_type.lower()
-    if "sd-jwt" not in lowered and "jwt" not in lowered:
-        return None
-
-    # If SD-JWT(+KB), first segment before the first "~" is the issuer JWT.
-    issuer_jwt = data_str.split("~", 1)[0]
-    payload = _decode_jwt_payload(issuer_jwt)
-    return payload
-
-
-
 # for dev
 def call_delete_identity(wallet_did) -> Dict[str, Any]:
     """
@@ -299,11 +235,6 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
         structured["did_document"] = json.loads(structured["did_document"])
     
     structured.pop("id", None)
-
-    # You can also keep your old, explicit keys if you like:
-    structured["agent_identifier"] = this_wallet.did
-    structured["authentication"] = this_wallet.mcp_authentication
-
     return _ok_content(
         [{"type": "text", "text": "All data"}],
         structured=structured,
@@ -423,18 +354,29 @@ def hash_client_secret(text: str) -> str:
 def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
     manager = config["MANAGER"]
+    agent_name = "-".join(arguments.get("agent_name", "").split())
     owners_identity_provider = arguments.get("owners_identity_provider")
     owners_login = arguments.get("owners_login").split(",")
     agent_card_url = arguments.get("agentcard_url")
-    agent_did = "did:web:wallet4agent.com:" + secrets.token_hex(16)
-    key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")  # remove for testing
-    jwk, kid, alg = manager.get_public_key_jwk(key_id) # remove for testing
+    
+    # if did:web / persistent agent
+    if not agent_name:
+        agent_name = secrets.token_hex(16)
+    agent_did = "did:web:wallet4agent.com:" + agent_name 
+    # test if DID already exists
+    one_wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
+    if one_wallet:
+        random_numbers = ''.join(random.choice(string.digits) for _ in range(3))
+        agent_did += "-" + random_numbers 
+    
+    #key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")  # remove for testing
+    #jwk, kid, alg = manager.get_public_key_jwk(key_id) # remove for testing
     jwk = json.dumps({})
     url = mode.server + "did/" + agent_did
     did_document = create_did_document(agent_did, jwk, url, agent_card_url=agent_card_url)
     dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_did, "dev", "pat")
     agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_did, "agent", "pat", duration=90*24*60*60)
-    mcp_authentication = arguments.get("authentication")
+    mcp_authentication = arguments.get("mcp_client_authentication")
     client_secret = secrets.token_urlsafe(64)
     wallet = Wallet(
         dev_pat_jti=dev_pat_jti,
