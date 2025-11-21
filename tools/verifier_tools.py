@@ -76,8 +76,10 @@ tools_agent = [
     {
         "name": "poll_agent_authentication",
         "description": (
-            "Poll the current authentication status of another Agent. "
-            "Returns the status."
+            "Poll the current authentication status of another Agent. This tool "
+            "SHOULD be called immediately after `start_agent_authentication`, "
+            "because agent-to-agent authentication completes almost instantly. "
+            "Returns whether the other Agent is authenticated."
         ),
         "inputSchema": {
             "type": "object",
@@ -93,8 +95,10 @@ tools_agent = [
     {
         "name": "start_agent_authentication",
         "description": (
-            "Start another agent authentication. "
-            "wallet and starts the authentication process."
+            "Start another agent authentication. This process is very fast and does "
+            "not require user interaction. Immediately after calling this tool, "
+            "the Agent SHOULD call `poll_agent_authentication` to obtain the result "
+            "of the authentication."
         ),
         "inputSchema": {
             "type": "object",
