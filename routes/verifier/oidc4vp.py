@@ -9,8 +9,7 @@ from jwcrypto import jwk, jwt
 from utils import oidc4vc, signer
 import didkit
 from db_model import Verifier, Credential, User
-from urllib.parse import urlparse, urlencode
-from utils.kms import decrypt_json
+from urllib.parse import  urlencode
 import logging
 
 
@@ -91,6 +90,10 @@ def build_verifier_metadata(verifier_id) -> dict:
 
 # build the authorization request                                      
 def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
+    
+    # to take into account the agent authentication use case
+    if not mcp_user_id:
+        mcp_user_id = str(uuid.uuid4())
 
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
     logging.info("verifier name = %s", verifier.name)

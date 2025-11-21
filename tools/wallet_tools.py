@@ -5,8 +5,6 @@ import secrets
 import logging
 from db_model import Attestation
 from utils import oidc4vc, message
-import base64
-from urllib.parse import unquote
 import hashlib
 import random, string
 

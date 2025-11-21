@@ -1,13 +1,11 @@
-from flask import redirect, request, render_template, current_app, flash, session, url_for
+from flask import redirect, request, render_template, current_app, url_for
 from oauthlib.oauth2 import WebApplicationClient
 import requests
 import json
-from flask_login import login_required, login_user, logout_user
+from flask_login import login_user, logout_user
 from db_model import User, db, Signin, Wallet
 import logging
-from requests.exceptions import RequestException, HTTPError
-from utils.kms import encrypt_json, decrypt_json
-from utils import message
+from utils.kms import decrypt_json
 import urllib
 import sys
 
@@ -35,7 +33,6 @@ google_client = WebApplicationClient(GOOGLE_CLIENT_ID)
 github_client = WebApplicationClient(GITHUB_CLIENT_ID)
 #talao_client = WebApplicationClient(TALAO_CLIENT_ID)
 
-ENTRY = "/menu"
 
 def init_app(app, db):
     
@@ -49,7 +46,6 @@ def init_app(app, db):
     app.add_url_rule('/register/auth/wallet',  view_func=login_with_wallet, methods=['GET', 'POST'])
     app.add_url_rule('/register/auth/wallet/callback',  view_func=register_wallet_callback, methods=['GET', 'POST'], defaults={'db': db})
     
-    app.add_url_rule('/register/test',  view_func=register_test, methods=['GET', 'POST'])
     app.add_url_rule('/register/admin',  view_func=register_admin, methods=['GET', 'POST'])
     
 # entry pooint
@@ -91,7 +87,6 @@ def login_with_google():
     return redirect(auth_uri)
 
 def register_google_callback(db):
-    mode = current_app.config["MODE"]
     red = current_app.config["REDIS"]
     session_id = request.args.get("state")
     google_config = requests.get(GOOGLE_DISCOVERY_URL, timeout=10).json()
@@ -133,7 +128,6 @@ def login_with_github():
 
 
 def register_github_callback(db):
-    mode = current_app.config["MODE"]
     red = current_app.config["REDIS"]
     code = request.args.get("code")
     session_id = request.args.get("state")
@@ -237,10 +231,14 @@ def register_wallet_callback(db):
     logging.info("userinfo response = %s", json.dumps(userinfo, indent=2))
     sub = userinfo.get("sub")
 
-    # chek if user exists and 
+    # chek if user and session_id exists
     user = User.query.filter_by(login=sub).first()
     if user:
-        session_config = json.loads(red.get(session_id).decode())
+        try:
+            session_config = json.loads(red.get(session_id).decode())
+        except Exception:
+            logging.warning("session not found")
+            return redirect("/")
         # check if user is authorized for this session
         if sub in session_config["owners_login"]:
             logout_user()
@@ -251,17 +249,9 @@ def register_wallet_callback(db):
         else:
             logging.warning("user is not authorized for this session")
             return redirect("/")
-    logging.warning("user is not found in DB")
+    logging.warning("user is not found")
     return redirect("/")
 
-
-def register_test():
-    mode = current_app.config["MODE"]
-    logout_user()
-    user = User.query.filter_by(name="test").first()
-    if mode.myenv == 'local':
-        login_user(user)
-    return redirect(ENTRY)
 
 
 def register_admin():
@@ -272,15 +262,14 @@ def register_admin():
         user = User.query.filter_by(email="thierry.thevenet@talao.io").first()
         login_user(user)
         logging.info("admin is now authenticated")
-        session_config = json.loads(red.get(session_id).decode())
+        try:
+            session_config = json.loads(red.get(session_id).decode())
+        except Exception:
+            logging.warning("session not found")
+            return redirect("/")
         did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
         return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
     
     # standard registration
     else:
-        mode = current_app.config["MODE"]
-        logout_user()
-        user = User.query.filter_by(email="thierry.thevenet@talao.io").first()
-        if mode.myenv == 'local':
-            login_user(user)
-        return redirect(ENTRY)
+        return redirect("/")

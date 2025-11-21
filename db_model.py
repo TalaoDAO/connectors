@@ -192,7 +192,7 @@ class Wallet(db.Model):
     url = db.Column(db.Text)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
-    linked_vp = db.Column(db.Text)
+    #linked_vp = db.Column(db.Text)
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     

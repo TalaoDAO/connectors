@@ -48,7 +48,7 @@ class currentMode:
         if self.myenv == 'aws':
             # Configuration for AWS environment
             self.sys_path = '/home/admin'
-            self.server = 'https://wallet-connectors.com/'
+            self.server = 'https://wallet4agent.com/'
         elif self.myenv == 'local':
             # Configuration for local development
             self.sys_path = '/home/thierry'

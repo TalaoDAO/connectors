@@ -292,7 +292,7 @@ def _extract_vc_from_jwt_vp(jwt_vp: str) -> Optional[Dict[str, Any]]:
 
     return result
 
-
+# for dev and agent
 def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
     # Query attestations linked to this wallet, published or not 
     attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()

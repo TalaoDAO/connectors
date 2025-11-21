@@ -554,6 +554,16 @@ def init_app(app):
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
                 out = verifier_tools.call_start_user_verification(arguments, config())
             
+            if name == "start_agent_authentication":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                target_agent = arguments.get("agent_identifier")
+                if target_agent == agent_identifier:
+                    return jsonify({"jsonrpc":"2.0","id":req_id,
+                                        "error":{"code":-32001,"message":"Unauthorized: same agent"}})
+                out = verifier_tools.call_start_agent_authentication(target_agent, config())
+            
             elif name == "poll_user_verification":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,

@@ -610,14 +610,13 @@ def publish(service_id, attestation, server, manager):
         "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
         "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
     }
-
-    try:
-        linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
-    except Exception:
-        linked_vp_json = {}
-
-    linked_vp_json[id] = vp_resource
-    this_wallet.linked_vp = json.dumps(linked_vp_json)
+    # DO NOT STORE Linked VP in DB
+    #try:
+    #    linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
+    #except Exception:
+    #    linked_vp_json = {}
+    #linked_vp_json[id] = vp_resource
+    #this_wallet.linked_vp = json.dumps(linked_vp_json)
 
     # 8. Create LinkedVerifiablePresentation service endpoint in DID Doc
     service_array = did_document.get("service", [])

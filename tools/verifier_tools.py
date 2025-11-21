@@ -7,6 +7,15 @@ import logging
 import qrcode
 from routes.verifier import oidc4vp
 from utils import message
+import requests
+
+
+
+RESOLVER_LIST = [
+    'https://unires:test@unires.talao.co/1.0/identifiers/',
+    'https://dev.uniresolver.io/1.0/identifiers/',
+    'https://resolver.cheqd.net/1.0/identifiers/'
+] 
 
 tools_dev = []
 tools_guest = []
@@ -174,6 +183,122 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     text_hint = f"An email has been sent to you.  Clic on the link in your to open your wallet and present your credential." if success else "No email sent."
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
+
+def call_start_agent_authentication(agent_identifier, config: dict) -> Dict[str, Any]:
+    red = config["REDIS"]
+    mode = config["MODE"]
+
+    # 1. Create OIDC4VP request (same as before)
+    verifier_id = "0000"
+    data = oidc4vp.oidc4vp_qrcode(verifier_id, None, "wallet_identifier", red, mode)
+    if not data:
+        return _ok_content(
+            [{"type": "text", "text": "Server error while creating OIDC4VP request"}],
+            is_error=True,
+        )
+
+    openid_vc_uri = data.get("url")
+    verif_id = data.get("verif_id")
+
+    # Default flow values; will be enriched step by step
+    flow: Dict[str, Any] = {
+        "agent_identifier": agent_identifier,
+        "request": openid_vc_uri,
+        "verif_id": verif_id,
+        "request_sent": False,
+    }
+
+    # 2. Resolve DID Document of the targeted agent
+    for res in RESOLVER_LIST:
+        try:
+            r = requests.get(res + agent_identifier, timeout=10)
+            logging.info("resolver used = %s", res)
+            break
+        except Exception:
+            pass
+    did_document = r.json().get('didDocument')
+    if not did_document:
+        logging.exception("Failed to resolve DID Document for %s", agent_identifier)
+        return _ok_content(
+            [{"type": "text", "text": f"Failed to resolve DID Document for {agent_identifier}: {e}"}],
+            structured=flow,
+            is_error=True,
+        )
+
+    # 3. Find OIDC4VP service endpoint in DID Document
+    services = did_document.get("service", []) or []
+    oidc4vp_endpoint = None
+    for svc in services:
+        if svc.get("type") == "OIDC4VP":
+            oidc4vp_endpoint = svc.get("serviceEndpoint")
+            break
+
+    if not oidc4vp_endpoint:
+        return _ok_content(
+            [{"type": "text", "text": "No OIDC4VP service endpoint found in DID Document."}],
+            structured=flow,
+            is_error=True,
+        )
+
+    flow["oidc4vp_service_endpoint"] = oidc4vp_endpoint
+
+    # 4. Fetch authorization_endpoint from well-known endpoint
+    #    Conventionally: <serviceEndpoint>/.well-known/openid-configuration
+    well_known_url = oidc4vp_endpoint.rstrip("/") + "/.well-known/openid-configuration"
+
+    try:
+        wk_resp = requests.get(well_known_url, timeout=5)
+        wk_resp.raise_for_status()
+        metadata = wk_resp.json()
+    except Exception as e:
+        logging.exception("Failed to fetch OIDC metadata from %s", well_known_url)
+        return _ok_content(
+            [{"type": "text", "text": f"Failed to fetch OIDC metadata from {well_known_url}: {e}"}],
+            structured=flow,
+            is_error=True,
+        )
+
+    authorization_endpoint = metadata.get("authorization_endpoint")
+    if not authorization_endpoint:
+        return _ok_content(
+            [{"type": "text", "text": "authorization_endpoint not found in OIDC metadata."}],
+            structured=flow,
+            is_error=True,
+        )
+
+    flow["authorization_endpoint"] = authorization_endpoint
+
+    # 5. Send GET request to the authorization_endpoint with the OIDC4VP request URL
+    #    as argument. We use 'request_uri' as a conventional parameter name.
+    request = authorization_endpoint + openid_vc_uri.split("//")[1] 
+    print("request = ", request)
+    try:
+        auth_resp = requests.get(request, timeout=5)
+        flow["authorization_http_status"] = auth_resp.status_code
+        flow["authorization_response_ok"] = auth_resp.ok
+        success = auth_resp.ok
+    except Exception as e:
+        logging.exception("Failed to call authorization_endpoint %s", authorization_endpoint)
+        return _ok_content(
+            [{"type": "text", "text": f"Failed to call authorization_endpoint: {e}"}],
+            structured=flow,
+            is_error=True,
+        )
+
+    flow["request_sent"] = success
+
+    blocks: List[Dict[str, Any]] = []
+    if success:
+        text_hint = "Authentication request has been sent to the other agent."
+    else:
+        text_hint = (
+            "Authentication request could not be sent successfully "
+            f"(HTTP status: {flow.get('authorization_http_status')})."
+        )
+
+    blocks.append({"type": "text", "text": text_hint})
+    return _ok_content(blocks, structured=flow)
+
 
 
 def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
