@@ -72,9 +72,154 @@ def wallet_landing_page(wallet_did):
 
 # authorization endpoint of the wallet 
 def authorize():
-    print("requests args at authorize endpoint ", request.args)
-    # TODO
-    return jsonify("ok")
+    """
+    OIDC4VP / Self-Issued authorization endpoint for the wallet.
+
+    It supports:
+      - request:   JWT request object directly as query/form parameter
+      - request_uri: URL pointing to the request object
+
+    Flow:
+      1. Retrieve and decode the OIDC4VP request object.
+      2. Extract client_id, response_uri, nonce, state, etc.
+      3. Select the wallet DID (holder).
+      4. Build a Self-Issued id_token.
+      5. POST (direct_post) the id_token ONLY to the response_uri endpoint.
+    """
+    mode = current_app.config["MODE"]
+    manager = current_app.config["MANAGER"]
+
+    # 1. Get request / request_uri parameters
+    req_jwt = request.args.get("request") or request.form.get("request")
+    request_uri = request.args.get("request_uri") or request.form.get("request_uri")
+
+    if not req_jwt and not request_uri:
+        message = "Missing 'request' or 'request_uri' parameter in OIDC4VP authorization request."
+        logging.warning(message)
+        return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+
+    # If we only have a request_uri, fetch the request object from there
+    if not req_jwt and request_uri:
+        try:
+            resp = requests.get(request_uri, timeout=10)
+            resp.raise_for_status()
+            # The endpoint may return a plain JWT or a JSON {"request": "<jwt>"}
+            body_text = resp.text.strip()
+            try:
+                body_json = resp.json()
+                if isinstance(body_json, dict) and body_json.get("request"):
+                    req_jwt = body_json["request"]
+                else:
+                    # Fallback: treat the whole body as JWT string
+                    req_jwt = body_text
+            except Exception:
+                # Not JSON => assume it's directly a compact JWS request object
+                req_jwt = body_text
+        except Exception as e:
+            message = f"Cannot fetch request object from request_uri: {str(e)}"
+            logging.exception(message)
+            return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+
+    # 2. Decode request object JWT
+    try:
+        req_header = oidc4vc.get_header_from_token(req_jwt)
+        req_payload = oidc4vc.get_payload_from_token(req_jwt)
+        logging.info("OIDC4VP request header = %s", req_header)
+        logging.info("OIDC4VP request payload = %s", req_payload)
+    except Exception as e:
+        message = f"Request object is not a valid JWT: {str(e)}"
+        logging.exception(message)
+        return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+
+    # 3. Extract key parameters from request object
+    client_id = (
+        req_payload.get("client_id")
+        or request.args.get("client_id")
+        or request.form.get("client_id")
+    )
+    response_uri = req_payload.get("response_uri")
+    nonce = req_payload.get("nonce")
+    state = req_payload.get("state") or request.args.get("state") or request.form.get("state")
+
+    if not client_id:
+        message = "client_id is missing in the OIDC4VP request object."
+        logging.warning(message)
+        return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+
+    if not response_uri:
+        message = "response_uri is missing in the OIDC4VP request object (required for direct_post)."
+        logging.warning(message)
+        return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+
+    # 4. Select wallet DID (holder)
+    #    - Prefer an explicit wallet_did parameter (query or in request object)
+    #    - Fallback to first wallet in DB
+    wallet_did = (
+        request.args.get("aud")
+        or request.form.get("aud")
+        or req_payload.get("aud")
+    )
+    logging.info("Using wallet DID %s for OIDC4VP response", wallet_did)
+
+    # 5. Build a Self-Issued id_token (no vp_token, as requested)
+    now = int(datetime.utcnow().timestamp())
+    exp = now + 600  # 10 minutes validity
+
+    wallet_kid = wallet_did + "#key-1"
+    key_id = manager.create_or_get_key_for_tenant(wallet_kid)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
+
+    id_token_header = {
+        "alg": alg,
+        "typ": "JWT",
+        "kid": wallet_kid,
+    }
+
+    id_token_payload = {
+        "iss": wallet_did,        # Self-issued: issuer is the wallet DID
+        "sub": wallet_did,        # Subject is also the wallet DID
+        "aud": client_id,         # Audience is the verifier / client_id
+        "iat": now,
+        "exp": exp,
+    }
+    if nonce:
+        id_token_payload["nonce"] = nonce
+
+    # You can also include additional claims here if needed by your verifier
+    # (e.g., "sub_jwk", "presentation_submission", etc.)
+
+    try:
+        id_token = manager.sign_jwt_with_key(key_id, header=id_token_header, payload=id_token_payload)
+    except Exception as e:
+        message = f"Failed to sign id_token: {str(e)}"
+        logging.exception(message)
+        return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+
+    # 6. Send the Authentication Response by direct_post to response_uri
+    #    As requested: send ONLY id_token (state is optional but usually useful).
+    post_data = {"id_token": id_token}
+    if state:
+        post_data["state"] = state
+
+    try:
+        resp = requests.post(
+            response_uri,
+            data=post_data,
+            timeout=10,
+        )
+        logging.info("direct_post to response_uri returned status %s", resp.status_code)
+        if 200 <= resp.status_code < 300:
+            message = "Authentication response (id_token) has been sent successfully."
+            title = "Authentication Sent"
+        else:
+            message = f"Authentication response failed with status code {resp.status_code}."
+            title = "OIDC4VP Error"
+    except Exception as e:
+        logging.exception("direct_post to response_uri failed: %s", str(e))
+        message = f"Authentication response could not be delivered: {str(e)}"
+        title = "OIDC4VP Error"
+
+    return render_template("wallet/session_screen.html", message=message, title=title)
 
 
 def build_session_config(agent_id: str, credential_offer, mode):
