@@ -56,8 +56,8 @@ def protected_resource_metadata():
 def web_wallet_openid_configuration(wallet_did):
     mode = current_app.config["MODE"]
     config = {
-        "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer"
-        #"authorization_endpoint": mode.server + "/authorize"
+        "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer",
+        "authorization_endpoint": mode.server + "authorize"
     }
     return jsonify(config)
 

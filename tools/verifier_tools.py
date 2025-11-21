@@ -257,7 +257,7 @@ def call_start_agent_authentication(agent_identifier, config: dict) -> Dict[str,
             structured=flow,
             is_error=True,
         )
-
+    print("metadata = ", metadata)
     authorization_endpoint = metadata.get("authorization_endpoint")
     if not authorization_endpoint:
         return _ok_content(
