@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from jwcrypto import jwk, jwt
 from utils import oidc4vc, signer
 import didkit
-from db_model import Verifier, Credential, User
+from db_model import Verifier, Credential, User, Wallet
 from urllib.parse import  urlencode
 import logging
 
@@ -27,9 +27,9 @@ public_rsa_key = rsa_key.export(private_key=False, as_dict=True)
 
 def init_app(app):
     # endpoints for wallet
-    app.add_url_rule('/verifier/wallet/callback',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
+    app.add_url_rule('/verifier/wallet/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
     app.add_url_rule('/verifier/wallet/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
-    
+
     # to manage the verification through a link sent
     app.add_url_rule('/verification_email/<verif_id>',  view_func=verification_email, methods=['GET'])
     return
@@ -113,7 +113,7 @@ def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
         "client_id": verifier.client_id,
         "iss": verifier.client_id, # TODO
         "response_type": verifier.response_type,
-        "response_uri": mode.server + "verifier/wallet/callback",
+        "response_uri": mode.server + "verifier/wallet/response",
         "response_mode": verifier.response_mode,
         "nonce": nonce
     }
@@ -190,9 +190,79 @@ def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
     red.setex(verif_id, 1000, url)
     return {
         "url": url,
-        "user_id": mcp_user_id,
-        "verif_id": verif_id
+        "poll_id": verif_id
     }
+
+# build the authorization request                                      
+def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, manager):
+    
+    # to take into account the agent authentication use case
+    mcp_user_id = str(uuid.uuid4())
+
+    wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not wallet:
+        logging.warning("verifier not found: %s", agent_identifier)
+        return {"error": "unauthorized", "error_description": "Unknown wallet did"}, 401
+
+    # we dont use user_id as nonce
+    nonce = str(uuid.uuid4()) # body["user_id"]
+
+    # authorization request
+    authorization_request = { 
+        "client_id": agent_identifier,
+        "iss": agent_identifier, # TODO
+        "response_type": "id_token",
+        "response_uri": mode.server + "verifier/wallet/response",
+        "response_mode": "direct_post",
+        "nonce": nonce,
+        "aud": target_agent,
+        "scope": "openid"
+    }
+        
+    # store data in redis attached to the nonce to bind with the wallet response
+    data = { 
+        "verifier_id": agent_identifier,
+        "user_id": target_agent,
+        "mcp_scope": "wallet_identifier"
+    }
+    data.update(authorization_request)
+    red.setex(nonce, QRCODE_LIFE, json.dumps(data))
+    red.setex(mcp_user_id, QRCODE_LIFE, json.dumps(data)) # fallback
+
+    # NEW: initialize a pull status key for this flow (so we can detect expiry)
+    red.setex(mcp_user_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
+    
+    vm = agent_identifier + "#key-1"
+    key_id = manager.create_or_get_key_for_tenant(vm)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
+    header = {
+        "typ": "oauth-authz-req+jwt",
+        "alg": alg,
+        "kid": vm
+    }
+    request_as_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=authorization_request)
+
+    logging.info("request as jwt = %s", request_as_jwt)
+
+    # generate a request uri endpoint
+    stream_id = str(uuid.uuid1())
+    red.setex(stream_id, QRCODE_LIFE, request_as_jwt)
+
+    # QRCode preparation with authorization_request_displayed
+    authorization_request_for_qrcode = { 
+        "client_id": agent_identifier,
+        "request_uri": mode.server + "verifier/wallet/request_uri/" + stream_id 
+    }
+    logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
+
+    oidc4vp_request = "openid4vp://?" + urlencode(authorization_request_for_qrcode)
+    poll_id = str(uuid.uuid4())
+    red.setex(poll_id, 1000, oidc4vp_request)
+    return {
+        "oidc4vp_request": oidc4vp_request,
+        "poll_id": poll_id
+    }
+    
 
 def verification_email(verif_id):
     red = current_app.config["REDIS"]

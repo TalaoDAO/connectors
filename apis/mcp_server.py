@@ -87,7 +87,7 @@ def init_app(app):
         jti = access_token.get("jti")
         exp = access_token.get("exp")
         type = access_token.get("type")
-        logging.info("agent = %s and role = %s and type = %s",agent_identifier, role, type)
+        logging.info("agent = %s,  role is %s and authentication is %s",agent_identifier, role, type)
         
         # check expiration date
         now = int(datetime.timestamp(datetime.now()))
@@ -558,11 +558,14 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("agent_identifier"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: agent_identifier missing"}}
                 target_agent = arguments.get("agent_identifier")
                 if target_agent == agent_identifier:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: same agent"}})
-                out = verifier_tools.call_start_agent_authentication(target_agent, config())
+                out = verifier_tools.call_start_agent_authentication(target_agent, agent_identifier, config())
             
             elif name == "poll_user_verification":
                 if role != "agent":
@@ -571,6 +574,15 @@ def init_app(app):
                 if not arguments.get("user_email"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: user_id is missing "}}
+                out = verifier_tools.call_poll_user_verification(arguments, config())
+                
+            elif name == "poll_agent_authentication":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("poll_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: poll_id is missing "}}
                 out = verifier_tools.call_poll_user_verification(arguments, config())
             
             elif name == "create_agent_identifier_and_wallet":

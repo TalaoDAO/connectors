@@ -22,11 +22,13 @@ def init_app(app):
     app.add_url_rule('/.well-known/oauth-protected-resource', view_func=protected_resource_metadata, methods=['GET'])
     app.add_url_rule('/.well-known/oauth-protected-resource/mcp', view_func=protected_resource_metadata, methods=['GET'])
     
-    
-    # OIDC4VCI wallet endpoint
+    # OIDC4VCI wallet endpoint (oauth2 client)
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
     app.add_url_rule('/<wallet_did>/credential_offer', view_func=credential_offer, methods=['GET'])
     app.add_url_rule('/callback', view_func=callback, methods=['GET', 'POST'])
+    
+    # OIDC4VP wallet endpoint (Oauth2 authorization server)
+    app.add_url_rule('/authorize', view_func=authorize, methods=['GET', 'POST'])
     
     # openid configuration endpoint of the web wallet
     app.add_url_rule('/did/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
@@ -66,6 +68,13 @@ def web_wallet_openid_configuration(wallet_did):
 def wallet_landing_page(wallet_did):
     message = "This data wallet is controlled by the AI Agent :" + wallet_did + "."
     return render_template("wallet/session_screen.html", message=message, title="Welcome !")
+
+
+# authorization endpoint of the wallet 
+def authorize():
+    print("requests args at authorize endpoint ", request.args)
+    # TODO
+    return jsonify("ok")
 
 
 def build_session_config(agent_id: str, credential_offer, mode):

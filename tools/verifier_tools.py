@@ -82,9 +82,9 @@ tools_agent = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "agent_identifier": {
+                "poll_id": {
                     "type": "string",
-                    "description": "The other agent DID as identifier."
+                    "description": "The poll identifier received when starting the authentication."
                 }
             },
             "required": ["user_email"]
@@ -184,43 +184,44 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     blocks.append({"type": "text", "text": text_hint})
     return _ok_content(blocks, structured=flow)
 
-def call_start_agent_authentication(agent_identifier, config: dict) -> Dict[str, Any]:
+
+def call_start_agent_authentication(target_agent, agent_identifier, config: dict) -> Dict[str, Any]:
     red = config["REDIS"]
     mode = config["MODE"]
+    manager = config["MANAGER"]
 
     # 1. Create OIDC4VP request (same as before)
-    verifier_id = "0000"
+    verifier_id = "0001"
     data = oidc4vp.oidc4vp_qrcode(verifier_id, None, "wallet_identifier", red, mode)
+    data = oidc4vp.oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, manager)
     if not data:
         return _ok_content(
             [{"type": "text", "text": "Server error while creating OIDC4VP request"}],
             is_error=True,
         )
 
-    openid_vc_uri = data.get("url")
-    verif_id = data.get("verif_id")
+    oidc4vp_request = data.get("oidc4vp_request")
+    poll_id = data.get("poll_id")
 
     # Default flow values; will be enriched step by step
     flow: Dict[str, Any] = {
         "agent_identifier": agent_identifier,
-        "request": openid_vc_uri,
-        "verif_id": verif_id,
         "request_sent": False,
     }
 
     # 2. Resolve DID Document of the targeted agent
     for res in RESOLVER_LIST:
         try:
-            r = requests.get(res + agent_identifier, timeout=10)
+            r = requests.get(res + target_agent, timeout=10)
             logging.info("resolver used = %s", res)
             break
         except Exception:
             pass
     did_document = r.json().get('didDocument')
     if not did_document:
-        logging.exception("Failed to resolve DID Document for %s", agent_identifier)
+        logging.exception("Failed to resolve DID Document for %s", target_agent)
         return _ok_content(
-            [{"type": "text", "text": f"Failed to resolve DID Document for {agent_identifier}: {e}"}],
+            [{"type": "text", "text": f"Failed to resolve DID Document for {target_agent}"}],
             structured=flow,
             is_error=True,
         )
@@ -257,7 +258,6 @@ def call_start_agent_authentication(agent_identifier, config: dict) -> Dict[str,
             structured=flow,
             is_error=True,
         )
-    print("metadata = ", metadata)
     authorization_endpoint = metadata.get("authorization_endpoint")
     if not authorization_endpoint:
         return _ok_content(
@@ -270,8 +270,10 @@ def call_start_agent_authentication(agent_identifier, config: dict) -> Dict[str,
 
     # 5. Send GET request to the authorization_endpoint with the OIDC4VP request URL
     #    as argument. We use 'request_uri' as a conventional parameter name.
-    request = authorization_endpoint + openid_vc_uri.split("//")[1] 
-    print("request = ", request)
+    request = authorization_endpoint + oidc4vp_request.split("//")[1] 
+    flow["request"] = request
+    flow["poll_id"] = poll_id
+
     try:
         auth_resp = requests.get(request, timeout=5)
         flow["authorization_http_status"] = auth_resp.status_code
