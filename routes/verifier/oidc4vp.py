@@ -451,34 +451,24 @@ async def verifier_response():
 
 
 # ------------- Pull -------------
-def wallet_pull_status(user_id, red):
-    # uer email  or target agent
-    
-    try:
-        data = json.loads(red.get(user_id).decode())
-    except Exception:
-        return {"status":"not_found","user_id":user_id}
-    
-    verifier_id = data.get("verifier_id")    
-    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
-    if not verifier:
-        logging.warning("verifier not found: %s", verifier_id)
-        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}
+# unique for user and email verification
+def wallet_pull_status(id, red):
+    # user email  or target agent
     
     # Fetch status first
-    status_raw = red.get(user_id + "_status")
+    status_raw = red.get(id + "_status")
     if not status_raw:
-        return {"status": "not_found", "user_id": user_id}
+        return {"status": "not_found", "id": id}
     try:
         status = json.loads(status_raw.decode()).get("status", "pending")
     except Exception:
         status = "pending"
 
     if status == "pending":
-        return {"status": "pending", "user_id": user_id}
+        return {"status": "pending", "id": id}
 
     # verified or denied -> try to include wallet_data if present
-    wd_raw = red.get(user_id + "_wallet_data")
+    wd_raw = red.get(id + "_wallet_data")
     wallet_data = None
     if wd_raw:
         try:

@@ -201,7 +201,6 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
         )
 
     oidc4vp_request = data.get("oidc4vp_request")
-    poll_id = data.get("poll_id")
 
     # Default flow values; will be enriched step by step
     flow: Dict[str, Any] = {
