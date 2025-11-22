@@ -31,7 +31,7 @@ def init_app(app):
     app.add_url_rule('/verifier/wallet/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
 
     # to manage the verification through a link sent
-    app.add_url_rule('/verification_email/<verif_id>',  view_func=verification_email, methods=['GET'])
+    app.add_url_rule('/verification_email/<url_id>',  view_func=verification_email, methods=['GET'])
     return
 
 
@@ -253,7 +253,7 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
         "authentication_request_id": authentication_request_id
     }
     
-
+# endpoint
 def verification_email(url_id):
     red = current_app.config["REDIS"]
     try:
