@@ -181,13 +181,19 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
         flow["error_description"] = "Failed to send email to user."
     
     blocks: List[Dict[str, Any]] = []
-    
+
     #b64 = _qr_png_b64(link) if link else None
     #if b64:
     #    blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
     
     text_hint = f"An email has been sent to you.  Clic on the link in your to open your wallet and present your credential." if success else "No email sent."
     blocks.append({"type": "text", "text": text_hint})
+        
+    if success and verification_request_id:
+        blocks.append({
+            "type": "text",
+            "text": f"verification_request_id={verification_request_id}"
+        })    
     return _ok_content(blocks, structured=flow)
 
 
@@ -300,8 +306,15 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
             "Authentication request could not be sent successfully "
             f"(HTTP status: {flow.get('authorization_http_status')})."
         )
-
+        
     blocks.append({"type": "text", "text": text_hint})
+
+    if success and authentication_request_id:
+        blocks.append({
+            "type": "text",
+            "text": f"authentication_request_id={authentication_request_id}"
+        })
+
     return _ok_content(blocks, structured=flow)
 
 
