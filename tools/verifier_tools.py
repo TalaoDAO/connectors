@@ -8,17 +8,16 @@ from routes.verifier import oidc4vp
 from utils import message
 import requests
 
-
-
 RESOLVER_LIST = [
     'https://unires:test@unires.talao.co/1.0/identifiers/',
     'https://dev.uniresolver.io/1.0/identifiers/',
     'https://resolver.cheqd.net/1.0/identifiers/'
-] 
+]
 
-tools_dev = []
-tools_guest = []
-tools_agent = [
+tools_dev: List[Dict[str, Any]] = []
+tools_guest: List[Dict[str, Any]] = []
+
+tools_agent: List[Dict[str, Any]] = [
     {
         "name": "start_user_verification",
         "description": (
@@ -59,8 +58,8 @@ tools_agent = [
         "description": (
             "Poll the verification result for a previously started user verification. "
             "You MUST provide the exact verification_request_id that was returned "
-            "by the last call to start_user_verification. "
-            "Never derive or guess this value from the email address."
+            "by start_user_verification. Never derive or guess this value from "
+            "the email address."
         ),
         "inputSchema": {
             "type": "object",
@@ -117,19 +116,23 @@ tools_agent = [
             },
             "required": ["agent_identifier"]
         }
-    }
+    },
 ]
 
 
 def _qr_png_b64(text: str) -> Optional[str]:
-        """Return base64 PNG of QR for 'text'; None if qrcode not available."""
-        img = qrcode.make(text)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode()
+    """Return base64 PNG of QR for 'text'; None if qrcode not available."""
+    img = qrcode.make(text)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
 
-def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any]] = None, is_error: bool = False) -> Dict[str, Any]:
+def _ok_content(
+    blocks: List[Dict[str, Any]],
+    structured: Optional[Dict[str, Any]] = None,
+    is_error: bool = False,
+) -> Dict[str, Any]:
     out: Dict[str, Any] = {"content": blocks}
     if structured is not None:
         out["structuredContent"] = structured
@@ -140,86 +143,101 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 
 # --------- Tool implementations ---------
 def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+    """
+    Start an email-based OIDC4VP verification and send the user a mail.
+    Returns a human message plus structuredContent with verification_request_id.
+    """
     red = config["REDIS"]
     mode = config["MODE"]
 
     scope = arguments.get("scope")
-    verifier_id = "0001"    
     user_email = arguments.get("user_email")
-        
+    verifier_id = "0001"
+
+    # Create OIDC4VP request & internal verification_request_id
     data = oidc4vp.oidc4vp_qrcode(verifier_id, scope, red, mode)
     if not data:
         return _ok_content(
-            [{"type": "text", "text": "Server error"}],
+            [{"type": "text", "text": "Server error while preparing verification."}],
             is_error=True,
         )
-    openid_vc_uri = data.get('url')
-    url_id = data.get("url_id")
+
+    openid_vc_uri = data.get("url")
+    url_id = data.get("url_id")  # internal reference used by email page
     verification_request_id = data.get("verification_request_id")
-    
     email_page_link = mode.server + "verification_email/" + url_id
-    
+
     # Send email
     success = message.messageHTML(
         subject="Your verification link",
         to=user_email,
-        HTML_key="verification_en",  # register it in HTML_templates
+        HTML_key="verification_en",  # HTML template
         format_dict={
             "openid_vc_uri": openid_vc_uri,
-            "email_page_link": email_page_link
+            "email_page_link": email_page_link,
         },
-        mode=mode
+        mode=mode,
     )
-    
-    # Build structured flow info
-    flow = {
-        #"user_email": user_email,
-        "email_sent": success,
-        "verification_request_id": verification_request_id 
-    }
-    if not success:
-        flow["error_description"] = "Failed to send email to user."
-    
-    blocks: List[Dict[str, Any]] = []
 
-    #b64 = _qr_png_b64(link) if link else None
-    #if b64:
-    #    blocks.append({"type": "image", "data": b64, "mimeType": "image/png"})
-    
-    text_hint = f"An email has been sent to you.  Clic on the link in your to open your wallet and present your credential." if success else "No email sent."
+    # Structured info (for the LLM / tools, not for user UI)
+    flow: Dict[str, Any] = {
+        "scope": scope,
+        "user_email": user_email,
+        "email_sent": success,
+        "verification_request_id": verification_request_id,
+    }
+
+    blocks: List[Dict[str, Any]] = []
+    if success:
+        text_hint = (
+            "An email has been sent to you. Open it to start the verification "
+            "in your identity wallet."
+        )
+    else:
+        text_hint = (
+            "The verification email could not be sent. Please check your email "
+            "address or try again later."
+        )
+
     blocks.append({"type": "text", "text": text_hint})
-        
-    if success and verification_request_id:
-        blocks.append({
-            "type": "text",
-            "text": f"verification_request_id={verification_request_id}"
-        })    
+    # No technical IDs in text
     return _ok_content(blocks, structured=flow)
 
 
-def call_start_agent_authentication(target_agent, agent_identifier, config: dict) -> Dict[str, Any]:
+def call_start_agent_authentication(
+    target_agent: str, agent_identifier: str, config: dict
+) -> Dict[str, Any]:
+    """
+    Start an agent-to-agent OIDC4VP authentication by:
+    - Creating an OIDC4VP auth request
+    - Resolving the target agent DID to find its OIDC4VP service endpoint
+    - Fetching its OIDC metadata to find authorization_endpoint
+    - Sending the OIDC4VP request to that authorization_endpoint
+    Returns a human message and structuredContent with authentication_request_id.
+    """
     red = config["REDIS"]
     mode = config["MODE"]
     manager = config["MANAGER"]
 
-    # 1. Create OIDC4VP/SIOPV2 authentication request
-    data = oidc4vp.oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, manager)
+    # Create OIDC4VP/SIOPV2 request for agent authentication
+    data = oidc4vp.oidc4vp_agent_authentication(
+        target_agent, agent_identifier, red, mode, manager
+    )
     if not data:
         return _ok_content(
-            [{"type": "text", "text": "Server error while creating OIDC4VP request"}],
+            [{"type": "text", "text": "Server error while creating authentication request."}],
             is_error=True,
         )
 
     oidc4vp_request = data.get("oidc4vp_request")
     authentication_request_id = data.get("authentication_request_id")
 
-    # Default flow values; will be enriched step by step
+    # Base flow info stored as structuredContent
     flow: Dict[str, Any] = {
-        #"agent_identifier": agent_identifier,
-        "authentication_request_id": data.get("authentication_request_id"),
+        "target_agent": target_agent,
+        "authentication_request_id": authentication_request_id,
         "request_sent": False,
     }
-
     # 2. Resolve DID Document of the targeted agent
     for res in RESOLVER_LIST:
         try:
@@ -228,8 +246,11 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
             break
         except Exception:
             pass
-    did_document = r.json().get('didDocument')
-    if not did_document:
+    try:
+        did_doc = r.json().get('didDocument')
+    except Exception:
+        did_doc= None
+    if not did_doc:
         logging.exception("Failed to resolve DID Document for %s", target_agent)
         return _ok_content(
             [{"type": "text", "text": f"Failed to resolve DID Document for {target_agent}"}],
@@ -237,62 +258,66 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
             is_error=True,
         )
 
-    # 3. Find OIDC4VP service endpoint in DID Document
-    services = did_document.get("service", []) or []
+    # Find service of type OIDC4VP
+    services = did_doc.get("service", [])
     oidc4vp_endpoint = None
-    for svc in services:
-        if svc.get("type") == "OIDC4VP":
-            oidc4vp_endpoint = svc.get("serviceEndpoint")
+    for s in services:
+        stype = s.get("type")
+        if isinstance(stype, list):
+            if "OIDC4VP" in stype:
+                oidc4vp_endpoint = s.get("serviceEndpoint")
+                break
+        elif stype == "OIDC4VP":
+            oidc4vp_endpoint = s.get("serviceEndpoint")
             break
 
     if not oidc4vp_endpoint:
         return _ok_content(
-            [{"type": "text", "text": "No OIDC4VP service endpoint found in DID Document."}],
+            [{"type": "text", "text": "No OIDC4VP service endpoint found in the agent's DID Document."}],
             structured=flow,
             is_error=True,
         )
 
-    #flow["oidc4vp_service_endpoint"] = oidc4vp_endpoint
-
-    # 4. Fetch authorization_endpoint from well-known endpoint
-    #    Conventionally: <serviceEndpoint>/.well-known/openid-configuration
+    # 2. Fetch authorization_endpoint from well-known endpoint
     well_known_url = oidc4vp_endpoint.rstrip("/") + "/.well-known/openid-configuration"
-
     try:
         wk_resp = requests.get(well_known_url, timeout=5)
         wk_resp.raise_for_status()
         metadata = wk_resp.json()
-    except Exception as e:
+    except Exception:
         logging.exception("Failed to fetch OIDC metadata from %s", well_known_url)
         return _ok_content(
-            [{"type": "text", "text": f"Failed to fetch OIDC metadata from {well_known_url}: {e}"}],
+            [
+                {
+                    "type": "text",
+                    "text": "Failed to contact the other agent's authentication service.",
+                }
+            ],
             structured=flow,
             is_error=True,
         )
+
     authorization_endpoint = metadata.get("authorization_endpoint")
     if not authorization_endpoint:
         return _ok_content(
-            [{"type": "text", "text": "authorization_endpoint not found in OIDC metadata."}],
+            [{"type": "text", "text": "authorization_endpoint not found in the other agent's OIDC metadata."}],
             structured=flow,
             is_error=True,
         )
 
-    #flow["authorization_endpoint"] = authorization_endpoint
-
-    # 5. Send GET request to the authorization_endpoint with the OIDC4VP request URL
-    #    as argument. We use 'request_uri' as a conventional parameter name.
-    request = authorization_endpoint + oidc4vp_request.split("//")[1] 
-    #flow["request"] = request
+    # 3. Call the authorization_endpoint with the OIDC4VP request URL
+    #    We reuse the request URI part after the scheme to keep it simple.
+    request_url = authorization_endpoint + oidc4vp_request.split("//", 1)[1]
 
     try:
-        auth_resp = requests.get(request, timeout=5)
+        auth_resp = requests.get(request_url, timeout=5)
         flow["authorization_http_status"] = auth_resp.status_code
         flow["authorization_response_ok"] = auth_resp.ok
         success = auth_resp.ok
     except Exception as e:
-        logging.exception("Failed to call authorization_endpoint %s %s", authorization_endpoint, str(e))
+        logging.exception("Failed to call authorization_endpoint %s: %s", authorization_endpoint, str(e))
         return _ok_content(
-            [{"type": "text", "text": f"Failed to call agent : {target_agent}"}],
+            [{"type": "text", "text": "Failed to send authentication request to the other agent."}],
             structured=flow,
             is_error=True,
         )
@@ -303,76 +328,98 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
     if success:
         text_hint = "Authentication request has been sent to the other agent."
     else:
-        text_hint = (
-            "Authentication request could not be sent successfully "
-            f"(HTTP status: {flow.get('authorization_http_status')})."
-        )
-        
+        text_hint = "Authentication request could not be sent successfully."
+
     blocks.append({"type": "text", "text": text_hint})
-
-    if success and authentication_request_id:
-        blocks.append({
-            "type": "text",
-            "text": f"authentication_request_id={authentication_request_id}"
-        })
-
+    # No technical IDs in text; authentication_request_id is only in structuredContent
     return _ok_content(blocks, structured=flow)
 
 
-
 def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+    """
+    Poll the verification result given a verification_request_id.
+    Returns user-friendly text and structuredContent with status + claims.
+    """
     red = config["REDIS"]
     verification_request_id = arguments.get("verification_request_id")
-    
+
     payload = oidc4vp.wallet_pull_status(verification_request_id, red)
     status = payload.get("status", "pending")
 
-    # current oidc4vp: claims merged at the top level (exclude status/user_id)
+    # claims are all non-technical keys
     claims = {k: v for k, v in payload.items() if k not in ("status", "id")}
+    structured = {
+        "status": status,
+        "verification_request_id": verification_request_id,
+        **claims,
+    }
 
-    structured = {"status": status, "verification_request_id": verification_request_id, **claims}
-
-    # Human-friendly text block (special hint for wallet_identifier scope)
-    text_blocks = []
     scope = claims.get("scope")
-    if scope == "wallet_identifier" and claims.get("wallet_identifier"):
-        text_blocks.append({
-            "type": "text",
-            "text": f'Wallet identifier: {claims.get("wallet_identifier")}'
-        })
-    # Always include the full JSON as text for debugging/visibility
-    text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
+    text_blocks: List[Dict[str, Any]] = []
 
+    # Human messages depending on scope / status
+    if status == "pending":
+        text = (
+            "Your verification is still pending. Please open the email and "
+            "approve the request in your identity wallet."
+        )
+    elif status == "verified":
+        if scope == "over18":
+            text = "Your age has been verified as over 18."
+        elif scope == "profile":
+            text = "Your identity profile has been verified from your wallet."
+        elif scope == "wallet_identifier" and claims.get("wallet_identifier"):
+            text = f"Your wallet identifier has been verified: {claims.get('wallet_identifier')}."
+        else:
+            text = "Your verification has completed successfully."
+    elif status == "denied":
+        text = "The verification was denied in your wallet."
+    else:  # not_found or other
+        text = "I could not retrieve your verification result. We may need to restart the process."
+
+    text_blocks.append({"type": "text", "text": text})
+
+    # Clean up Redis after success
     if status == "verified":
-        logging.info("verification data attached to %s are deleted from REDIS", verification_request_id)
+        logging.info(
+            "verification data attached to %s are deleted from REDIS",
+            verification_request_id,
+        )
         red.delete(verification_request_id + "_status")
         red.delete(verification_request_id + "_wallet_data")
+
     return _ok_content(text_blocks, structured=structured)
 
 
-def call_poll_agent_authentication(arguments, config: dict) -> Dict[str, Any]:
+def call_poll_agent_authentication(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+    """
+    Poll the status of an agent-to-agent authentication given authentication_request_id.
+    """
     red = config["REDIS"]
-    
     authentication_request_id = arguments.get("authentication_request_id")
+
     payload = oidc4vp.wallet_pull_status(authentication_request_id, red)
     status = payload.get("status", "pending")
-    structured = {"status": status}
 
-    text_blocks = []
+    structured = {"status": status, "authentication_request_id": authentication_request_id}
+
+    text_blocks: List[Dict[str, Any]] = []
     if status == "verified":
-        text = f"Agent has status {status}."
+        text = "The other Agent is successfully authenticated."
     elif status == "denied":
-        text = f"Agent authentication was denied."
+        text = "Agent authentication was denied."
     elif status == "pending":
-        text = f"Authentication is still pending."
-    else:  # e.g. "not_found"
-        text = f"Authentication status: {status}."
+        text = "Agent authentication is still pending."
+    else:  # not_found or other
+        text = "I could not retrieve the agent authentication result."
 
     text_blocks.append({"type": "text", "text": text})
-    text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
 
     if status == "verified":
-        logging.info("verification data are deleted from REDIS %s", authentication_request_id)
+        logging.info(
+            "authentication data attached to %s are deleted from REDIS",
+            authentication_request_id,
+        )
         red.delete(authentication_request_id + "_status")
 
     return _ok_content(text_blocks, structured=structured)
