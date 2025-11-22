@@ -69,7 +69,7 @@ tools_agent = [
                     "type": "string",
                     "description": (
                         "The verification_request_id returned in structuredContent "
-                        "by start_user_verification."
+                        "by start_user_verification. It is not the user email."
                     )
                 }
             },
@@ -92,7 +92,7 @@ tools_agent = [
                     "type": "string",
                     "description": (
                         "The authentication_request_id returned in structuredContent "
-                        "by start_agent_authentication."
+                        "by start_agent_authentication. It is not the agent identifier."
                     )
                 }
             },
@@ -211,6 +211,7 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
         )
 
     oidc4vp_request = data.get("oidc4vp_request")
+    authentication_request_id = data.get("authentication_request_id")
 
     # Default flow values; will be enriched step by step
     flow: Dict[str, Any] = {

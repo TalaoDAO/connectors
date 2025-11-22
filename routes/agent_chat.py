@@ -124,6 +124,15 @@ conversation_history: List[Dict[str, str]] = [
             "- Never invent or reveal PATs, access tokens, or any secret material.\n"
             "- You may mention that you are authenticated as an Agent, but the actual token value "
             "  is never shown or handled in the chat.\n\n"
+            
+            "INTERNAL DETAILS:n"
+            "- You MUST NOT mention internal identifiers such as verification_request_id,"
+            "authentication_request_id, Redis keys, or any “internal ID” concepts in"
+            "your replies. These are only for your internal tool calls.\n"
+            "- If something goes wrong (for example, a verification is 'not_found' or"
+            "expired), apologize in plain language and suggest simple next steps like"
+            "please click the link in the email again" or "let's restart the verification"
+            "without mentioning any internal technical cause.\n\n"
 
             "FOCUS:\n"
             "- Keep answers short and practical (2–4 sentences) unless the user explicitly asks for more details.\n"
@@ -187,7 +196,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
         input=messages,
     )
 
-    logging.info("response in chat = %s", response.output)
+    #logging.info("response in chat = %s", response.output)
 
     texts: List[str] = []
     try:
