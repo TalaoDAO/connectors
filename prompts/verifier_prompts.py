@@ -1,13 +1,21 @@
 # verifier_prompts.py
 """
 Prompts for email-based identity wallet verification.
-No QR code is ever referenced. The only flow is:
-1. Ask user for email
-2. start_user_verification(scope, user_email)
-3. Inform the user that an email was sent
-4. User opens the email on smartphone → wallet opens
-5. poll_user_verification(user_email)
-6. Summarize verified information
+
+Correct flow (no QR codes):
+
+1. Ask user for email.
+2. Call start_user_verification(scope, user_email).
+3. Inform the user that an email was sent.
+4. User opens the email on smartphone → wallet opens and completes the flow.
+5. Read the verification_request_id returned by start_user_verification
+   (in structuredContent or tool result).
+6. Call poll_user_verification(verification_request_id) using exactly that ID.
+7. Summarize verified information for the user.
+
+IMPORTANT:
+- Never try to reconstruct or guess verification_request_id from the email;
+  always reuse the exact opaque ID returned by start_user_verification.
 """
 
 from typing import Any, Dict, List, Callable
@@ -23,7 +31,8 @@ prompts_agent: List[Dict[str, Any]] = [
             "Guide a human user to prove they are over 18 using email-based "
             "identity wallet verification. The assistant must request the user's "
             "email address, send a verification email via the start_user_verification "
-            "tool, and then poll for the verification result using poll_user_verification."
+            "tool, store the returned verification_request_id, and then poll for "
+            "the verification result using poll_user_verification(verification_request_id)."
         ),
         "arguments": []
     },
@@ -33,7 +42,8 @@ prompts_agent: List[Dict[str, Any]] = [
             "Guide a human user to share a verified identity profile (first name, "
             "last name, birth date) using email-based wallet verification. The "
             "assistant must ask for the user's email, initiate verification via "
-            "start_user_verification, and poll for completion."
+            "start_user_verification, remember the returned verification_request_id, "
+            "and poll for completion with poll_user_verification."
         ),
         "arguments": []
     },
@@ -52,16 +62,19 @@ def get_prompt_verify_over18_with_data_wallet(arguments: Dict[str, Any]) -> Dict
         "2. Call the tool start_user_verification with:\n"
         "       - scope = 'over18'\n"
         "       - user_email = <email the user provides>\n"
-        "   This sends the user a verification email.\n"
+        "   This sends the user a verification email and returns a verification_request_id.\n"
         "3. Tell the user: \"I have sent you an email. Open it on your smartphone and "
         "tap the link to start the verification in your identity wallet.\"\n"
         "4. After the user indicates they have clicked the link and completed the wallet "
-        "flow, call poll_user_verification(user_email).\n"
+        "flow, call poll_user_verification with the EXACT verification_request_id that "
+        "start_user_verification returned (do NOT derive it from the email).\n"
         "5. Interpret the result: if the wallet confirms the user is over 18, summarize "
         "success. If incomplete or failed, explain clearly.\n\n"
         "Rules:\n"
         "- Do not mention QR codes or scanning.\n"
         "- Only use the email-based flow.\n"
+        "- Always reuse the opaque verification_request_id from the tool result; "
+        "  never invent or reconstruct it from user_email.\n"
         "- Do not reveal internal tokens or backend values.\n"
     )
 
@@ -85,16 +98,19 @@ def get_prompt_verify_profile_with_data_wallet(arguments: Dict[str, Any]) -> Dic
         "2. Call start_user_verification with:\n"
         "       - scope = 'profile'\n"
         "       - user_email = <email>\n"
-        "   This sends a verification email.\n"
+        "   This sends a verification email and returns a verification_request_id.\n"
         "3. Tell the user to open the email on their smartphone and tap the link, which "
         "opens their identity wallet.\n"
-        "4. After they confirm completion, call poll_user_verification(user_email).\n"
+        "4. After they confirm completion, call poll_user_verification with the EXACT "
+        "verification_request_id returned by start_user_verification (do NOT derive it "
+        "from the email).\n"
         "5. Extract the verified profile data (first name, last name, birth date) from "
         "the result and summarize it.\n\n"
         "Rules:\n"
         "- Never mention QR codes.\n"
         "- Only describe the email-based wallet flow.\n"
-        "- Do not display internal identifiers or credentials.\n"
+        "- Always reuse the opaque verification_request_id; never guess it.\n"
+        "- Do not display internal identifiers or raw credentials.\n"
     )
 
     user_text = "Help me obtain the user's verified profile using email-based wallet verification."

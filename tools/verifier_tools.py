@@ -23,12 +23,11 @@ tools_agent = [
         "name": "start_user_verification",
         "description": (
             "Start a user verification by email invitation. "
-            "The agent MUST first ask the human user for their email address. "
-            "This tool sends an email with a special link that opens the user's "
-            "identity wallet and starts the verification process. "
-            "On success, this tool returns a `verification_request_id`. "
-            "The agent MUST store this `verification_request_id` and later pass "
-            "it to `poll_user_verification` to check the final verification status."
+            "The agent MUST first ask the user for their email address. "
+            "An email is sent with a special link that opens the user's identity "
+            "wallet and starts the verification process (no QR code is used). "
+            "The tool returns a verification_request_id that MUST be reused "
+            "when polling the result."
         ),
         "inputSchema": {
             "type": "object",
@@ -38,10 +37,9 @@ tools_agent = [
                     "description": (
                         "What should be verified in the user's wallet. "
                         "'profile' is first name, last name and birth date; "
-                        "'over18' is a proof that the user is older than 18; "
-                        "'wallet_identifier' is a stable identifier of the wallet."
+                        "'over18' is a proof that the user is older than 18."
                     ),
-                    "enum": ["over18", "profile", "wallet_identifier"],
+                    "enum": ["over18", "profile"],
                     "default": "profile"
                 },
                 "user_email": {
@@ -59,12 +57,10 @@ tools_agent = [
     {
         "name": "poll_user_verification",
         "description": (
-            "Poll the current verification status for a previously started user "
-            "verification. This tool MUST be called with the "
-            "`verification_request_id` returned by `start_user_verification`. "
-            "It returns whether the verification is `pending`, `verified`, or "
-            "`denied`, and, when available, the verified wallet data "
-            "(for example, a `wallet_identifier` or verified profile attributes)."
+            "Poll the verification result for a previously started user verification. "
+            "You MUST provide the exact verification_request_id that was returned "
+            "by the last call to start_user_verification. "
+            "Never derive or guess this value from the email address."
         ),
         "inputSchema": {
             "type": "object",
@@ -72,9 +68,8 @@ tools_agent = [
                 "verification_request_id": {
                     "type": "string",
                     "description": (
-                        "The verification_request_id value previously returned by "
-                        "`start_user_verification`. The agent MUST store that ID "
-                        "and reuse it here to retrieve the result."
+                        "The verification_request_id returned in structuredContent "
+                        "by start_user_verification."
                     )
                 }
             },
@@ -82,41 +77,13 @@ tools_agent = [
         }
     },
     {
-        "name": "start_agent_authentication",
-        "description": (
-            "Start an authentication of another Agent identified by its DID. "
-            "This uses OIDC4VP / Self-Issued OpenID to request an id_token from "
-            "the other Agent's wallet. The process is fast and does not require "
-            "human interaction. On success, this tool returns an "
-            "`authentication_request_id`. The agent MUST store this "
-            "`authentication_request_id` and immediately call "
-            "`poll_agent_authentication` with that ID to obtain the final "
-            "authentication status."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "agent_identifier": {
-                    "type": "string",
-                    "description": (
-                        "DID of the other Agent that should be authenticated "
-                        "(for example: did:web:wallet4agent.com:demo2)."
-                    )
-                }
-            },
-            "required": ["agent_identifier"]
-        }
-    },
-    {
         "name": "poll_agent_authentication",
         "description": (
-            "Poll the current authentication status of an Agent. "
-            "This tool MUST be called with the `authentication_request_id` "
-            "returned by `start_agent_authentication`. It returns whether the "
-            "authentication is `pending`, `verified`, `denied`, or `not_found`. "
-            "The typical flow is: first call `start_agent_authentication`, "
-            "store `authentication_request_id`, then call "
-            "`poll_agent_authentication` with that same ID."
+            "Poll the current authentication status for a previously started "
+            "agent-to-agent authentication. "
+            "You MUST provide the exact authentication_request_id that was "
+            "returned by start_agent_authentication. "
+            "Never derive or guess this value from the agent DID."
         ),
         "inputSchema": {
             "type": "object",
@@ -124,16 +91,35 @@ tools_agent = [
                 "authentication_request_id": {
                     "type": "string",
                     "description": (
-                        "The authentication_request_id value previously returned "
-                        "by `start_agent_authentication`. The agent MUST reuse "
-                        "this ID here to check the authentication result."
+                        "The authentication_request_id returned in structuredContent "
+                        "by start_agent_authentication."
                     )
                 }
             },
             "required": ["authentication_request_id"]
         }
+    },
+    {
+        "name": "start_agent_authentication",
+        "description": (
+            "Start another agent authentication. This process is very fast and does "
+            "not require user interaction. Immediately after calling this tool, "
+            "the Agent SHOULD call poll_agent_authentication with the returned "
+            "authentication_request_id to obtain the result."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "The DID of the other agent."
+                }
+            },
+            "required": ["agent_identifier"]
+        }
     }
 ]
+
 
 def _qr_png_b64(text: str) -> Optional[str]:
         """Return base64 PNG of QR for 'text'; None if qrcode not available."""
