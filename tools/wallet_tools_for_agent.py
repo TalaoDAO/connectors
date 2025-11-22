@@ -121,19 +121,27 @@ tools_agent = [
         }
     },
     {
-        "name": "explain_how_to_install_wallet4agent",
-        "description": (
-            "Explain to a human developer how to install and use the Wallet4Agent MCP "
-            "server with their own agent. Describe at a high level how to use the "
-            "manifest.json, how to connect as guest, how to obtain a dev personal "
-            "access token, and how to then configure their own agent wallet safely."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
+    "name": "explain_how_to_install_wallet4agent",
+    "description": (
+        "Explain to a human developer how to install and use the Wallet4Agent MCP "
+        "server with their own agent. Describe at a high level:\n"
+        "- How to install and run the Wallet4Agent MCP server.\n"
+        "- How to configure and use the manifest.json so the agent can discover the MCP server.\n"
+        "- How to connect as a guest, and how to obtain a developer personal access token (PAT).\n"
+        "- How to create a new Agent identifier (DID) and an attached wallet for that Agent, "
+        "including how the DID document is published and where the wallet endpoint lives.\n"
+        "- How to configure the agent to use that DID and wallet (including storing the PAT safely).\n"
+        "- Basic security best practices for protecting keys, PATs, and the wallet endpoint.\n\n"
+        "Use this tool whenever a developer asks how to get started with Wallet4Agent, how to "
+        "create a DID or wallet for an Agent, or how to wire the Agent and wallet together."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
     }
+}
+
 ]
 
 
