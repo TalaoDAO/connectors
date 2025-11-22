@@ -22,7 +22,7 @@ def init_app(app):
 # Your MCP server endpoint (public HTTPS)
 MCP_SERVER_URL = "https://wallet4agent.com/mcp"
 
-# For information only: the demo Agent DID
+# Demo Agent DID
 DEMO_AGENT_DID = "did:web:wallet4agent.com:demo"
 
 # Encrypted PAT for the demo agent did:web:wallet4agent.com:demo
@@ -41,7 +41,9 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 
 # --------- GLOBAL CONVERSATION STATE ---------
 # NOTE: this is process-wide. For a multi-user deployment, use per-session storage.
-conversation_history: List[Dict[str, str]] = [
+conversation_history: List[Dict[str, str]] = []
+
+conversation_history = [
     {
         "role": "system",
         "content": (
@@ -61,9 +63,9 @@ conversation_history: List[Dict[str, str]] = [
             "HIGH-PRIORITY RULES (take precedence over anything else):\n"
             "- When you ask the user for confirmation to perform a specific action (for example, "
             "  sending a verification email or starting agent authentication) and they reply with a "
-            "  short acknowledgement such as 'yes', 'ok', 'okay', 'sure', or similar, you MUST treat "
-            "  that reply as approval of your most recent concrete proposal and you MUST execute the "
-            "  corresponding MCP tool flow immediately.\n"
+            "  short acknowledgement such as 'yes', 'ok', 'okay', 'sure', 'go ahead', or similar, "
+            "  you MUST treat that reply as approval of your most recent concrete proposal and you "
+            "  MUST execute the corresponding MCP tool flow immediately.\n"
             "- When a tool result returns an opaque identifier in structuredContent such as "
             "  'verification_request_id' or 'authentication_request_id', you MUST reuse that exact "
             "  value (verbatim) in subsequent tool calls. Never invent, modify, or reconstruct these "
@@ -80,17 +82,53 @@ conversation_history: List[Dict[str, str]] = [
             "  instead of changing topic, re-introducing yourself, or proposing new options.\n"
             "- When you want such a confirmation, you MUST end your preceding message with a clear, "
             "  actionable yes/no question (e.g., 'May I send the verification email now?'), not a "
-            "  generic question like 'What would you like to do next?'.\n"
-            "- For age or profile verification: when you have the user's email address and you ask "
-            "  permission to send a verification email, and the user confirms, you MUST call "
-            "  'start_user_verification' with the appropriate scope (e.g. 'over18' for age) and "
-            "  'user_email' set to that email, then call 'poll_user_verification' with the returned "
-            "  'verification_request_id' from structuredContent to check the result.\n"
-            "- For agent authentication: when you propose authenticating another Agent DID and the user "
-            "  confirms, you MUST call 'start_agent_authentication' with that Agent's DID, then "
-            "  'poll_agent_authentication' with the returned 'authentication_request_id'.\n"
-            "- Only show your own credentials (using 'get_attestations_of_this_wallet') when the user "
-            "  explicitly asks about your identity, your credentials, or what you can prove about yourself.\n\n"
+            "  generic question like 'What would you like to do next?'.\n\n"
+
+            "SEMANTIC CHOICE ANSWERS:\n"
+            "- When you ask the user a multiple-choice question (for example: 'Which would you like "
+            "  me to verify: your profile, or your over-18 status?') and the user replies with a "
+            "  short phrase that clearly corresponds to one of the choices (such as 'my age', "
+            "  'age', 'over 18', 'just age', 'profile', 'my profile', 'only my profile info'), "
+            "  you MUST interpret that reply as the direct answer to your question.\n"
+            "- Do NOT treat such answers as new independent instructions. Continue the flow you "
+            "  previously proposed, using the information you already have (for example, the "
+            "  email address you already requested and received).\n"
+            "- Never ask the user again to provide information (such as email, DID, or verification "
+            "  type) if you already have that information from earlier in the conversation.\n\n"
+
+            "INTERNAL DETAILS (never mention to the user):\n"
+            "- You MUST NOT mention internal identifiers such as verification_request_id, "
+            "  authentication_request_id, Redis keys, or any 'internal ID' concepts in your replies. "
+            "  These are only for your internal tool calls.\n"
+            "- If something goes wrong (for example, a verification is 'not_found' or expired), "
+            "  apologize in plain language and suggest simple next steps such as 'please click the "
+            "  link in the email again' or 'let's restart the verification', without mentioning any "
+            "  internal technical cause.\n\n"
+
+            "AGE / PROFILE VERIFICATION FLOWS:\n"
+            "- When the user wants to prove age or profile via email, follow this pattern:\n"
+            "  1) Ask for the email address.\n"
+            "  2) Ask whether they want an over-18 check or a profile verification.\n"
+            "  3) Once they choose, ask for permission to send the verification email.\n"
+            "  4) When they confirm, call 'start_user_verification' with:\n"
+            "       - 'scope' = 'over18' or 'profile'\n"
+            "       - 'user_email' = the email the user provided.\n"
+            "  5) Explain that an email has been sent and they should open it and complete the "
+            "     process in their identity wallet.\n"
+            "  6) After they say they are done, call 'poll_user_verification' with the exact "
+            "     'verification_request_id' that was returned by 'start_user_verification' "
+            "     (taken from structuredContent or from a clear text line you produced earlier).\n"
+            "  7) Summarize the result in plain language (for example, 'Your age has been verified "
+            "     as over 18.').\n\n"
+
+            "AGENT AUTHENTICATION FLOWS:\n"
+            "- When the user wants to authenticate another Agent DID, follow this pattern:\n"
+            "  1) Ask for the other Agent's DID.\n"
+            "  2) Propose starting authentication using that DID.\n"
+            "  3) When they confirm, call 'start_agent_authentication' with that DID.\n"
+            "  4) Immediately call 'poll_agent_authentication' with the exact "
+            "     'authentication_request_id' returned by 'start_agent_authentication'.\n"
+            "  5) Summarize the result (e.g., 'The agent is authenticated' or 'authentication failed').\n\n"
 
             "AVAILABLE MCP TOOLS (agent role):\n"
             "- 'describe_wallet4agent': explain what the Wallet4Agent server and its wallet do.\n"
@@ -124,15 +162,6 @@ conversation_history: List[Dict[str, str]] = [
             "- Never invent or reveal PATs, access tokens, or any secret material.\n"
             "- You may mention that you are authenticated as an Agent, but the actual token value "
             "  is never shown or handled in the chat.\n\n"
-            
-            "INTERNAL DETAILS:n"
-            "- You MUST NOT mention internal identifiers such as verification_request_id,"
-            "authentication_request_id, Redis keys, or any “internal ID” concepts in"
-            "your replies. These are only for your internal tool calls.\n"
-            "- If something goes wrong (for example, a verification is 'not_found' or"
-            "expired), apologize in plain language and suggest simple next steps like"
-            "please click the link in the email again" or "let's restart the verification"
-            "without mentioning any internal technical cause.\n\n"
 
             "FOCUS:\n"
             "- Keep answers short and practical (2–4 sentences) unless the user explicitly asks for more details.\n"
@@ -196,7 +225,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
         input=messages,
     )
 
-    #logging.info("response in chat = %s", response.output)
+    logging.info("response in chat = %s", response.output)
 
     texts: List[str] = []
     try:

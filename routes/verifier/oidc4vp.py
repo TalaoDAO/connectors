@@ -254,10 +254,13 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
     }
     
 
-def verification_email(verif_id):
+def verification_email(url_id):
     red = current_app.config["REDIS"]
-    uri = red.get(verif_id).decode()
-    return  render_template("email_verification.html", uri=uri)
+    try:
+        uri = red.get(url_id).decode()
+    except Exception:
+        return jsonify("This link is expired")
+    return render_template("email_verification.html", uri=uri)
 
 
 def verifier_request_uri(stream_id):
