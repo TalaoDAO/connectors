@@ -1,7 +1,6 @@
 import io
 import json
 import base64
-import uuid
 from typing import Any, Dict, List, Optional
 import logging
 import qrcode
@@ -24,9 +23,12 @@ tools_agent = [
         "name": "start_user_verification",
         "description": (
             "Start a user verification by email invitation. "
-            "The agent MUST first ask the user for their email address. "
-            "An email is sent with a special link that opens the user's identity "
-            "wallet and starts the verification process (no QR code is used)."
+            "The agent MUST first ask the human user for their email address. "
+            "This tool sends an email with a special link that opens the user's "
+            "identity wallet and starts the verification process. "
+            "On success, this tool returns a `verification_request_id`. "
+            "The agent MUST store this `verification_request_id` and later pass "
+            "it to `poll_user_verification` to check the final verification status."
         ),
         "inputSchema": {
             "type": "object",
@@ -57,48 +59,39 @@ tools_agent = [
     {
         "name": "poll_user_verification",
         "description": (
-            "Poll the current verification status for a given user_email. "
-            "Use this after the user has received the email invitation and "
-            "completed (or is completing) the verification in their wallet. "
-            "Returns the verification status and any verified wallet data."
+            "Poll the current verification status for a previously started user "
+            "verification. This tool MUST be called with the "
+            "`verification_request_id` returned by `start_user_verification`. "
+            "It returns whether the verification is `pending`, `verified`, or "
+            "`denied`, and, when available, the verified wallet data "
+            "(for example, a `wallet_identifier` or verified profile attributes)."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "user_email": {
+                "verification_request_id": {
                     "type": "string",
-                    "description": "The user_email associated with the verification session."
+                    "description": (
+                        "The verification_request_id value previously returned by "
+                        "`start_user_verification`. The agent MUST store that ID "
+                        "and reuse it here to retrieve the result."
+                    )
                 }
             },
-            "required": ["user_email"]
-        }
-    },
-    {
-        "name": "poll_agent_authentication",
-        "description": (
-            "Poll the current authentication status of another Agent. This tool "
-            "SHOULD be called immediately after `start_agent_authentication`, "
-            "because agent-to-agent authentication completes almost instantly. "
-            "Returns whether the other Agent is authenticated."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "agent_identifier": {
-                    "type": "string",
-                    "description": "The agent DID we want authenticate."
-                }
-            },
-            "required": ["agent_identifier"]
+            "required": ["verification_request_id"]
         }
     },
     {
         "name": "start_agent_authentication",
         "description": (
-            "Start another agent authentication. This process is very fast and does "
-            "not require user interaction. Immediately after calling this tool, "
-            "the Agent SHOULD call `poll_agent_authentication` to obtain the result "
-            "of the authentication."
+            "Start an authentication of another Agent identified by its DID. "
+            "This uses OIDC4VP / Self-Issued OpenID to request an id_token from "
+            "the other Agent's wallet. The process is fast and does not require "
+            "human interaction. On success, this tool returns an "
+            "`authentication_request_id`. The agent MUST store this "
+            "`authentication_request_id` and immediately call "
+            "`poll_agent_authentication` with that ID to obtain the final "
+            "authentication status."
         ),
         "inputSchema": {
             "type": "object",
@@ -106,15 +99,41 @@ tools_agent = [
                 "agent_identifier": {
                     "type": "string",
                     "description": (
-                        "DID of the other agent."
+                        "DID of the other Agent that should be authenticated "
+                        "(for example: did:web:wallet4agent.com:demo2)."
                     )
                 }
             },
             "required": ["agent_identifier"]
         }
+    },
+    {
+        "name": "poll_agent_authentication",
+        "description": (
+            "Poll the current authentication status of an Agent. "
+            "This tool MUST be called with the `authentication_request_id` "
+            "returned by `start_agent_authentication`. It returns whether the "
+            "authentication is `pending`, `verified`, `denied`, or `not_found`. "
+            "The typical flow is: first call `start_agent_authentication`, "
+            "store `authentication_request_id`, then call "
+            "`poll_agent_authentication` with that same ID."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "authentication_request_id": {
+                    "type": "string",
+                    "description": (
+                        "The authentication_request_id value previously returned "
+                        "by `start_agent_authentication`. The agent MUST reuse "
+                        "this ID here to check the authentication result."
+                    )
+                }
+            },
+            "required": ["authentication_request_id"]
+        }
     }
 ]
-
 
 def _qr_png_b64(text: str) -> Optional[str]:
         """Return base64 PNG of QR for 'text'; None if qrcode not available."""
@@ -139,31 +158,25 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     mode = config["MODE"]
 
     scope = arguments.get("scope")
-    
-    verifier_id_for_scope = {
-        "wallet_identifier": "0000",
-        "over18": "0002",
-        "profile": "0003"
-    }
-    verifier_id = verifier_id_for_scope.get(scope, "custom")
-    
-    # optional user_id
+    verifier_id = "0001"    
     user_email = arguments.get("user_email")
         
-    data = oidc4vp.oidc4vp_qrcode(verifier_id, user_email, scope, red, mode)
+    data = oidc4vp.oidc4vp_qrcode(verifier_id, scope, red, mode)
     if not data:
         return _ok_content(
             [{"type": "text", "text": "Server error"}],
             is_error=True,
         )
     openid_vc_uri = data.get('url')
-    verif_id = data.get("verif_id")
-    email_page_link = mode.server + "verification_email/" + verif_id
+    url_id = data.get("url_id")
+    verification_request_id = data.get("verification_request_id")
     
-    # Sed email
+    email_page_link = mode.server + "verification_email/" + url_id
+    
+    # Send email
     success = message.messageHTML(
         subject="Your verification link",
-        to=arguments.get("user_email"),
+        to=user_email,
         HTML_key="verification_en",  # register it in HTML_templates
         format_dict={
             "openid_vc_uri": openid_vc_uri,
@@ -174,9 +187,12 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     
     # Build structured flow info
     flow = {
-        "user_email": user_email,
-        "email_sent": success
+        #"user_email": user_email,
+        "email_sent": success,
+        "verification_request_id": verification_request_id 
     }
+    if not success:
+        flow["error_description"] = "Failed to send email to user."
     
     blocks: List[Dict[str, Any]] = []
     
@@ -194,9 +210,7 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
     mode = config["MODE"]
     manager = config["MANAGER"]
 
-    # 1. Create OIDC4VP request (same as before)
-    verifier_id = "0001"
-    data = oidc4vp.oidc4vp_qrcode(verifier_id, None, "wallet_identifier", red, mode)
+    # 1. Create OIDC4VP/SIOPV2 authentication request
     data = oidc4vp.oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, manager)
     if not data:
         return _ok_content(
@@ -208,7 +222,8 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
 
     # Default flow values; will be enriched step by step
     flow: Dict[str, Any] = {
-        "agent_identifier": agent_identifier,
+        #"agent_identifier": agent_identifier,
+        "authentication_request_id": data.get("authentication_request_id"),
         "request_sent": False,
     }
 
@@ -244,7 +259,7 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
             is_error=True,
         )
 
-    flow["oidc4vp_service_endpoint"] = oidc4vp_endpoint
+    #flow["oidc4vp_service_endpoint"] = oidc4vp_endpoint
 
     # 4. Fetch authorization_endpoint from well-known endpoint
     #    Conventionally: <serviceEndpoint>/.well-known/openid-configuration
@@ -269,12 +284,12 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
             is_error=True,
         )
 
-    flow["authorization_endpoint"] = authorization_endpoint
+    #flow["authorization_endpoint"] = authorization_endpoint
 
     # 5. Send GET request to the authorization_endpoint with the OIDC4VP request URL
     #    as argument. We use 'request_uri' as a conventional parameter name.
     request = authorization_endpoint + oidc4vp_request.split("//")[1] 
-    flow["request"] = request
+    #flow["request"] = request
 
     try:
         auth_resp = requests.get(request, timeout=5)
@@ -307,15 +322,15 @@ def call_start_agent_authentication(target_agent, agent_identifier, config: dict
 
 def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     red = config["REDIS"]
-    user_email = arguments.get("user_email")
+    verification_request_id = arguments.get("verification_request_id")
     
-    payload = oidc4vp.wallet_pull_status(user_email, red)
+    payload = oidc4vp.wallet_pull_status(verification_request_id, red)
     status = payload.get("status", "pending")
 
     # current oidc4vp: claims merged at the top level (exclude status/user_id)
     claims = {k: v for k, v in payload.items() if k not in ("status", "id")}
 
-    structured = {"status": status, "user_email": user_email, **claims}
+    structured = {"status": status, "verification_request_id": verification_request_id, **claims}
 
     # Human-friendly text block (special hint for wallet_identifier scope)
     text_blocks = []
@@ -329,39 +344,35 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
     text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
 
     if status == "verified":
-        logging.info("verification data attached to %s are deleted from REDIS", user_email)
-        red.delete(user_email)
-        red.delete(user_email + "_wallet_data")
-        red.delete(user_email + "_status")
+        logging.info("verification data attached to %s are deleted from REDIS", verification_request_id)
+        red.delete(verification_request_id + "_status")
+        red.delete(verification_request_id + "_wallet_data")
     return _ok_content(text_blocks, structured=structured)
 
 
-def call_poll_agent_authentication(target_agent, config: dict) -> Dict[str, Any]:
+def call_poll_agent_authentication(arguments, config: dict) -> Dict[str, Any]:
     red = config["REDIS"]
     
-    payload = oidc4vp.wallet_pull_status(target_agent, red)
+    authentication_request_id = arguments.get("authentication_request_id")
+    payload = oidc4vp.wallet_pull_status(authentication_request_id, red)
     status = payload.get("status", "pending")
+    structured = {"status": status}
 
-
-    structured = {"status": status, "agent_identifier": target_agent}
-
-    # Human-friendly text block (special hint for wallet_identifier scope)
     text_blocks = []
-    if status := "verified":
-        text = f"Agent identifier: {target_agent} has status {status}."
-    else: 
-        text = f"Agent {target_agent} is authenticated."
-    
-    text_blocks.append({
-            "type": "text",
-            "text": text
-            })
-    # Always include the full JSON as text for debugging/visibility
+    if status == "verified":
+        text = f"Agent has status {status}."
+    elif status == "denied":
+        text = f"Agent authentication was denied."
+    elif status == "pending":
+        text = f"Authentication is still pending."
+    else:  # e.g. "not_found"
+        text = f"Authentication status: {status}."
+
+    text_blocks.append({"type": "text", "text": text})
     text_blocks.append({"type": "text", "text": json.dumps(structured, ensure_ascii=False)})
 
     if status == "verified":
-        logging.info("verification data attached to %s are deleted from REDIS", target_agent)
-        red.delete(target_agent)
-        red.delete(target_agent + "_wallet_data")
-        red.delete(target_agent + "_status")
+        logging.info("verification data are deleted from REDIS %s", authentication_request_id)
+        red.delete(authentication_request_id + "_status")
+
     return _ok_content(text_blocks, structured=structured)

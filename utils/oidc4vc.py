@@ -5,10 +5,8 @@ import json
 from datetime import datetime, timezone
 import logging
 import hashlib
-from random import randbytes
 from utils import x509_attestation
 import copy
-logging.basicConfig(level=logging.INFO)
 import base64
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
@@ -151,7 +149,6 @@ def generate_access_token(did, role, type, jti=None, duration=None):
         payload["exp"] = now + duration
     if not duration and type == "oauth":
         payload["exp"] = now + 1800
-    print("payload = ", payload)
     access_token = encrypt_string(json.dumps(payload))
     return access_token, payload["jti"]
 
@@ -201,7 +198,6 @@ def extract_expiration(cert_b64: str):
     cert = x509.load_der_x509_certificate(cert_der)
     not_before = getattr(cert, "not_valid_before_utc", cert.not_valid_before_utc)
     not_after = getattr(cert, "not_valid_after_utc" , cert.not_valid_after_utc)
-    print("not after =", not_after)
     return not_after
 
 
@@ -210,10 +206,13 @@ def pub_key(key):
     Key = jwk.JWK(**key) 
     return Key.export_public(as_dict=True)
 
-
+"""
 def salt():
     return base64.urlsafe_b64encode(randbytes(16)).decode().replace("=", "")
+"""
 
+def salt():
+    return base64.urlsafe_b64encode(secrets.token_bytes(16)).decode().replace("=", "")
 
 def hash(text):
     m = hashlib.sha256()
@@ -430,7 +429,6 @@ def resolve_did(vm) -> dict:
     except Exception as e:
         logging.error("This verification method is not supported  %s", vm + " " + str(e))
         return 
-
     if did.split(':')[1] == "jwk":
         key = did.split(':')[2]
         key += "=" * ((4 - len(key) % 4) % 4)
@@ -440,14 +438,23 @@ def resolve_did(vm) -> dict:
             logging.warning("did:jwk is not formated correctly")
             return
     else:
+        r = None
         for res in RESOLVER_LIST:
             try:
                 r = requests.get(res + did, timeout=10)
                 logging.info("resolver used = %s", res)
                 break
             except Exception:
-                pass
-        did_document = r.json()['didDocument']
+                continue
+        if not r:
+            logging.warning("Failed to resolve DID %s via all resolvers", did)
+            return
+
+        try:
+            did_document = r.json()['didDocument']
+        except Exception:
+            logging.warning("No DID Document in resolver response for %s", did)
+            return
     try:
         vm_list = did_document['verificationMethod']
     except Exception:
@@ -539,10 +546,10 @@ def get_header_from_token(token):
 
 
 def thumbprint(key):
-    key = json.loads(key) if isinstance(key, str) else key
-    if key.get('crv') == 'P-256K':
-        key['crv'] = 'secp256k1'
-    signer_key = jwk.JWK(**key)
+    key_obj = json.loads(key) if isinstance(key, str) else dict(key)
+    if key_obj.get('crv') == 'P-256K':
+        key_obj['crv'] = 'secp256k1'
+    signer_key = jwk.JWK(**key_obj)
     return signer_key.thumbprint()
 
 

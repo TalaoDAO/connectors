@@ -78,7 +78,7 @@
     {% endif %}
   {% endwith %}
 
-  <form id="consentForm" action = "/user/consent" method="POST" enctype="multipart/form-data">
+  <form id="consentForm" action = "/{{wallet_did}}/user/consent" method="POST" enctype="multipart/form-data">
     <!-- The server passes the SD-JWT VC string here -->
     <textarea id="sdJwtInput" name="sd_jwt_vc" hidden>{{ sd_jwt_vc }}</textarea>
     <input name="session_id" hidden value="{{session_id }}">

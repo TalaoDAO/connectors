@@ -88,12 +88,10 @@ def build_verifier_metadata(verifier_id) -> dict:
     return verifier_metadata
 
 
-# build the authorization request                                      
-def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
+# build the authorization request for user                                   
+def oidc4vp_qrcode(verifier_id, mcp_scope, red, mode):
     
-    # to take into account the agent authentication use case
-    if not mcp_user_id:
-        mcp_user_id = str(uuid.uuid4())
+    verification_request_id = str(uuid.uuid4())
 
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
     logging.info("verifier name = %s", verifier.name)
@@ -150,16 +148,17 @@ def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
     
     # store data in redis attached to the nonce to bind with the wallet response
     data = { 
+        "request_type": "user_verification",
         "verifier_id": verifier_id,
-        "user_id": mcp_user_id,
+        "verification_request_id": verification_request_id,
         "mcp_scope": mcp_scope
     }
     data.update(authorization_request)
     red.setex(nonce, QRCODE_LIFE, json.dumps(data))
-    red.setex(mcp_user_id, QRCODE_LIFE, json.dumps(data)) # fallback
+    red.setex(verification_request_id, QRCODE_LIFE, json.dumps(data)) # fallback
 
     # NEW: initialize a pull status key for this flow (so we can detect expiry)
-    red.setex(mcp_user_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
+    red.setex(verification_request_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
 
     # signature key of the request object
     credential_id = verifier.credential_id
@@ -186,26 +185,19 @@ def oidc4vp_qrcode(verifier_id, mcp_user_id, mcp_scope, red, mode):
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
     url = verifier.prefix + '?' + urlencode(authorization_request_for_qrcode)
-    verif_id = str(uuid.uuid4())
-    red.setex(verif_id, 1000, url)
+    url_id = str(uuid.uuid4())
+    red.setex(url_id, 1000, url)
     return {
         "url": url,
-        "poll_id": verif_id
+        "url_id": url_id,
+        "verification_request_id": verification_request_id
     }
 
-# build the authorization request                                      
+# build the authorization request  for agent                                    
 def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, manager):
     
-    # to take into account the agent authentication use case
-    mcp_user_id = str(uuid.uuid4())
-
-    wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-    if not wallet:
-        logging.warning("verifier not found: %s", agent_identifier)
-        return {"error": "unauthorized", "error_description": "Unknown wallet did"}, 401
-
-    # we dont use user_id as nonce
-    nonce = str(uuid.uuid4()) # body["user_id"]
+    authentication_request_id = str(uuid.uuid4())
+    nonce = str(uuid.uuid4())
 
     # authorization request
     authorization_request = { 
@@ -220,17 +212,17 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
     }
         
     # store data in redis attached to the nonce to bind with the wallet response
-    data = { 
-        "verifier_id": agent_identifier,
-        "user_id": target_agent,
-        "mcp_scope": "wallet_identifier"
+    data = {
+        "request_type": "agent_authentication",
+        "target": target_agent,
+        "agent": agent_identifier,
+        "authentication_request_id": authentication_request_id
     }
     data.update(authorization_request)
     red.setex(nonce, QRCODE_LIFE, json.dumps(data))
-    red.setex(mcp_user_id, QRCODE_LIFE, json.dumps(data)) # fallback
-
-    # NEW: initialize a pull status key for this flow (so we can detect expiry)
-    red.setex(mcp_user_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
+    
+    # set status to pending immediately
+    red.setex(authentication_request_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
     
     vm = agent_identifier + "#key-1"
     key_id = manager.create_or_get_key_for_tenant(vm)
@@ -258,6 +250,7 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
     oidc4vp_request = "openid4vp://?" + urlencode(authorization_request_for_qrcode)
     return {
         "oidc4vp_request": oidc4vp_request,
+        "authentication_request_id": authentication_request_id
     }
     
 
@@ -408,8 +401,11 @@ async def verifier_response():
     
     # get data from nonce
     try:
-        data = json.loads(red.get(nonce).decode())
-        user_id = data["user_id"]
+        nonce_data = json.loads(red.get(nonce).decode())
+        request_type = nonce_data.get("request_type")
+        logging.info("it is a response for an %s", request_type)
+        request_id = ( nonce_data.get("authentication_request_id") or nonce_data.get("verification_request_id"))
+    
     except Exception:
         logging.warning("Missing or invalid nonce; cannot bind response")
         return jsonify({"error": "invalid_request", "error_description": "missing_nonce"}), 400
@@ -432,30 +428,28 @@ async def verifier_response():
         except Exception:
             sub = "Error"
 
-    # data for MCP client
-    wallet_data = {
-        "credential_status":"VALID",
-        "scope": data["mcp_scope"]
-    }
-    
-    if data["mcp_scope"] == "wallet_identifier":
-        wallet_data["wallet_identifier"] = sub
-        
-    wallet_data.update(disclosure)
-    wallet_data.update(claims)
-    if data["mcp_scope"] == "raw":
-        wallet_data["raw"] = request.form
-        
-    red.setex(user_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
+    # wallet data received for user verification
+    if request_type == "user_verification":
+        wallet_data = {
+            "credential_status":"VALID",
+            "scope": nonce_data["mcp_scope"]
+        }
+        if nonce_data["mcp_scope"] == "wallet_identifier":
+            wallet_data["wallet_identifier"] = sub
+        wallet_data.update(disclosure)
+        wallet_data.update(claims)
+        if nonce_data["mcp_scope"] == "raw":
+            wallet_data["raw"] = request.form    
+        red.setex(request_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
 
-    # Update pull status for MCP clients
-    red.setex(user_id + "_status", CODE_LIFE, json.dumps({"status": "verified" if access else "denied"}))
+    # Update pull status for user and agents
+    red.setex(request_id + "_status", CODE_LIFE, json.dumps({"status": "verified" if access else "denied"}))
 
     return jsonify(response), status_code
 
 
 # ------------- Pull -------------
-# unique for user and email verification
+# unique for target agent and user by email verification
 def wallet_pull_status(id, red):
     # user email  or target agent
     

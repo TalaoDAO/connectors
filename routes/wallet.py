@@ -25,10 +25,10 @@ def init_app(app):
     # OIDC4VCI wallet endpoint (oauth2 client)
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
     app.add_url_rule('/<wallet_did>/credential_offer', view_func=credential_offer, methods=['GET'])
-    app.add_url_rule('/callback', view_func=callback, methods=['GET', 'POST'])
+    app.add_url_rule('/<wallet_did>/callback', view_func=callback, methods=['GET'])
     
     # OIDC4VP wallet endpoint (Oauth2 authorization server)
-    app.add_url_rule('/authorize', view_func=authorize, methods=['GET', 'POST'])
+    app.add_url_rule('/<wallet_did>/authorize', view_func=authorize, methods=['GET', 'POST'])
     
     # openid configuration endpoint of the web wallet
     app.add_url_rule('/did/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
@@ -38,7 +38,7 @@ def init_app(app):
     app.add_url_rule('/did/<wallet_did>', view_func=wallet_landing_page, methods=['GET'])
     
     # user consent for credential offer
-    app.add_url_rule('/user/consent', view_func=user_consent, methods=['POST'])
+    app.add_url_rule('/<wallet_did>/user/consent', view_func=user_consent, methods=['POST'])
     
     return
 
@@ -59,7 +59,7 @@ def web_wallet_openid_configuration(wallet_did):
     mode = current_app.config["MODE"]
     config = {
         "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer",
-        "authorization_endpoint": mode.server + "authorize"
+        "authorization_endpoint": mode.server +  wallet_did + "/authorize"
     }
     return jsonify(config)
 
@@ -71,22 +71,21 @@ def wallet_landing_page(wallet_did):
 
 
 # authorization endpoint of the wallet 
-def authorize():
+def authorize(wallet_did):
     """
     OIDC4VP / Self-Issued authorization endpoint for the wallet.
 
     It supports:
-      - request:   JWT request object directly as query/form parameter
-      - request_uri: URL pointing to the request object
+    - request:   JWT request object directly as query/form parameter
+    - request_uri: URL pointing to the request object
 
     Flow:
-      1. Retrieve and decode the OIDC4VP request object.
-      2. Extract client_id, response_uri, nonce, state, etc.
-      3. Select the wallet DID (holder).
-      4. Build a Self-Issued id_token.
-      5. POST (direct_post) the id_token ONLY to the response_uri endpoint.
+    1. Retrieve and decode the OIDC4VP request object.
+    2. Extract client_id, response_uri, nonce, state, etc.
+    3. Select the wallet DID (holder).
+    4. Build a Self-Issued id_token.
+    5. POST (direct_post) the id_token ONLY to the response_uri endpoint.
     """
-    mode = current_app.config["MODE"]
     manager = current_app.config["MANAGER"]
 
     # 1. Get request / request_uri parameters
@@ -118,7 +117,15 @@ def authorize():
         except Exception:
             # Not JSON => assume it's directly a compact JWS request object
             req_jwt = body_text
-
+    
+    # check signature
+    try:
+        oidc4vc.verif_token(req_jwt)
+    except Exception as e:
+        message = f"Request object has no valid signature: {str(e)}"
+        logging.exception(message)
+        return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
+    
     # 2. Decode request object JWT
     try:
         req_header = oidc4vc.get_header_from_token(req_jwt)
@@ -136,7 +143,11 @@ def authorize():
         or request.args.get("client_id")
         or request.form.get("client_id")
     )
-    response_uri = req_payload.get("response_uri")
+    response_uri = (
+        req_payload.get("response_uri")
+        or req_payload.get("redirect_uri")
+        or request.args.get("redirect_uri")
+    )
     nonce = req_payload.get("nonce")
     state = req_payload.get("state") or request.args.get("state") or request.form.get("state")
 
@@ -150,17 +161,18 @@ def authorize():
         logging.warning(message)
         return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
 
-    # 4. Select wallet DID (holder)
-    #    - Prefer an explicit wallet_did parameter (query or in request object)
-    #    - Fallback to first wallet in DB
-    wallet_did = (
+    #check wallet_did with aud
+    aud = (
         request.args.get("aud")
         or request.form.get("aud")
         or req_payload.get("aud")
     )
-    logging.info("Using wallet DID %s for OIDC4VP response", wallet_did)
+    if aud != wallet_did:
+        message = "aud in authorization request is not correct."
+        logging.warning(message)
+        #return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
 
-    # 5. Build a Self-Issued id_token (no vp_token, as requested)
+    # 5. Build a Self-Issued id_toke
     now = int(datetime.utcnow().timestamp())
     exp = now + 600  # 10 minutes validity
 
@@ -390,7 +402,7 @@ def credential_offer(wallet_did):
             sd_jwt_vc, text = code_flow(session_config, mode, manager)
             logout_user()
             if sd_jwt_vc:
-                return render_template("wallet/user_consent.html", sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
+                return render_template("wallet/user_consent.html", wallet_did=wallet_did, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
             else:
                 logging.warning("sd jwt is missing %s", text)
                 message = "The attestation cannot be issued"
@@ -461,7 +473,7 @@ def credential_offer(wallet_did):
 
 
 # route to request user consent then store the VC
-def user_consent():
+def user_consent(wallet_did):
     decision = request.form.get('decision')
     if decision == "reject":
         message = "Attestation has been rejected"
@@ -521,8 +533,8 @@ def build_authorization_request(session_config, red, mode) -> str:
     return f"{authorization_endpoint}?{urlencode(data)}"
 
 
-# callback du wallet for authorization code flow
-def callback():
+# callback du wallet as client for OIDC4VCI authorization code flow
+def callback(wallet_did):
     logging.info('This is an authorized code flow')
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
@@ -552,6 +564,7 @@ def callback():
         return render_template("wallet/session_screen.html", message=text, title="Issuance Failure")
     return render_template(
         "wallet/user_consent.html",
+        wallet_did=wallet_did,
         sd_jwt_vc=sd_jwt_vc,
         title="Consent to Accept & Publish Attestation",
         session_id=session_id

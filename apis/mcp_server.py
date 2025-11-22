@@ -549,12 +549,12 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 scope = arguments.get("scope")
                 # For public test profiles, simplest rule: token must equal verifier_id
-                if scope not in {"email","over18","profile", "wallet_identifier"}:
+                if scope not in {"email","over18","profile"}:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
                 out = verifier_tools.call_start_user_verification(arguments, config())
             
-            if name == "start_agent_authentication":
+            elif name == "start_agent_authentication":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
@@ -571,7 +571,7 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                if not arguments.get("user_email"):
+                if not arguments.get("verification_request_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: user_id is missing "}}
                 out = verifier_tools.call_poll_user_verification(arguments, config())
@@ -580,11 +580,10 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                target_agent = arguments.get("agent_identifier")
-                if not target_agent:
+                if not arguments.get("authentication_request_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: agent_identifier is missing "}}
-                out = verifier_tools.call_poll_agent_authentication(target_agent, config())
+                out = verifier_tools.call_poll_agent_authentication(arguments, config())
             
             elif name == "create_agent_identifier_and_wallet":
                 
