@@ -311,8 +311,6 @@ def call_start_agent_authentication(
 
     try:
         auth_resp = requests.get(request_url, timeout=5)
-        flow["authorization_http_status"] = auth_resp.status_code
-        flow["authorization_response_ok"] = auth_resp.ok
         success = auth_resp.ok
     except Exception as e:
         logging.exception("Failed to call authorization_endpoint %s: %s", authorization_endpoint, str(e))
@@ -326,7 +324,7 @@ def call_start_agent_authentication(
 
     blocks: List[Dict[str, Any]] = []
     if success:
-        text_hint = "Authentication request has been sent to the other agent."
+        text_hint = f"Authentication request has been sent to the other agent. The 'authentication_request_id' is {authentication_request_id}"
     else:
         text_hint = "Authentication request could not be sent successfully."
 
