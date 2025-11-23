@@ -131,7 +131,7 @@ def create_app() -> Flask:
             seed_credential()
             seed_signin_for_wallet_registration(mode)
             #seed_issuer_for_testing(mode)
-            seed_verifier_for_demo(mode)
+            #seed_verifier_for_demo(mode)
             seed_wallet(mode, manager)
 
     # ---- Flask-Login ----

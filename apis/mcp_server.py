@@ -108,6 +108,7 @@ def init_app(app):
                 elif jti == this_wallet.agent_pat_jti and role == "agent":
                     return role, agent_identifier
                 else:
+                    print("B")
                     return "guest", None
             except Exception as e:
                 logging.warning(str(e))
@@ -549,7 +550,7 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 scope = arguments.get("scope")
                 # For public test profiles, simplest rule: token must equal verifier_id
-                if scope not in {"email","over18","profile"}:
+                if scope not in {"over18","profile"}:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
                 out = verifier_tools.call_start_user_verification(arguments, agent_identifier, config())
@@ -571,13 +572,13 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = verifier_tools.call_poll_user_verification(arguments, config())
+                out = verifier_tools.call_poll_user_verification(arguments, agent_identifier, config())
                 
             elif name == "poll_agent_authentication":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = verifier_tools.call_poll_agent_authentication(arguments, config())
+                out = verifier_tools.call_poll_agent_authentication(arguments, agent_identifier, config())
             
             elif name == "create_agent_identifier_and_wallet":
                 
@@ -646,7 +647,16 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: message missing "}}
                 out = wallet_tools_for_agent.call_sign_text_message(arguments, agent_identifier, config())
-                
+            
+            elif name == "sign_json_payload":
+                if role not in ["agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("payload"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: message missing "}}
+                out = wallet_tools_for_agent.call_sign_json_payload(arguments, agent_identifier, config())
+            
             elif name == "get_attestations_of_another_agent":
                 target_agent_identifier = arguments.get("agent_identifier")
                 if not target_agent_identifier:

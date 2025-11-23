@@ -55,6 +55,23 @@ tools_agent = [
         }
     },
     {
+        "name": "sign_json_payload",
+        "description": (
+            "Sign a json payload using this Agent's DID and private keys."
+            "Return a JWS in Compact Serialization"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "payload": {
+                    "type": "string",
+                    "description": "The payload as a json."
+                }
+            },
+            "required": ["payload"]
+        }
+    },
+    {
         "name": "get_this_wallet_data",  # get agent identity ?
         "description": (
             "Retrieve a high-level overview of this Agent's identity and its attached wallet. "
@@ -846,7 +863,6 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
     try:
         # lazily create or fetch tenant key
         key_id = manager.create_or_get_key_for_tenant(agent_identifier)
-
         sig, _ = manager.sign_message(key_id, message.encode("utf-8"))
         sig_b64 = base64.b64encode(sig).decode("ascii")
 
@@ -860,6 +876,37 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
         return _ok_content([{"type": "text", "text": text}], structured=structured)
 
     except Exception as e:
-        logging.exception("Failed to sign text message with KMS")
-        text = f"Failed to sign message with KMS: {str(e)}"
+        logging.exception("Failed to sign text message with KMS %s", str(e))
+        text = f"Failed to sign message with my DID."
+        return _ok_content([{"type": "text", "text": text}], is_error=True)
+
+
+def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
+    payload = arguments.get("payload", "")
+    payload = json.loads(payload) 
+
+    # Prefer injected manager
+    manager = config.get("MANAGER")
+    
+    try:
+        # lazily create or fetch tenant key
+        key_id = manager.create_or_get_key_for_tenant(agent_identifier)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        header = {
+            "typ": "JWT",
+            "alg": alg,
+            "kid": agent_identifier + "#key-1"
+        }
+        signed_json = manager.sign_jwt_with_key(key_id, header, payload)
+        structured = {
+            "agent_did": agent_identifier,
+            "payload": payload,
+            "signed_json": signed_json,
+        }
+        text = f"Signed payload for Agent {agent_identifier}. jws: {signed_json}"
+        return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+    except Exception as e:
+        logging.exception("Failed to sign text message with KMS %s", str(e))
+        text = f"Failed to sign message with my DID"
         return _ok_content([{"type": "text", "text": text}], is_error=True)

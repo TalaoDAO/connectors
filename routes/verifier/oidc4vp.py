@@ -1,6 +1,6 @@
 
 from flask import request, current_app
-from flask import session, Response, jsonify, render_template
+from flask import Response, jsonify, render_template
 import json, base64
 import uuid
 import logging
@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from jwcrypto import jwk, jwt
 from utils import oidc4vc, signer
 import didkit
-from db_model import Credential, User, Wallet
+from db_model import Credential, Wallet
 from urllib.parse import  urlencode
 import logging
 
@@ -16,6 +16,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 # customer application 
 CODE_LIFE = 300
+POLL_LIFE = 300
 
 # wallet
 QRCODE_LIFE = 300
@@ -92,15 +93,36 @@ def build_verifier_metadata(verifier_id) -> dict:
 # build the authorization request for user                                   
 def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     
-    verification_request_id = str(uuid.uuid4())
-    draft = "20"
-
+    
+    # configure verifier from ecosystem profile
+    wallet = Wallet.query.filter(Wallet.did == agent_identifier).first()
+    profile = wallet.ecosystem_profile
+    request_uri_method = None 
+    if profile == "DIIP V4":
+        request_uri_method = "get"
+        draft = 28
+        presentation_format = "dcql_query"
+        client_id = agent_identifier
+    elif profile == "ARF":
+        request_uri_method = "get"
+        draft = 30
+        presentation_format = "dcql_query"
+        client_id = "redirect_uri:" + wallet.url
+    elif profile == "DIIP V3":
+        draft = 20
+        presentation_format = "presentation_exchange"
+        client_id = agent_identifier
+    else: # ebsi
+        draft = 20
+        presentation_format = "presentation_exchange"
+        client_id = wallet.url
+        
     # we dont use user_id as nonce
     nonce = str(uuid.uuid4()) # body["user_id"]
 
     # authorization request
     authorization_request = { 
-        "client_id": agent_identifier,
+        "client_id": client_id,
         "iss": agent_identifier,
         "response_type": "vp_token",
         "response_uri": mode.server + agent_identifier + "/response",
@@ -108,9 +130,9 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         "nonce": nonce
     }
     response_type = ["vp_token"]
+    
         
-    if 'vp_token' in response_type:              
-        presentation_format = "presentation_exchange"
+    if 'vp_token' in response_type:         
         if presentation_format == "presentation_exchange":
             path = "presentation_exchange/"
             presentation_claim = "presentation_definition"
@@ -120,18 +142,19 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         fallback_presentation = json.load(open( path + "raw.json", "r"))
         if mcp_scope in ["email", "phone", "profile", "over18", "raw"]:
             authorization_request[presentation_claim] = json.load(open(path + mcp_scope + ".json", "r"))
-        elif mcp_scope == "custom":
-            authorization_request[presentation_claim] = json.loads(verifier.presentation) if verifier.presentation else fallback_presentation
         elif mcp_scope == "wallet_identifier":
             authorization_request['scope'] = 'openid'
             authorization_request["response_type"] = "id_token"
             authorization_request.pop("client_metadata", None)
         else:
             authorization_request[presentation_claim] = fallback_presentation
-            
+        
+        if request_uri_method:
+            authorization_request["request_uri_method"] = request_uri_method
+        
         authorization_request['aud'] = 'https://self-issued.me/v2'
         
-        if int(draft) < 23:
+        if draft < 23:
             authorization_request["client_id_scheme"] = "did"
 
     # SIOPV2
@@ -139,6 +162,7 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         authorization_request['scope'] = 'openid'
     
     # store data in redis attached to the nonce to bind with the wallet response
+    verification_request_id = str(uuid.uuid4())
     data = { 
         "request_type": "user_verification",
         "agent": agent_identifier,
@@ -147,10 +171,10 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     }
     data.update(authorization_request)
     red.setex(nonce, QRCODE_LIFE, json.dumps(data))
-    red.setex(verification_request_id, QRCODE_LIFE, json.dumps(data)) # fallback
 
-    # NEW: initialize a pull status key for this flow (so we can detect expiry)
-    red.setex(verification_request_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
+    # initialize a pull status key for this flow
+    red.setex(verification_request_id + "_status", POLL_LIFE, json.dumps({"status": "pending"}))
+    red.setex(agent_identifier + "_status", POLL_LIFE, json.dumps({"status": "pending"}))
 
     # prepare request as jwt
     vm = agent_identifier + "#key-1"
@@ -163,7 +187,6 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     }
     request_as_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=authorization_request)
     logging.info("request as jwt = %s", request_as_jwt)
-    
     # generate a request uri endpoint
     stream_id = str(uuid.uuid1())
     red.setex(stream_id, QRCODE_LIFE, request_as_jwt)
@@ -173,11 +196,15 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         "client_id": agent_identifier,
         "request_uri": mode.server + agent_identifier + "/request_uri/" + stream_id 
     }
-    logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
+    if request_uri_method:
+        authorization_request_for_qrcode["request_uri_method"] = request_uri_method
+        
+    logging.info("authorization request = %s", json.dumps(authorization_request, indent=2)  )
 
-    url =  'openid-vc://?' + urlencode(authorization_request_for_qrcode)
+    url = 'openid-vc://?' + urlencode(authorization_request_for_qrcode)
     url_id = str(uuid.uuid4())
     red.setex(url_id, 1000, url)
+    
     return {
         "url": url,
         "url_id": url_id,
@@ -214,6 +241,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     
     # set status to pending immediately
     red.setex(authentication_request_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
+    red.setex(agent_identifier + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
     
     # prepare request as jwt
     vm = agent_identifier + "#key-1"
@@ -251,6 +279,7 @@ def verification_email(url_id):
         uri = red.get(url_id).decode()
     except Exception:
         return render_template("wallet/session_expired.html")
+    #red.delete(url_id)
     return render_template("wallet/email_verification.html", uri=uri)
 
 
@@ -395,9 +424,11 @@ async def verifier_response(wallet_did):
     # get data from nonce
     try:
         nonce_data = json.loads(red.get(nonce).decode())
+        red.delete(nonce)
         request_type = nonce_data.get("request_type")
         logging.info("it is a response for an %s", request_type)
         request_id = ( nonce_data.get("authentication_request_id") or nonce_data.get("verification_request_id"))
+        agent_identifier = nonce_data.get("agent")
     
     except Exception:
         logging.warning("Missing or invalid nonce; cannot bind response")
@@ -431,10 +462,18 @@ async def verifier_response(wallet_did):
         else:
             wallet_data.update(claims)   
         # Store user data in Redis
-        red.setex(request_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
+        red.setex(request_id + "_wallet_data", POLL_LIFE, json.dumps(wallet_data))
+        # fallback
+        red.setex(agent_identifier + "_last_user_verification_wallet_data", POLL_LIFE, json.dumps(wallet_data))
+        
 
     # Store status for user and agents in Redis
-    red.setex(request_id + "_status", CODE_LIFE, json.dumps({"status": "verified" if access else "denied"}))
+    red.setex(request_id + "_status", POLL_LIFE, json.dumps({"status": "verified" if access else "denied"}))
+    # fallback
+    if request_type == "user_verification":
+        red.setex(agent_identifier + "_last_user_verification" + "_status", POLL_LIFE, json.dumps({"status": "verified" if access else "denied"}))
+    else:
+        red.setex(agent_identifier + "_last_agent_authentication" + "_status", POLL_LIFE, json.dumps({"status": "verified" if access else "denied"}))      
 
     return jsonify(response), status_code
 
@@ -443,7 +482,7 @@ async def verifier_response(wallet_did):
 # unique for target agent and user by email verification
 def wallet_pull_status(id, red):
     # user email  or target agent
-    
+    logging.info("call poll status for id = %s", id)
     # Fetch status first
     status_raw = red.get(id + "_status")
     if not status_raw:

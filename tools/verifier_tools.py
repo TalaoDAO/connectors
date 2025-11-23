@@ -335,7 +335,7 @@ def call_start_agent_authentication(
     return _ok_content(blocks, structured=flow)
 
 
-def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_poll_user_verification(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
     """
     Poll the verification result given a verification_request_id.
     Returns user-friendly text and structuredContent with status + claims.
@@ -345,6 +345,12 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
 
     payload = oidc4vp.wallet_pull_status(verification_request_id, red)
     status = payload.get("status", "pending")
+    # fallback
+    if status == "not_found":
+        fallback_id = agent_identifier + "_last_user_verification"
+        payload = oidc4vp.wallet_pull_status(fallback_id, red)
+        status = payload.get("status", "pending")
+
     # claims are all non-technical keys
     claims = {k: v for k, v in payload.items() if k not in ("status", "id", "user_verification_id", "scope")}
     scope = payload.get("scope")
@@ -379,7 +385,7 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
     return _ok_content(text_blocks, structured=structured)
 
 
-def call_poll_agent_authentication(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_poll_agent_authentication(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
     """
     Poll the status of an agent-to-agent authentication given authentication_request_id.
     """
@@ -388,6 +394,11 @@ def call_poll_agent_authentication(arguments: Dict[str, Any], config: dict) -> D
 
     payload = oidc4vp.wallet_pull_status(authentication_request_id, red)
     status = payload.get("status", "pending")
+    # fallback
+    if status == "not_found":
+        fallback_id = agent_identifier + "_last_agent_authentication"
+        payload = oidc4vp.wallet_pull_status(fallback_id, red)
+        status = payload.get("status", "pending")
 
     structured = {"status": status, "authentication_request_id": authentication_request_id}
 

@@ -34,7 +34,16 @@ MCP_AGENT_PAT, _jti = oidc4vc.generate_access_token(
     duration=360 * 24 * 60 * 60,
 )
 
-print("demo PAT", MCP_AGENT_PAT)
+MCP_DEV_PAT, _jti = oidc4vc.generate_access_token(
+    DEMO_AGENT_DID,
+    "dev",
+    "pat",
+    jti="demo",
+    duration=360 * 24 * 60 * 60,
+)
+
+print("demo AGENT PAT", MCP_AGENT_PAT)
+print("demo DEV PAT", MCP_DEV_PAT)
 
 # --------- FLASK APP ---------
 
@@ -114,6 +123,7 @@ conversation_history = [
             "- 'get_attestations_of_another_agent': list published attestations of another Agent DID.\n"
             "- 'accept_credential_offer': accept an OIDC4VCI credential offer for this Agent.\n"
             "- 'sign_text_message': sign a text message using your DID keys.\n"
+            "- 'sign_json_payload': sign a json payload using your DID keys.\n"
             "- 'start_user_verification': send a verification email to a human user.\n"
             "- 'poll_user_verification': check the current result of the most recent user verification.\n"
             "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
@@ -157,6 +167,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
             "get_attestations_of_another_agent",
             "accept_credential_offer",
             "sign_text_message",
+            "sign_json_payload",
             # Agent-level verifier tools (to check human users and agents)
             "start_user_verification",
             "poll_user_verification",
