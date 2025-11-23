@@ -250,8 +250,8 @@ def verification_email(url_id):
     try:
         uri = red.get(url_id).decode()
     except Exception:
-        return render_template("session_expired.html")
-    return render_template("email_verification.html", uri=uri)
+        return render_template("wallet/session_expired.html")
+    return render_template("wallet/email_verification.html", uri=uri)
 
 
 def verifier_request_uri(wallet_did, stream_id):
