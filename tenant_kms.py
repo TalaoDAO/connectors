@@ -31,7 +31,7 @@ def kms_init(myenv):
         TARGET_ROLE_ARN = "arn:aws:iam::623031118740:role/my-app-signing-role"
         base_sess = boto3.Session(profile_name=BASE_PROFILE, region_name=REGION)
 
-        logging.info("Base identity: %s", json.dumps(base_sess.client("sts").get_caller_identity(), indent=2))
+        #logging.info("Base identity: %s", json.dumps(base_sess.client("sts").get_caller_identity(), indent=2))
 
         # 2) assume the application role using the SAME session
         sts = base_sess.client("sts")
@@ -46,7 +46,7 @@ def kms_init(myenv):
             aws_session_token=c["SessionToken"],
             region_name=REGION,
         )
-        logging.info("Assumed identity: %s", json.dumps(assumed_sess.client("sts").get_caller_identity(), indent=2))
+        #logging.info("Assumed identity: %s", json.dumps(assumed_sess.client("sts").get_caller_identity(), indent=2))
         manager = TenantKMSManager(boto3_session=assumed_sess, region_name="eu-west-3")
         return manager
     else:

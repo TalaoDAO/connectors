@@ -200,6 +200,7 @@ def init_app(app):
 
     # --------- Tool catalog ---------
     def _tools_list(role) -> Dict[str, Any]:
+        logging.info("tools have been called")
         modules = ["tools.wallet_tools", "tools.wallet_tools_for_agent", "tools.verifier_tools"]
         constant = "tools_" + role
         tools_list = {"tools": []}
@@ -211,6 +212,7 @@ def init_app(app):
 
     # --------- Prompt catalog ---------
     def _prompts_list(role) -> Dict[str, Any]:
+        logging.info("prompts have beenn called")
         prompts = []
         if role == "agent":
             if hasattr(wallet_prompts, "prompts_agent"):
@@ -225,10 +227,6 @@ def init_app(app):
     # --------- Resource catalog ---------
     def _resources_list(role) -> Dict[str, Any]:
         logging.info("resources have been called")
-        """
-        List MCP resources visible for this role.
-        For now we only expose resources to 'agent' role.
-        """
         resources: List[Dict[str, Any]] = []
         if role in ["guest", "agent"]:
             # Developer-specific documentation
@@ -298,6 +296,8 @@ def init_app(app):
     # --------- MCP JSON-RPC endpoint ---------
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
+        
+        print(request.headers)
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
         
@@ -552,7 +552,7 @@ def init_app(app):
                 if scope not in {"email","over18","profile"}:
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
-                out = verifier_tools.call_start_user_verification(arguments, config())
+                out = verifier_tools.call_start_user_verification(arguments, agent_identifier, config())
             
             elif name == "start_agent_authentication":
                 if role != "agent":

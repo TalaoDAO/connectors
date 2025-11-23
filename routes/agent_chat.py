@@ -125,7 +125,7 @@ conversation_history = [
 
 
 # Short acknowledgement words that should be treated as confirmations
-ACK_WORDS = {"yes", "ok", "okay", "yep", "yeah", "sure", "alright", "go ahead"}
+ACK_WORDS = {"yes", "ok", "okay", "done", "yep", "yeah", "sure", "alright", "go ahead"}
 
 
 # --------- CORE CALL TO GPT + MCP ---------
@@ -178,7 +178,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
         input=messages,
     )
 
-    logging.info("response in chat = %s", response.output)
+    #logging.info("response in chat = %s", response.output)
 
     texts: List[str] = []
     try:

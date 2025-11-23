@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ title or 'Link expired' }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Same font and header style as session_screen.html -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+  <style>
+    :root { --card-bg:#fff; --muted:#666; --ring:rgba(0,0,0,.06); }
+    body { background:#f7f7fb; margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .container {
+      max-width: 900px;
+      margin: 2.5rem auto;
+      padding: 1.75rem;
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: 0 2px 12px var(--ring);
+    }
+    h1 {
+      color: var(--primary);
+      text-align: center;
+      margin: 0 0 .5rem;
+      font-size: 1.6rem;
+    }
+    .lead {
+      color: var(--muted);
+      text-align: center;
+      margin: 0 0 1.5rem;
+      font-size: .98rem;
+      line-height: 1.5;
+    }
+    .section-card {
+      background:#fafafa;
+      border:1px solid #eee;
+      border-radius:12px;
+      padding:1rem 1.2rem;
+    }
+    .hint-title {
+      font-weight:600;
+      margin-bottom:.35rem;
+    }
+    .hint {
+      color:var(--muted);
+      font-size:.9rem;
+      margin-bottom:1rem;
+    }
+    .steps {
+      margin:0;
+      padding-left:1.2rem;
+      font-size:.9rem;
+      color:#444;
+    }
+    .steps li {
+      margin-bottom:.35rem;
+    }
+    .btn-row {
+      display:flex;
+      gap:.75rem;
+      justify-content:center;
+      flex-wrap:wrap;
+      margin-top:1.25rem;
+    }
+    .btn {
+      border:none;
+      padding:.75rem 1.1rem;
+      border-radius:10px;
+      font-weight:700;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-block;
+      font-size:.95rem;
+    }
+    .btn-primary { background: var(--accent); color:#fff; }
+    .btn-secondary { background:#fff; border:1px solid #ddd; color:#333; }
+  </style>
+</head>
+<body>
+
+<!-- Same header as other pages -->
+<header>
+  <div class="logo">
+    <strong><a href="/" style="color: var(--primary); text-decoration: none;">WALLET4AGENT.COM</a></strong>
+  </div>
+  <div class="nav-group">
+    <nav>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+  <h1>{{ title or 'This link has expired' }}</h1>
+
+  {% if message %}
+    <p class="lead">{{ message }}</p>
+  {% else %}
+    <p class="lead">
+      The verification link you opened is no longer valid. This usually happens if it
+      has already been used once or if it has timed out.
+    </p>
+  {% endif %}
+
+  <div class="section-card">
+    <div class="hint-title">What you can do next</div>
+    <p class="hint">
+      To continue, you can request a new verification from the Agent or the service that sent you this email.
+    </p>
+    <ul class="steps">
+      <li>Go back to the chat or app where you started this verification.</li>
+      <li>Ask it to send a new verification email to your wallet.</li>
+      <li>Open the new email on your phone and tap the fresh link.</li>
+    </ul>
+
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="javascript:history.back()">Go back</a>
+      <a class="btn btn-primary" href="/">Go to home</a>
+    </div>
+  </div>
+</div>
+
+{% include "footer.html" %}
+
+</body>
+</html>

@@ -142,20 +142,20 @@ def _ok_content(
 
 
 # --------- Tool implementations ---------
-def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
+def call_start_user_verification(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
     """
     Start an email-based OIDC4VP verification and send the user a mail.
     Returns a human message plus structuredContent with verification_request_id.
     """
     red = config["REDIS"]
     mode = config["MODE"]
+    manager = config["MANAGER"]
 
     scope = arguments.get("scope")
     user_email = arguments.get("user_email")
-    verifier_id = "0001"
 
     # Create OIDC4VP request & internal verification_request_id
-    data = oidc4vp.oidc4vp_qrcode(verifier_id, scope, red, mode)
+    data = oidc4vp.user_verification(agent_identifier, scope, red, mode, manager)
     if not data:
         return _ok_content(
             [{"type": "text", "text": "Server error while preparing verification."}],
@@ -190,8 +190,8 @@ def call_start_user_verification(arguments: Dict[str, Any], config: dict) -> Dic
     blocks: List[Dict[str, Any]] = []
     if success:
         text_hint = (
-            "An email has been sent to you. Open it to start the verification "
-            "in your identity wallet."
+            f"An email has been sent to {user_email}. Open it to start the verification "
+            f"in the identity wallet. The verification_request_id is '{verification_request_id}'"
         )
     else:
         text_hint = (
@@ -220,7 +220,7 @@ def call_start_agent_authentication(
     manager = config["MANAGER"]
 
     # Create OIDC4VP/SIOPV2 request for agent authentication
-    data = oidc4vp.oidc4vp_agent_authentication(
+    data = oidc4vp.agent_authentication(
         target_agent, agent_identifier, red, mode, manager
     )
     if not data:

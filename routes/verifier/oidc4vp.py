@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from jwcrypto import jwk, jwt
 from utils import oidc4vc, signer
 import didkit
-from db_model import Verifier, Credential, User, Wallet
+from db_model import Credential, User, Wallet
 from urllib.parse import  urlencode
 import logging
 
@@ -27,8 +27,8 @@ public_rsa_key = rsa_key.export(private_key=False, as_dict=True)
 
 def init_app(app):
     # endpoints for wallet
-    app.add_url_rule('/verifier/wallet/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
-    app.add_url_rule('/verifier/wallet/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
+    app.add_url_rule('/<wallet_did>/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
+    app.add_url_rule('/<wallet_did>/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
 
     # to manage the verification through a link sent
     app.add_url_rule('/verification_email/<url_id>',  view_func=verification_email, methods=['GET'])
@@ -78,6 +78,7 @@ def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> 
         # Your existing signer for JWS
         return signer.sign_jwt(account, credential, header, payload)
 
+"""
 def build_verifier_metadata(verifier_id) -> dict:
     verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
     if not verifier:
@@ -86,40 +87,31 @@ def build_verifier_metadata(verifier_id) -> dict:
     verifier_metadata = json.loads(verifier.verifier_metadata or "{}")
     logging.info("verifier metadata = %s", verifier_metadata)        
     return verifier_metadata
-
+"""
 
 # build the authorization request for user                                   
-def oidc4vp_qrcode(verifier_id, mcp_scope, red, mode):
+def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     
     verification_request_id = str(uuid.uuid4())
-
-    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
-    logging.info("verifier name = %s", verifier.name)
-    if not verifier:
-        logging.warning("verifier not found: %s", verifier_id)
-        return {"error": "unauthorized", "error_description": "Unknown verifier_id"}, 401
-
-    if verifier.response_mode != "id_token" and not verifier.presentation and not body.get("presentation"):
-        logging.warning("Presentation is not provided")
-        return {"error": "invalid_request", "error_description": "A presentation object (PEX or DCQL) is required"}, 400
+    draft = "20"
 
     # we dont use user_id as nonce
     nonce = str(uuid.uuid4()) # body["user_id"]
 
     # authorization request
     authorization_request = { 
-        "client_id": verifier.client_id,
-        "iss": verifier.client_id, # TODO
-        "response_type": verifier.response_type,
-        "response_uri": mode.server + "verifier/wallet/response",
-        "response_mode": verifier.response_mode,
+        "client_id": agent_identifier,
+        "iss": agent_identifier,
+        "response_type": "vp_token",
+        "response_uri": mode.server + agent_identifier + "/response",
+        "response_mode": "direct_post",
         "nonce": nonce
     }
+    response_type = ["vp_token"]
         
-    if 'vp_token' in verifier.response_type:              
-        authorization_request["client_metadata"] = build_verifier_metadata(verifier_id)
-        
-        if verifier.presentation_format == "presentation_exchange":
+    if 'vp_token' in response_type:              
+        presentation_format = "presentation_exchange"
+        if presentation_format == "presentation_exchange":
             path = "presentation_exchange/"
             presentation_claim = "presentation_definition"
         else:
@@ -139,17 +131,17 @@ def oidc4vp_qrcode(verifier_id, mcp_scope, red, mode):
             
         authorization_request['aud'] = 'https://self-issued.me/v2'
         
-        if verifier.client_id_scheme and int(verifier.draft) < 23:
-            authorization_request["client_id_scheme"] = verifier.client_id_scheme
+        if int(draft) < 23:
+            authorization_request["client_id_scheme"] = "did"
 
     # SIOPV2
-    if 'id_token' in verifier.response_type:
+    if 'id_token' in response_type:
         authorization_request['scope'] = 'openid'
     
     # store data in redis attached to the nonce to bind with the wallet response
     data = { 
         "request_type": "user_verification",
-        "verifier_id": verifier_id,
+        "agent": agent_identifier,
         "verification_request_id": verification_request_id,
         "mcp_scope": mcp_scope
     }
@@ -160,31 +152,30 @@ def oidc4vp_qrcode(verifier_id, mcp_scope, red, mode):
     # NEW: initialize a pull status key for this flow (so we can detect expiry)
     red.setex(verification_request_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
 
-    # signature key of the request object
-    credential_id = verifier.credential_id
-
-    # build the request object build_jwt_request(credential_id, request, client_id_scheme)
-    user_id = verifier.user_id
-    user = User.query.get_or_404(user_id)
-    account = user.qtsp_account()
-    request_as_jwt = build_jwt_request(account, credential_id, authorization_request, verifier.client_id_scheme)
-    if not request_as_jwt:
-        return "This verifier or key does not exist", 401
-
+    # prepare request as jwt
+    vm = agent_identifier + "#key-1"
+    key_id = manager.create_or_get_key_for_tenant(vm)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
+    header = {
+        "typ": "oauth-authz-req+jwt",
+        "alg": alg,
+        "kid": vm
+    }
+    request_as_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=authorization_request)
     logging.info("request as jwt = %s", request_as_jwt)
-
+    
     # generate a request uri endpoint
     stream_id = str(uuid.uuid1())
     red.setex(stream_id, QRCODE_LIFE, request_as_jwt)
 
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
-        "client_id": verifier.client_id,
+        "client_id": agent_identifier,
         "request_uri": mode.server + "verifier/wallet/request_uri/" + stream_id 
     }
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
-    url = verifier.prefix + '?' + urlencode(authorization_request_for_qrcode)
+    url =  'oidc4vp://?' + urlencode(authorization_request_for_qrcode)
     url_id = str(uuid.uuid4())
     red.setex(url_id, 1000, url)
     return {
@@ -194,7 +185,7 @@ def oidc4vp_qrcode(verifier_id, mcp_scope, red, mode):
     }
 
 # build the authorization request  for agent                                    
-def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, manager):
+def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     
     authentication_request_id = str(uuid.uuid4())
     nonce = str(uuid.uuid4())
@@ -204,7 +195,7 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
         "client_id": agent_identifier,
         "iss": agent_identifier, # TODO
         "response_type": "id_token",
-        "response_uri": mode.server + "verifier/wallet/response",
+        "response_uri": mode.server + agent_identifier + "/response",
         "response_mode": "direct_post",
         "nonce": nonce,
         "aud": target_agent,
@@ -224,6 +215,7 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
     # set status to pending immediately
     red.setex(authentication_request_id + "_status", QRCODE_LIFE, json.dumps({"status": "pending"}))
     
+    # prepare request as jwt
     vm = agent_identifier + "#key-1"
     key_id = manager.create_or_get_key_for_tenant(vm)
     jwk, kid, alg = manager.get_public_key_jwk(key_id)
@@ -233,7 +225,6 @@ def oidc4vp_agent_authentication(target_agent, agent_identifier, red, mode, mana
         "kid": vm
     }
     request_as_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=authorization_request)
-
     logging.info("request as jwt = %s", request_as_jwt)
 
     # generate a request uri endpoint
@@ -259,11 +250,11 @@ def verification_email(url_id):
     try:
         uri = red.get(url_id).decode()
     except Exception:
-        return jsonify("This link is expired")
+        return render_template("session_expired.html")
     return render_template("email_verification.html", uri=uri)
 
 
-def verifier_request_uri(stream_id):
+def verifier_request_uri(wallet_did, stream_id):
     red = current_app.config["REDIS"]
     try:
         payload = red.get(stream_id).decode()
@@ -286,7 +277,7 @@ def get_format(vp, type="vp"):
     elif len(vp.split("~")) > 1:
         return "vc+sd-jwt"
 
-async def verifier_response():
+async def verifier_response(wallet_did):
     red = current_app.config["REDIS"]
     logging.info("Enter wallet response endpoint")
     access = True
