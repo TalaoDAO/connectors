@@ -298,7 +298,6 @@ def init_app(app):
     @app.route("/mcp", methods=["POST", "OPTIONS"])
     def mcp():
         
-        print(request.headers)
         if request.method == "OPTIONS":
             return _add_cors(make_response("", 204))
         

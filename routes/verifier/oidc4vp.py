@@ -262,7 +262,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
         "client_id": agent_identifier,
-        "request_uri": mode.server + "verifier/wallet/request_uri/" + stream_id 
+        "request_uri": mode.server + agent_identifier + "/request_uri/" + stream_id 
     }
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
