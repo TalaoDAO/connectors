@@ -246,6 +246,9 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     
 # endpoint
 def verification_email(url_id):
+    """
+    updated
+    """
     red = current_app.config["REDIS"]
     try:
         uri = red.get(url_id).decode()
