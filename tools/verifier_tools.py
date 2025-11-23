@@ -345,49 +345,37 @@ def call_poll_user_verification(arguments: Dict[str, Any], config: dict) -> Dict
 
     payload = oidc4vp.wallet_pull_status(verification_request_id, red)
     status = payload.get("status", "pending")
-
     # claims are all non-technical keys
-    claims = {k: v for k, v in payload.items() if k not in ("status", "id")}
+    claims = {k: v for k, v in payload.items() if k not in ("status", "id", "user_verification_id", "scope")}
+    scope = payload.get("scope")
     structured = {
         "status": status,
         "verification_request_id": verification_request_id,
         **claims,
     }
-
-    scope = claims.get("scope")
     text_blocks: List[Dict[str, Any]] = []
 
     # Human messages depending on scope / status
     if status == "pending":
         text = (
-            "Your verification is still pending. Please open the email and "
-            "approve the request in your identity wallet."
+            "User verification is still pending. Please open the email and "
+            "approve the request in the identity wallet."
         )
     elif status == "verified":
         if scope == "over18":
-            text = "Your age has been verified as over 18."
+            text = "User age has been verified as over 18."
         elif scope == "profile":
-            text = "Your identity profile has been verified from your wallet."
+            text = "The user identity profile has been verified from his wallet. User data received: " + json.dumps(claims)
         elif scope == "wallet_identifier" and claims.get("wallet_identifier"):
-            text = f"Your wallet identifier has been verified: {claims.get('wallet_identifier')}."
+            text = f"The user wallet identifier has been verified: {claims.get('wallet_identifier')}."
         else:
-            text = "Your verification has completed successfully."
+            text = "User verification has completed successfully."
     elif status == "denied":
-        text = "The verification was denied in your wallet."
+        text = "User verification was denied."
     else:  # not_found or other
-        text = "I could not retrieve your verification result. We may need to restart the process."
+        text = "I could not retrieve user verification result. We may need to restart the process."
 
     text_blocks.append({"type": "text", "text": text})
-
-    # Clean up Redis after success
-    if status == "verified":
-        logging.info(
-            "verification data attached to %s are deleted from REDIS",
-            verification_request_id,
-        )
-        red.delete(verification_request_id + "_status")
-        red.delete(verification_request_id + "_wallet_data")
-
     return _ok_content(text_blocks, structured=structured)
 
 
@@ -407,19 +395,12 @@ def call_poll_agent_authentication(arguments: Dict[str, Any], config: dict) -> D
     if status == "verified":
         text = "The other Agent is successfully authenticated."
     elif status == "denied":
-        text = "Agent authentication was denied."
+        text = "The other Agent authentication failed."
     elif status == "pending":
-        text = "Agent authentication is still pending."
+        text = "The other Agent authentication is still pending."
     else:  # not_found or other
         text = "I could not retrieve the agent authentication result."
 
     text_blocks.append({"type": "text", "text": text})
-
-    if status == "verified":
-        logging.info(
-            "authentication data attached to %s are deleted from REDIS",
-            authentication_request_id,
-        )
-        red.delete(authentication_request_id + "_status")
 
     return _ok_content(text_blocks, structured=structured)

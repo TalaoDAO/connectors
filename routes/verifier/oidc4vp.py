@@ -171,11 +171,11 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
         "client_id": agent_identifier,
-        "request_uri": mode.server + "verifier/wallet/request_uri/" + stream_id 
+        "request_uri": mode.server + agent_identifier + "/request_uri/" + stream_id 
     }
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
-    url =  'oidc4vp://?' + urlencode(authorization_request_for_qrcode)
+    url =  'openid-vc://?' + urlencode(authorization_request_for_qrcode)
     url_id = str(uuid.uuid4())
     red.setex(url_id, 1000, url)
     return {
@@ -238,7 +238,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     }
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
-    oidc4vp_request = "openid4vp://?" + urlencode(authorization_request_for_qrcode)
+    oidc4vp_request = "openid-vc://?" + urlencode(authorization_request_for_qrcode)
     return {
         "oidc4vp_request": oidc4vp_request,
         "authentication_request_id": authentication_request_id
@@ -246,9 +246,6 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     
 # endpoint
 def verification_email(url_id):
-    """
-    updated
-    """
     red = current_app.config["REDIS"]
     try:
         uri = red.get(url_id).decode()
@@ -345,8 +342,7 @@ async def verifier_response(wallet_did):
             logging.error(" id_token invalid format %s", str(e))
             access = False
 
-    # look for claims and disclosures
-    disclosure = {}
+    # look for claims from disclosures
     claims = {}
     vp_token_list = None
     if access and vp_token:
@@ -371,7 +367,7 @@ async def verifier_response(wallet_did):
                 try:
                     logging.info("disclosure #%s = %s", i, base64.urlsafe_b64decode(_disclosure.encode()).decode())
                     disc = json.loads(base64.urlsafe_b64decode(_disclosure.encode()).decode())
-                    disclosure.update({disc[1]: disc[2]})
+                    claims.update({disc[1]: disc[2]})
                 except Exception:
                     logging.warning("i = %s", i)
                     logging.warning("_disclosure = %s", _disclosure)
@@ -427,19 +423,17 @@ async def verifier_response(wallet_did):
 
     # wallet data received for user verification
     if request_type == "user_verification":
-        wallet_data = {
-            "credential_status":"VALID",
-            "scope": nonce_data["mcp_scope"]
-        }
+        wallet_data = {"scope": nonce_data["mcp_scope"]}
         if nonce_data["mcp_scope"] == "wallet_identifier":
             wallet_data["wallet_identifier"] = sub
-        wallet_data.update(disclosure)
-        wallet_data.update(claims)
-        if nonce_data["mcp_scope"] == "raw":
-            wallet_data["raw"] = request.form    
+        elif nonce_data["mcp_scope"] == "raw":
+            wallet_data["raw"] = request.form 
+        else:
+            wallet_data.update(claims)   
+        # Store user data in Redis
         red.setex(request_id + "_wallet_data", CODE_LIFE, json.dumps(wallet_data))
 
-    # Update pull status for user and agents
+    # Store status for user and agents in Redis
     red.setex(request_id + "_status", CODE_LIFE, json.dumps({"status": "verified" if access else "denied"}))
 
     return jsonify(response), status_code
@@ -453,16 +447,19 @@ def wallet_pull_status(id, red):
     # Fetch status first
     status_raw = red.get(id + "_status")
     if not status_raw:
-        return {"status": "not_found", "id": id}
+        return {"status": "not_found"}
     try:
         status = json.loads(status_raw.decode()).get("status", "pending")
     except Exception:
         status = "pending"
 
     if status == "pending":
-        return {"status": "pending", "id": id}
+        return {"status": status}
+    elif status == "denied":
+        red.delete(id + "_status")
+        return {"status": status}
 
-    # verified or denied -> try to include wallet_data if present
+    # verified -> try to include wallet_data if present
     wd_raw = red.get(id + "_wallet_data")
     wallet_data = None
     if wd_raw:
@@ -470,11 +467,14 @@ def wallet_pull_status(id, red):
             wallet_data = json.loads(wd_raw.decode())
         except Exception:
             wallet_data = {"raw": wd_raw.decode(errors="ignore")}
-    
     response = {
-        "status": status,
-        "id": id,
+        "status": status
     }
     if wallet_data is not None:
         response.update(wallet_data)
+    
+    # delete redis storage
+    if status == "verified":
+        red.delete(id + "_status")
+        red.delete(id + "_wallet_data")
     return response
