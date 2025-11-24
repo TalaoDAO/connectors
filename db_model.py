@@ -161,7 +161,7 @@ class Wallet(db.Model):
     linked_vp = db.Column(db.Text)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
-    #linked_vp = db.Column(db.Text)
+    status = db.Column(db.String(256), default="pending")
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     
@@ -196,6 +196,7 @@ def seed_wallet(mode, manager):
             always_human_in_the_loop=False,
             did=did,
             url=url,
+            status="active",
             owners_identity_provider="google",
             owners_login=json.dumps(["thierry.thevenet@talao.io"]),
             did_document=create_did_document(did, jwk, url)
@@ -214,6 +215,7 @@ def seed_wallet(mode, manager):
             agent_pat_jti=agent_pat_jti,
             always_human_in_the_loop=True,
             did=did,
+            status="active",
             url=url,
             owners_identity_provider="google",
             owners_login=json.dumps(["thierry.thevenet@talao.io"]),

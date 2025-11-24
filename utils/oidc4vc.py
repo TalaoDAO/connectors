@@ -292,6 +292,38 @@ def sd(data):
     return payload, _disclosure
 
 
+def sign_sdjwt_by_agent(unsecured, agent_identifier, manager, draft=13, duration=360*24*60*60):
+    _payload, _disclosure = sd(unsecured)
+    # lazily create or fetch tenant key
+    key_id = manager.create_or_get_key_for_tenant(agent_identifier)
+    jwk, kid, alg = manager.get_public_key_jwk(key_id)
+    header = {
+        "alg": alg,
+        "kid": agent_identifier + "#key-1"
+    }
+    payload = {
+        'iss': agent_identifier,
+        'iat': int(datetime.timestamp(datetime.now())),
+        'exp': int(datetime.timestamp(datetime.now())) + duration,
+        "_sd_alg": "sha-256",
+    }
+    payload['cnf'] = {"kid": agent_identifier + "#key-1"}
+    payload.update(_payload)
+    if not payload.get("_sd"):
+        logging.info("no _sd present")
+        payload.pop("_sd_alg", None)
+    logging.info("sd-jwt payload = %s", json.dumps(payload, indent=4))
+    # build header
+    if draft >= 15:
+        header['typ'] = "dc+sd-jwt"
+    else:
+        header['typ'] = "vc+sd-jwt"
+    # sign with signer
+    sd_token = manager.sign_jwt_with_key(key_id, header, payload)
+    sd_token += _disclosure + "~"
+    return sd_token
+   
+
 def sign_sd_jwt(unsecured, credential_row, account, iss, wallet_jwk, wallet_did, draft, wallet_identifier="jwk", duration=365*24*60*60, x5c=False):
     """
     wallet_identifier : jwk | did

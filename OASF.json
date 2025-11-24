@@ -1,0 +1,574 @@
+{
+    "schema_version": "0.7.0",
+    "type": "service",
+    "name": "wallet4agent/mcp-server",
+    "id": "did:web:wallet4agent.com#mcp-server",
+    "description": "Wallet4Agent MCP server for decentralized and regulated identity: DIDs, Verifiable Credentials (SD-JWT VC & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, Linked Verifiable Presentations, and verifier flows for data wallets (QR or email-based proofs of over-18, verified email, and verified identity profile) — enabling trust and auditability for the Agentic Web.",
+    "homepage": "https://wallet4agent.com/",
+    "documentation": "https://wallet4agent.com/documentation/get_started",
+    "owner": {
+        "type": "organization",
+        "id": "did:web:talao.io",
+        "name": "Web3 Digital Wallet Team"
+    },
+    "tags": [
+    "Wallet4Agent",
+    "Agentic Web",
+    "MCP",
+    "A2A",
+    "DID",
+    "Verifiable Credentials",
+    "SD-JWT VC",
+    "JSON-LD VC",
+    "OIDC4VCI",
+    "OpenID4VP",
+    "Linked VP",
+    "identity",
+    "trust",
+    "verifier",
+    "data wallet",
+    "age verification",
+    "email verification",
+    "profile verification"
+  ],
+  "skills": [
+    {
+      "name": "identity.verification",
+      "id": "identity.verification"
+    },
+    {
+      "name": "credentials.wallet",
+      "id": "credentials.wallet"
+    },
+    {
+      "name": "credentials.presentation",
+      "id": "credentials.presentation"
+    },
+    {
+      "name": "credentials.issuance",
+      "id": "credentials.issuance"
+    },
+    {
+      "name": "cryptographic.signing",
+      "id": "cryptographic.signing"
+    }
+  ],
+  "security": {
+    "authentication": [
+      {
+        "type": "bearer_token",
+        "header": "Authorization",
+        "scheme": "Bearer",
+        "description": "Use Authorization: Bearer <token> or X-API-KEY to authenticate with the Wallet4Agent MCP server."
+      }
+    ],
+    "data_classification": "sensitive",
+    "notes": [
+      "Handles verifiable credentials and identity data for agents and humans.",
+      "Uses short-lived Redis state for verification and authentication flows.",
+      "Token types include PATs for dev/agent roles and guest access for onboarding."
+    ]
+  },
+  "modules": [
+    {
+      "type": "mcp_server",
+      "name": "com.wallet4agent/mcp-server",
+      "description": "MCP server exposing wallet and verifier tools for AI agents, including OIDC4VCI credential offers, OIDC4VP verification, agent-to-agent authentication, and wallet inspection tools.",
+      "transports": [
+        {
+          "kind": "http",
+          "url": "https://wallet4agent.com/mcp",
+          "methods": [
+            "POST"
+          ],
+          "protocol": "jsonrpc-2.0",
+          "info": "Primary MCP JSON-RPC endpoint."
+        },
+        {
+          "kind": "http",
+          "url": "https://wallet4agent.com/mcp/info",
+          "methods": [
+            "GET"
+          ],
+          "protocol": "http-json",
+          "info": "Human/machine-readable MCP info endpoint."
+        },
+        {
+          "kind": "http",
+          "url": "https://wallet4agent.com/mcp/healthz",
+          "methods": [
+            "GET"
+          ],
+          "protocol": "http-json",
+          "info": "Health check endpoint."
+        }
+      ],
+      "auth": {
+        "type": "bearer_token",
+        "header": "Authorization",
+        "scheme": "Bearer",
+        "description": "Send Authorization: Bearer <token> to authenticate with the MCP server."
+      },
+      "protocol": {
+        "name": "mcp",
+        "protocolVersion": "2025-06-18",
+        "serverInfo": {
+          "name": "MCP server for data wallet",
+          "version": "1.4.0"
+        },
+        "capabilities": {
+          "tools": {
+            "listChanged": true
+          },
+          "prompts": {
+            "listChanged": true
+          },
+          "resources": {
+            "listChanged": true
+          },
+          "logging": {}
+        }
+      },
+      "roles": [
+        "guest",
+        "agent",
+        "dev"
+      ],
+      "tools": [
+        {
+          "name": "create_agent_identifier_and_wallet",
+          "role": "guest",
+          "description": "Create a new Agent identifier (DID) and an attached wallet for that Agent, after authenticating the human owner via an external identity provider.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "owners_login": {
+                "type": "string",
+                "description": "Login identifier of the human owner (for the chosen identity provider)."
+              },
+              "owners_identity_provider": {
+                "type": "string",
+                "description": "Identifier of the identity provider for the owner (e.g. Google, Microsoft, etc.)."
+              }
+            },
+            "required": [
+              "owners_login",
+              "owners_identity_provider"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "add_authentication_key",
+          "role": "dev",
+          "description": "Register an additional authentication key for this Agent's DID, binding a new public key into its DID Document / wallet configuration.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "public_key": {
+                "type": "string",
+                "description": "The public key to add as an authentication method."
+              }
+            },
+            "required": [
+              "public_key"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_configuration",
+          "role": "dev",
+          "description": "Retrieve the Wallet4Agent configuration currently applied to this Agent (PATs, wallet mode, human-in-the-loop, etc.).",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "update_configuration",
+          "role": "dev",
+          "description": "Update the Wallet4Agent configuration for this Agent (e.g. flags such as always_human_in_the_loop).",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "delete_identity",
+          "role": "dev",
+          "description": "Delete this Agent's identity and wallet (dangerous operation).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "agent_identifier": {
+                "type": "string",
+                "description": "The Agent DID; must match the authenticated dev's Agent identifier."
+              }
+            },
+            "required": [
+              "agent_identifier"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "accept_credential_offer",
+          "role": "agent",
+          "description": "Accept an OIDC4VCI credential offer on behalf of this Agent and return the issued credential (attestation).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "credential_offer": {
+                "type": "string",
+                "description": "An OIDC4VCI credential_offer JSON object or credential_offer_uri string."
+              }
+            },
+            "required": [
+              "credential_offer"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "sign_text_message",
+          "role": "agent",
+          "description": "Sign a human-readable text message using this Agent's DID and private keys, returning a base64-encoded signature.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "The text message to sign."
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "sign_json_payload",
+          "role": "agent",
+          "description": "Sign a JSON payload using this Agent's DID and private keys, returning a JWS in Compact Serialization.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "payload": {
+                "type": "string",
+                "description": "The JSON payload as a string."
+              }
+            },
+            "required": [
+              "payload"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_this_wallet_data",
+          "role": "agent",
+          "description": "Retrieve a high-level overview of this Agent's identity and attached wallet (DID, wallet endpoint, number of attestations, human-in-the-loop flag).",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_attestations_of_this_wallet",
+          "role": "agent",
+          "description": "List all attestations (verifiable credentials) stored in the wallet attached to this Agent.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "get_attestations_of_another_agent",
+          "role": "agent",
+          "description": "Resolve another Agent's DID and retrieve its published attestations from Linked Verifiable Presentations.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "agent_identifier": {
+                "type": "string",
+                "description": "The DID of the other Agent whose published attestations should be listed."
+              }
+            },
+            "required": [
+              "agent_identifier"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "describe_wallet4agent",
+          "role": "agent",
+          "description": "Self-description tool explaining what Wallet4Agent is, how the wallet works, and how it relates to AI agents and verifiable credentials.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "explain_how_to_install_wallet4agent",
+          "role": "agent",
+          "description": "Explain to a human developer how to install and use Wallet4Agent MCP server, obtain a PAT, create an Agent DID and wallet, and wire everything together securely.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "start_user_verification",
+          "role": "agent",
+          "description": "Start an email-based OIDC4VP user verification. Sends the user an email with a link that opens their identity wallet to prove either profile data or age (over 18).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "over18",
+                  "profile"
+                ],
+                "description": "Verification scope: 'profile' (first name, last name, birth date) or 'over18' (age over 18 assertion)."
+              },
+              "user_email": {
+                "type": "string",
+                "description": "Email address of the user receiving the verification invitation."
+              }
+            },
+            "required": [
+              "scope",
+              "user_email"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "poll_user_verification",
+          "role": "agent",
+          "description": "Poll the result of a previously started user verification using the verification_request_id.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "verification_request_id": {
+                "type": "string",
+                "description": "Opaque verification_request_id returned by start_user_verification."
+              }
+            },
+            "required": [
+              "verification_request_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "start_agent_authentication",
+          "role": "agent",
+          "description": "Start an agent-to-agent OIDC4VP authentication with another Agent DID, resolving its DID Document and calling its OIDC4VP endpoint.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "agent_identifier": {
+                "type": "string",
+                "description": "The DID of the other Agent to authenticate."
+              }
+            },
+            "required": [
+              "agent_identifier"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "poll_agent_authentication",
+          "role": "agent",
+          "description": "Poll the status of an agent-to-agent authentication flow using the authentication_request_id.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "authentication_request_id": {
+                "type": "string",
+                "description": "Opaque authentication_request_id returned by start_agent_authentication."
+              }
+            },
+            "required": [
+              "authentication_request_id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "prompts": [
+        {
+          "name": "wallet4agent.explain_verification_flow",
+          "description": "Explain to a human how the email-based Wallet4Agent verification flow works for a given scope (profile or over18).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "over18",
+                  "profile"
+                ]
+              }
+            },
+            "required": [
+              "scope"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "resources": [
+        {
+          "uri": "wallet4agent/docs/get_started",
+          "name": "Wallet4Agent – Getting Started for Developers",
+          "description": "Markdown documentation explaining how to create an Agent identity and wallet, obtain a dev PAT, and configure authentication.",
+          "mimeType": "text/markdown",
+          "role": [
+            "guest",
+            "agent"
+          ]
+        },
+        {
+          "uri": "wallet4agent/this_agent",
+          "name": "This Agent identity and wallet",
+          "description": "Overview of this Agent's DID and wallet (endpoint, number of attestations, human-in-the-loop flag).",
+          "mimeType": "application/json",
+          "role": [
+            "agent"
+          ]
+        },
+        {
+          "uri": "wallet4agent/this_agent/attestations",
+          "name": "This Agent's attestations",
+          "description": "All attestations (verifiable credentials) currently held by this Agent in its wallet.",
+          "mimeType": "application/json",
+          "role": [
+            "agent"
+          ]
+        },
+        {
+          "uri": "wallet4agent/agent/{did}/attestations",
+          "name": "Another Agent's published attestations",
+          "description": "Template resource. Replace {did} with a specific Agent DID to retrieve its published attestations via Linked VPs.",
+          "mimeType": "application/json",
+          "role": [
+            "agent"
+          ]
+        },
+        {
+          "uri": "wallet4agent/description",
+          "name": "Wallet4Agent server description",
+          "description": "Self-description of the Wallet4Agent MCP server and its wallet role in agentic systems.",
+          "mimeType": "application/json",
+          "role": [
+            "agent"
+          ]
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "type": "source-code",
+      "language": "python",
+      "role": "mcp_server_implementation",
+      "url": "/mnt/data/mcp_server.py"
+    },
+    {
+      "type": "source-code",
+      "language": "python",
+      "role": "verifier_tools",
+      "url": "/mnt/data/verifier_tools.py"
+    },
+    {
+      "type": "source-code",
+      "language": "python",
+      "role": "wallet_tools_for_agent",
+      "url": "/mnt/data/wallet_tools_for_agent.py"
+    },
+    {
+      "type": "mcp_server_manifest",
+      "language": "json",
+      "role": "mcp_server_server_json",
+      "url": "/mnt/data/server.json"
+    },
+    {
+      "type": "mcp_server_manifest",
+      "language": "json",
+      "role": "mcp_server_manifest_json",
+      "url": "/mnt/data/manifest.json"
+    }
+  ],
+  "version": "0.1.0",
+  "authors": [
+    "Wallet4Agent Team"
+  ],
+  "created_at": "2025-11-24T00:00:00Z",
+  "domains": [
+    {
+      "name": "identity-and-access-management",
+      "id": "identity-and-access-management"
+    }
+  ],
+  "locators": [
+    {
+      "type": "source-code",
+      "url": "/mnt/data/mcp_server.py",
+      "meta": {
+        "language": "python",
+        "role": "mcp_server_implementation"
+      }
+    },
+    {
+      "type": "source-code",
+      "url": "/mnt/data/verifier_tools.py",
+      "meta": {
+        "language": "python",
+        "role": "verifier_tools"
+      }
+    },
+    {
+      "type": "source-code",
+      "url": "/mnt/data/wallet_tools_for_agent.py",
+      "meta": {
+        "language": "python",
+        "role": "wallet_tools_for_agent"
+      }
+    },
+    {
+      "type": "mcp_server_manifest",
+      "url": "/mnt/data/server.json",
+      "meta": {
+        "language": "json",
+        "role": "mcp_server_server_json"
+      }
+    },
+    {
+      "type": "mcp_server_manifest",
+      "url": "/mnt/data/manifest.json",
+      "meta": {
+        "language": "json",
+        "role": "mcp_server_manifest_json"
+      }
+    }
+  ]
+}

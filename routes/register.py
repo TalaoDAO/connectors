@@ -37,7 +37,8 @@ github_client = WebApplicationClient(GITHUB_CLIENT_ID)
 def init_app(app, db):
     
     app.add_url_rule('/register',  view_func=register, methods=['GET'])
-
+    app.add_url_rule('/create-wallet',  view_func=create_wallet, methods=['GET'])
+    
     app.add_url_rule('/register/auth/google',  view_func=login_with_google, methods=['POST', 'GET'])
     app.add_url_rule('/register/auth/google/callback', view_func=register_google_callback, methods=['GET', 'POST'], defaults={'db': db})
     app.add_url_rule('/register/auth/github',  view_func=login_with_github, methods=['GET', 'POST'])
@@ -47,8 +48,9 @@ def init_app(app, db):
     app.add_url_rule('/register/auth/wallet/callback',  view_func=register_wallet_callback, methods=['GET', 'POST'], defaults={'db': db})
     
     app.add_url_rule('/register/admin',  view_func=register_admin, methods=['GET', 'POST'])
+    return
     
-# entry pooint
+# entry point
 def register():
     session_id = request.args.get("session_id", "")
     red = current_app.config["REDIS"]
@@ -61,7 +63,6 @@ def register():
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    
     if wallet.owners_identity_provider == "google":
         return redirect(url_for("login_with_google", session_id=session_id))
     elif wallet.owners_identity_provider == "github":
@@ -69,7 +70,24 @@ def register():
     elif wallet.owners_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
     
-    logging.warning("wallet identity provider unknonw")
+    logging.warning("wallet identity provider unknown")
+    message = "User authentication failed"
+    return render_template("wallet/session_screen.html", message=message, title="Sorry !")
+
+
+# wallet registration
+def create_wallet():
+    wallet_did = request.args.get("wallet_did")
+    wallet = Wallet.query.filter_by(did=wallet_did).first()
+    if not wallet:
+        message = "Wallet not found"
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
+    identity_provider = wallet.owners_identity_provider
+    if identity_provider == "google":
+        return redirect('/register/auth/google?wallet_did=' + wallet_did)
+    elif identity_provider == "github":
+        return redirect('/register/auth/github?wallet_did=' + wallet_did)    
+    logging.warning("wallet identity provider unknown")
     message = "User authentication failed"
     return render_template("wallet/session_screen.html", message=message, title="Sorry !")
 
@@ -121,7 +139,6 @@ def register_google_callback(db):
     return redirect("/")
 
 
-
 def login_with_github():
     state = request.args.get("session_id")
     return redirect(f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={GITHUB_CALLBACK}&scope=user:email&state={state}")
@@ -164,7 +181,6 @@ def register_github_callback(db):
     logging.warning("user is not found in DB")
     return redirect("/")
     
-
 
 def login_with_wallet():
     state = request.args.get("session_id")
@@ -251,7 +267,6 @@ def register_wallet_callback(db):
             return redirect("/")
     logging.warning("user is not found")
     return redirect("/")
-
 
 
 def register_admin():
