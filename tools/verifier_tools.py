@@ -4,7 +4,7 @@ import base64
 from typing import Any, Dict, List, Optional
 import logging
 import qrcode
-from routes.verifier import oidc4vp
+from routes import verifier
 from utils import message
 import requests
 
@@ -155,7 +155,7 @@ def call_start_user_verification(arguments: Dict[str, Any], agent_identifier, co
     user_email = arguments.get("user_email")
 
     # Create OIDC4VP request & internal verification_request_id
-    data = oidc4vp.user_verification(agent_identifier, scope, red, mode, manager)
+    data = verifier.user_verification(agent_identifier, scope, red, mode, manager)
     if not data:
         return _ok_content(
             [{"type": "text", "text": "Server error while preparing verification."}],
@@ -220,7 +220,7 @@ def call_start_agent_authentication(
     manager = config["MANAGER"]
 
     # Create OIDC4VP/SIOPV2 request for agent authentication
-    data = oidc4vp.agent_authentication(
+    data = verifier.agent_authentication(
         target_agent, agent_identifier, red, mode, manager
     )
     if not data:
@@ -341,12 +341,12 @@ def call_poll_user_verification(arguments: Dict[str, Any], agent_identifier, con
     red = config["REDIS"]
     verification_request_id = arguments.get("verification_request_id")
 
-    payload = oidc4vp.wallet_pull_status(verification_request_id, red)
+    payload = verifier.wallet_pull_status(verification_request_id, red)
     status = payload.get("status", "pending")
     # fallback
     if status == "not_found":
         fallback_id = agent_identifier + "_last_user_verification"
-        payload = oidc4vp.wallet_pull_status(fallback_id, red)
+        payload = verifier.wallet_pull_status(fallback_id, red)
         status = payload.get("status", "pending")
 
     # claims are all non-technical keys
@@ -390,12 +390,12 @@ def call_poll_agent_authentication(arguments: Dict[str, Any], agent_identifier, 
     red = config["REDIS"]
     authentication_request_id = arguments.get("authentication_request_id")
 
-    payload = oidc4vp.wallet_pull_status(authentication_request_id, red)
+    payload = verifier.wallet_pull_status(authentication_request_id, red)
     status = payload.get("status", "pending")
     # fallback
     if status == "not_found":
         fallback_id = agent_identifier + "_last_agent_authentication"
-        payload = oidc4vp.wallet_pull_status(fallback_id, red)
+        payload = verifier.wallet_pull_status(fallback_id, red)
         status = payload.get("status", "pending")
 
     structured = {"status": status, "authentication_request_id": authentication_request_id}

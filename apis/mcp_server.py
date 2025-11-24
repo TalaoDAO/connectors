@@ -2,7 +2,7 @@ import json
 from typing import Any, Dict, List, Optional
 import logging
 from flask import request, jsonify, current_app, make_response, Response
-from db_model import Verifier, Wallet
+from db_model import Wallet
 from utils.kms import decrypt_json
 from tools import wallet_tools, verifier_tools, wallet_tools_for_agent
 from utils import oidc4vc

@@ -20,18 +20,17 @@ from utils import message
 from db_model import (
     load_user, db,
     seed_credential, seed_signin_for_wallet_registration,
-    seed_user, seed_verifier_for_demo, seed_wallet
+    seed_user, seed_wallet
 )
 
 # Routes / APIs (kept as they are, just registered here)
 from routes import (
     home, register, menu, user_profile,
-    did_document, online_test,
-    log, wallet, authorization_server,agent_chat
+    wallet, authorization_server,agent_chat
 )
 
 
-from routes.verifier import crud_verifier, select_verifier, oidc4vp  
+from routes import verifier  
 
 from routes.issuer import oidc4vci, select_issuer, crud_issuer
     
@@ -131,7 +130,6 @@ def create_app() -> Flask:
             seed_credential()
             seed_signin_for_wallet_registration(mode)
             #seed_issuer_for_testing(mode)
-            #seed_verifier_for_demo(mode)
             seed_wallet(mode, manager)
 
     # ---- Flask-Login ----
@@ -144,9 +142,6 @@ def create_app() -> Flask:
     # Prefer using app.config within routes instead of passing red/mode as defaults
     crud_credential.init_app(app)             # reads current_app.config as needed
     select_credential.init_app(app)
-
-    select_verifier.init_app(app)
-    crud_verifier.init_app(app)
     
     select_issuer.init_app(app)
     crud_issuer.init_app(app)
@@ -155,10 +150,10 @@ def create_app() -> Flask:
     crud_signin.init_app(app)
 
     user_profile.init_app(app)
-    did_document.init_app(app)
-    online_test.init_app(app)
+    #did_document.init_app(app)
+    #online_test.init_app(app)
 
-    oidc4vp.init_app(app)    # your verifier API
+    verifier.init_app(app)    # your verifier API
     oidc4vci.init_app(app)    # your verifier API
     bridge.init_app(app)
     
@@ -170,7 +165,7 @@ def create_app() -> Flask:
     register.init_app(app, db)
     menu.init_app(app)
 
-    log.init_audit_logging(app)
+    #log.init_audit_logging(app)
     
     statuslist.init_app(app)
     

@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import os
-from db_model import db, Verifier, default_verifier_request_key, default_verifier_encryption_key
+from db_model import db
 
 UPLOAD_FOLDER = 'static/uploads'  # make sure this folder exists
 

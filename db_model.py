@@ -26,7 +26,6 @@ class User(UserMixin, db.Model):
     organization = db.Column(db.String(256))
     billing_id = db.Column(db.String(128))
     country = db.Column(db.String(64))
-    verifiers = db.relationship("Verifier", backref="user", lazy=True)
     signinss = db.relationship("Signin", backref="user", lazy=True)
     role = db.Column(db.String(64), default="user")
     profile_picture = db.Column(db.String(256), default ="default_picture.jpeg")  # stores filename or URL
@@ -66,36 +65,6 @@ def default_verifier_encryption_key():
 def default_verifier_request_key():
     key = jwk.JWK.generate(kty="EC", crv="P-256", alg="ES256")
     return json.loads(key.export(private_key=True))
-
-
-class Verifier(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    name = db.Column(db.Text)
-    description = db.Column(db.Text)
-    verifier_type = db.Column(Enum("sandbox", "qualified", name="verifier_type"))
-    created_at = db.Column(db.DateTime(timezone=True), default=datetime.now, nullable=False)
-    updated_at = db.Column(db.DateTime(timezone=True), default=datetime.now, onupdate=datetime.now, nullable=False)
-    client_id_scheme = db.Column(db.String(64), default="redirect_uri", nullable=False)
-    client_id = db.Column(db.String(256))
-    presentation_format = db.Column(Enum("presentation_exchange", "dcql_query", name="presentation_format"), default="presentation_exchange")
-    presentation = db.Column(db.Text, default="{}")
-    response_mode = db.Column(Enum("direct_post", "direct_post.jwt", name="response_mode", default="direct_post"))
-    response_type =  db.Column(db.String(64), default="vp_token", nullable=False)
-    credential_id = db.Column(db.String(256))
-    credential_id_for_encryption = db.Column(db.String(256))
-    verifier_info = db.Column(db.Text, default="{}")
-    verifier_metadata = db.Column(db.Text, default="{}")
-    application_api = db.Column(db.Text, nullable=False)
-    application_api_verifier_id = db.Column(db.String(64), nullable=False, index=True)
-    response_encryption = db.Column(db.Boolean, default=False, nullable=False)
-    draft = db.Column(db.String(64), default="20", nullable=False)
-    prefix = db.Column(db.String(64), default="openid4vp://", nullable=False)
-    response_redirect_uri = db.Column(db.String(256))
-    log = db.Column(db.Boolean, default=False, nullable=False)
-    test = db.Column(db.String(256), default="")
-    dc_api = db.Column(db.Boolean, default=False, nullable=False)
-
 
 
 class Signin(db.Model):
@@ -171,7 +140,6 @@ class Credential(db.Model):
     x5c = db.Column(db.Text) # trust chain
     did = db.Column(db.Text)
     verification_method = db.Column(db.Text)
-    #verifier_attestation = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.now)
     provider = db.Column(db.String(64))
     san_dns = db.Column(db.String(64))
@@ -277,7 +245,6 @@ def seed_credential():
                 x5c=json.dumps(credential.get("x5c", [])),
                 did=credential.get("did"),
                 verification_method=credential.get("verification_method"),
-                #verifier_attestation=credential.get("verifier_attestation"),
                 san_dns=oidc4vc.extract_first_san_dns_from_der_b64(credential.get("certificate")),
                 san_uri=oidc4vc.extract_first_san_uri_from_der_b64(credential.get("certificate")),
                 exp=oidc4vc.extract_expiration(credential.get("certificate"))
@@ -310,115 +277,6 @@ def seed_signin_for_wallet_registration(mode):
         )
         db.session.add(default_signin)
         db.session.commit()
-
-verifier_metadata = {
-    "vp_formats": {
-        "vc+sd-jwt": {
-            "kb-jwt_alg_values": [
-                "ES256",
-            ],
-            "sd-jwt_alg_values": [
-                "ES256",
-            ]
-        }
-    }
-}
-def seed_verifier_for_demo(mode):
-    if not Verifier.query.first():
-        application_api_0 = {
-            "url": mode.server + "verifier/app",
-            "verifier_id": "0000",
-            "verifier_secret": "0000"
-        }
-        verifier_0 = Verifier(
-            user_id=1,
-            name="Verifier for demo DIIP V3 with scheme redirect_uri",
-            draft="20",
-            verifier_type="sandbox",
-            description="This is a verifier for demo and swagger",
-            client_id_scheme="redirect_uri",
-            client_id=mode.server + "verifier/wallet/callback",
-            response_mode="direct_post",
-            credential_id="signature_key_1",
-            application_api=encrypt_json(application_api_0),
-            application_api_verifier_id="0000",
-            response_encryption=False,
-            prefix="openid-vc://",
-            response_redirect_uri="",
-            verifier_metadata=json.dumps(verifier_metadata)
-        )
-        application_api_1 = {
-            "url": mode.server + "verifier/app",
-            "verifier_id": "0001",
-            "verifier_secret": "0001"
-        }
-        verifier_1 = Verifier(
-            user_id=1,
-            name="fo demo with draft 20 with scheme DID",
-            draft="20",
-            verifier_type="sandbox",
-            description="This is a verifier for demo mcp server",
-            client_id_scheme="did",
-            client_id="did:web:talao.co",
-            response_mode="direct_post",
-            credential_id="signature_key_1",
-            application_api=encrypt_json(application_api_1),
-            application_api_verifier_id="0001",
-            response_encryption=False,
-            prefix="openid-vc://",
-            response_redirect_uri="",
-            verifier_metadata=json.dumps(verifier_metadata)
-        )
-        application_api_2 = {
-            "url": mode.server + "verifier/app",
-            "verifier_id": "0002",
-            "verifier_secret": "0002"
-        }
-        verifier_2 = Verifier(
-            user_id=1,
-            name="demo draft 20 with DID",
-            draft="20",
-            verifier_type="sandbox",
-            description="This is a verifier for demo mcp server",
-            client_id_scheme="did",
-            client_id="did:web:talao.co",
-            response_mode="direct_post",
-            credential_id="signature_key_1",
-            application_api=encrypt_json(application_api_2),
-            application_api_verifier_id="0002",
-            response_encryption=False,
-            prefix="openid-vc://",
-            response_redirect_uri="",
-            verifier_metadata=json.dumps(verifier_metadata)
-        )
-        application_api_3 = {
-            "url": mode.server + "verifier/app",
-            "verifier_id": "0003",
-            "verifier_secret": "0003"
-        }
-        verifier_3 = Verifier(
-            user_id=1,
-            name="demo draft 28 and DID",
-            draft="28",
-            verifier_type="sandbox",
-            description="This is a verifier for demo",
-            client_id_scheme="did",
-            client_id="did:web:talao.co",
-            response_mode="direct_post",
-            credential_id="signature_key_1",
-            application_api=encrypt_json(application_api_3),
-            application_api_verifier_id="0003",
-            response_encryption=False,
-            prefix="openid-vc://",
-            response_redirect_uri="",
-            verifier_metadata=json.dumps(verifier_metadata)
-        )
-        db.session.add(verifier_0)
-        db.session.add(verifier_1)
-        db.session.add(verifier_2)
-        db.session.add(verifier_3)
-        db.session.commit()
-            
 
 
 def seed_user():
