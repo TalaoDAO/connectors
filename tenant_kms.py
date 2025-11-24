@@ -311,6 +311,27 @@ class TenantKMSManager:
         return jwk, kid, alg
     
     def sign_message(self, key_id, message_bytes):
+        """
+        Sign an arbitrary-length message with KMS using ECDSA + SHA-256.
+
+        We hash locally and pass the digest to KMS with MessageType="DIGEST"
+        to avoid the 4096-byte RAW message limit.
+        """
+        # Compute SHA-256 digest of the message
+        digest = hashlib.sha256(message_bytes).digest()
+
+        resp = self.kms.sign(
+            KeyId=key_id,
+            Message=digest,
+            MessageType="DIGEST",
+            SigningAlgorithm="ECDSA_SHA_256",
+        )
+        signature = resp["Signature"]
+        # decode ASN.1 DER ECDSA signature into (r,s)
+        r, s = decode_dss_signature(signature)
+        return signature, (r, s)
+    """
+    def sign_message(self, key_id, message_bytes):
         # MessageType=RAW instructs KMS to hash using the signing algorithm's hash (SHA-256 for ECDSA_SHA_256)
         resp = self.kms.sign(
             KeyId=key_id,
@@ -322,7 +343,7 @@ class TenantKMSManager:
         # decode ASN.1 DER ECDSA signature into (r,s)
         r, s = decode_dss_signature(signature)
         return signature, (r, s)
-
+    """
     def sign_jwt_with_key(self, key_id, header: dict, payload: dict) -> str:
         # Choose alg from the KMS key spec
         md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]

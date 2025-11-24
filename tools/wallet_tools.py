@@ -56,7 +56,7 @@ tools_dev = [
         }
     },
     {
-        "name": "create_oasf_linked_vp",
+        "name": "create_OASF",
         "description": "Add OASF record to DID Document.",
         "inputSchema": {
             "type": "object",
@@ -642,7 +642,7 @@ def call_update_configuration(
     )
 
 # tool
-def call_create_oasf_linked_vp(agent_identifier, config):
+def call_create_oasf(agent_identifier, config):
     manager = config["MANAGER"]
     mode = config["MODE"]
     with open("OASF.json", "r", encoding="utf-8") as f:
@@ -658,7 +658,7 @@ def call_create_oasf_linked_vp(agent_identifier, config):
             "success": True,
             "message": message
         }
-        text = f"OASF record published for Agent {agent_identifier}"
+        text = f"{message} for Agent {agent_identifier}"
         return _ok_content([{"type": "text", "text": text}], structured=structured)
 
     logging.warning("Failed to publish OASF record as LInked VP " + message)
@@ -668,6 +668,7 @@ def call_create_oasf_linked_vp(agent_identifier, config):
 
 
 def store_and_publish(cred, agent_identifier, manager, mode, published=False):
+    """ The OASF attestation is unique"""
     # store attestation
     vcsd = cred.split("~") 
     vcsd_jwt = vcsd[0]
@@ -678,32 +679,41 @@ def store_and_publish(cred, agent_identifier, manager, mode, published=False):
         return None, "Attestation is in an incorrect format and cannot be stored"
 
     # attestation as a service id
-    id = secrets.token_hex(16)
-    service_id = agent_identifier + "#" + id
+    #id = secrets.token_hex(16)
+    service_id = agent_identifier + "#OASF"
     
     if published:
         result = publish(service_id, cred, mode.server, manager)
         if not result:
             logging.warning("publish failed")
             published = False
-            
-    attestation = Attestation(
-            wallet_did=agent_identifier,
-            service_id=service_id,
-            vc=cred,
-            vc_format=attestation_header.get("typ"),
-            issuer=attestation_payload.get("iss"),
-            vct=attestation_payload.get("vct"),
-            name=attestation_payload.get("name",""),
-            description=attestation_payload.get("description",""),
-            published=published
-        )
-    db.session.add(attestation)
+    
+    attestation = Attestation.query.filter(Attestation.service_id == service_id).one_or_none()    
+    if not attestation:
+        attestation = Attestation(
+                wallet_did=agent_identifier,
+                service_id=service_id,
+                vc=cred,
+                vc_format=attestation_header.get("typ"),
+                issuer=attestation_payload.get("iss"),
+                vct=attestation_payload.get("vct"),
+                name=attestation_payload.get("name",""),
+                description=attestation_payload.get("description",""),
+                published=published
+            )
+        db.session.add(attestation)
+        text = "New OASF has been stored"
+    else:
+        attestation.vc = cred
+        attestation.name = attestation_payload.get("name","")
+        attestation.description = attestation_payload.get("description","")
+        attestation.published = published
+        text = "OASF has been updated"
     db.session.commit()
     if attestation: 
         logging.info("credential is stored as attestation #%s", attestation.id)
     
-    return True, "Attestation has been stored"
+    return True, text
 
 
 # helper: base64url without padding
@@ -712,40 +722,35 @@ def base64url_encode(data: bytes) -> str:
 
 
 def publish(service_id, attestation, server, manager):
-
-    # 1. Look up wallet did and id
     wallet_did = service_id.split("#")[0]
     id = service_id.split("#")[1]
-    
+
     this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
     if this_wallet is None:
         logging.error("Wallet not found for DID %s", wallet_did)
         return None
 
-    # 2. Load existing DID Document
     try:
         did_document = json.loads(this_wallet.did_document or "{}")
     except Exception:
         logging.exception("Invalid DID Document in wallet")
         return None
 
-    # 3. Normalize / validate incoming SD-JWT VC presentation (SD-JWT)
     sd_jwt_presentation = attestation.strip()
     if not sd_jwt_presentation.endswith("~"):
         sd_jwt_presentation = sd_jwt_presentation + "~"
 
-    # remove disclosure if any
     sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
     if not sd_jwt_plus_kb:
         return None
 
-    # 6. Wrap into a VC Data Model 2.0-style Verifiable Presentation envelope
-    #    Using media type application/dc+sd-jwt in a data: URI.
     vp_resource = {
         "@context": ["https://www.w3.org/ns/credentials/v2"],
         "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
         "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
     }
+
+    # Update linked_vp JSON: single entry for key "OASF"
     try:
         linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
     except Exception:
@@ -753,29 +758,41 @@ def publish(service_id, attestation, server, manager):
     linked_vp_json[id] = vp_resource
     this_wallet.linked_vp = json.dumps(linked_vp_json)
 
-    # 8. Create LinkedVerifiablePresentation service endpoint in DID Doc
-    service_array = did_document.get("service", [])
-    
+    # Update DID Document service entries:
+    # remove any existing LinkedVerifiablePresentation for this id / OASF
+    service_array = did_document.get("service", []) or []
+    endpoint = server + "service/" + wallet_did + "/" + id
+
+    new_services = []
+    for s in service_array:
+        # Keep all services except:
+        #  - exact same id, or
+        #  - LinkedVerifiablePresentation with same endpoint
+        if s.get("id") == service_id:
+            continue
+        if s.get("type") == "LinkedVerifiablePresentation" and s.get("serviceEndpoint") == endpoint:
+            continue
+        new_services.append(s)
+
     new_service = {
         "id": service_id,
         "type": "LinkedVerifiablePresentation",
-        "serviceEndpoint": server + "service/" + wallet_did + "/" + id,
+        "serviceEndpoint": endpoint,
     }
+    new_services.append(new_service)
 
-    service_array.append(new_service)
-    did_document["service"] = service_array
+    did_document["service"] = new_services
     this_wallet.did_document = json.dumps(did_document)
 
-    # 9. Persist changes
     db.session.commit()
     logging.info("attestation is published")
 
-    # Optionally return details for caller
     return {
         "service_id": service_id,
         "service": new_service,
         "verifiable_presentation": vp_resource,
     }
+
 
     
 def sign_and_add_kb(sd_jwt, wallet_did, manager):

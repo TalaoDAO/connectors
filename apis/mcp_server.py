@@ -605,11 +605,11 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_configuration(agent_identifier, config())
             
-            elif name == "create_oasf_linked_vp":
+            elif name == "create_OASF":
                 if role != "dev":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_create_oasf_linked_vp(agent_identifier, config())
+                out = wallet_tools.call_create_oasf(agent_identifier, config())
                 
             elif name == "update_configuration":
                 if role != "dev":
