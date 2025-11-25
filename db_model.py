@@ -157,7 +157,7 @@ class Wallet(db.Model):
     owners_login = db.Column(db.String(64))
     ecosystem_profile = db.Column(db.String(64), default="DIIP V3")
     agent_framework = db.Column(db.String(64), default="None")
-    url = db.Column(db.Text)
+    url = db.Column(db.Text, unique=True)
     linked_vp = db.Column(db.Text)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
@@ -187,7 +187,7 @@ def seed_wallet(mode, manager):
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo"
-        url = mode.server + "did/" + did
+        url = mode.server  + did
         dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo")
         agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo", duration=90*24*60*60)
         wallet_1 = Wallet(
@@ -207,7 +207,7 @@ def seed_wallet(mode, manager):
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did = "did:web:wallet4agent.com:demo2"
-        url = mode.server + "did/" + did
+        url = mode.server  + did
         dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo2")
         agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo2", duration=90*24*60*60)
         wallet_2 = Wallet(
@@ -222,6 +222,7 @@ def seed_wallet(mode, manager):
             did_document=create_did_document(did, jwk, url)
         )
         db.session.add(wallet_2)
+        
         db.session.commit()
 
 

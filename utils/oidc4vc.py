@@ -295,6 +295,7 @@ def sd(data):
 def sign_sdjwt_by_agent(unsecured, agent_identifier, manager, draft=13, duration=360*24*60*60):
     if "all" in unsecured.get("disclosure", []):
         _payload, _disclosure = unsecured, ""
+        _payload.pop("disclosure")
     else:
         _payload, _disclosure = sd(unsecured)
     # lazily create or fetch tenant key

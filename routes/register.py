@@ -69,6 +69,8 @@ def register():
         return redirect(url_for("login_with_github", session_id=session_id))
     elif wallet.owners_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
+    elif wallet.owners_identity_provider == "admin":
+        return redirect(url_for("register_admin", session_id=session_id))
     
     logging.warning("wallet identity provider unknown")
     message = "User authentication failed"
@@ -247,7 +249,7 @@ def register_wallet_callback(db):
     logging.info("userinfo response = %s", json.dumps(userinfo, indent=2))
     sub = userinfo.get("sub")
 
-    # chek if user and session_id exists
+    # check if user and session_id exists
     user = User.query.filter_by(login=sub).first()
     if user:
         try:
@@ -270,7 +272,7 @@ def register_wallet_callback(db):
 
 
 def register_admin():
-    session_id = request.form.get("session_id", "")
+    session_id = request.args.get("session_id", "")
     if session_id:
         red = current_app.config["REDIS"]
         logout_user()

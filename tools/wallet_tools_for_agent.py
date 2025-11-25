@@ -713,6 +713,7 @@ def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
         },
         "wallet": {
             "endpoint": this_wallet.url if this_wallet else None,
+            "ecosystem": this_wallet.ecosystem_profile,
             "number_of_attestations": len(attestations_list),
             "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,
         },

@@ -486,38 +486,6 @@
       ]
     }
   ],
-  "artifacts": [
-    {
-      "type": "source-code",
-      "language": "python",
-      "role": "mcp_server_implementation",
-      "url": "/mnt/data/mcp_server.py"
-    },
-    {
-      "type": "source-code",
-      "language": "python",
-      "role": "verifier_tools",
-      "url": "/mnt/data/verifier_tools.py"
-    },
-    {
-      "type": "source-code",
-      "language": "python",
-      "role": "wallet_tools_for_agent",
-      "url": "/mnt/data/wallet_tools_for_agent.py"
-    },
-    {
-      "type": "mcp_server_manifest",
-      "language": "json",
-      "role": "mcp_server_server_json",
-      "url": "/mnt/data/server.json"
-    },
-    {
-      "type": "mcp_server_manifest",
-      "language": "json",
-      "role": "mcp_server_manifest_json",
-      "url": "/mnt/data/manifest.json"
-    }
-  ],
   "version": "0.1.0",
   "authors": [
     "Wallet4Agent Team"
@@ -531,32 +499,8 @@
   ],
   "locators": [
     {
-      "type": "source-code",
-      "url": "/mnt/data/mcp_server.py",
-      "meta": {
-        "language": "python",
-        "role": "mcp_server_implementation"
-      }
-    },
-    {
-      "type": "source-code",
-      "url": "/mnt/data/verifier_tools.py",
-      "meta": {
-        "language": "python",
-        "role": "verifier_tools"
-      }
-    },
-    {
-      "type": "source-code",
-      "url": "/mnt/data/wallet_tools_for_agent.py",
-      "meta": {
-        "language": "python",
-        "role": "wallet_tools_for_agent"
-      }
-    },
-    {
       "type": "mcp_server_manifest",
-      "url": "/mnt/data/server.json",
+      "url": "https://wallet4agent.com/mcp/info",
       "meta": {
         "language": "json",
         "role": "mcp_server_server_json"
@@ -564,7 +508,7 @@
     },
     {
       "type": "mcp_server_manifest",
-      "url": "/mnt/data/manifest.json",
+      "url": "https://wallet4agent.com/manifest.json",
       "meta": {
         "language": "json",
         "role": "mcp_server_manifest_json"

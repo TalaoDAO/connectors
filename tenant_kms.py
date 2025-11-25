@@ -330,20 +330,7 @@ class TenantKMSManager:
         # decode ASN.1 DER ECDSA signature into (r,s)
         r, s = decode_dss_signature(signature)
         return signature, (r, s)
-    """
-    def sign_message(self, key_id, message_bytes):
-        # MessageType=RAW instructs KMS to hash using the signing algorithm's hash (SHA-256 for ECDSA_SHA_256)
-        resp = self.kms.sign(
-            KeyId=key_id,
-            Message=message_bytes,
-            MessageType="RAW",
-            SigningAlgorithm="ECDSA_SHA_256"
-        )
-        signature = resp["Signature"]
-        # decode ASN.1 DER ECDSA signature into (r,s)
-        r, s = decode_dss_signature(signature)
-        return signature, (r, s)
-    """
+    
     def sign_jwt_with_key(self, key_id, header: dict, payload: dict) -> str:
         # Choose alg from the KMS key spec
         md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]

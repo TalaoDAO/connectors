@@ -31,7 +31,7 @@ tools_guest = [
                 "owners_identity_provider": {
                     "type": "string",
                     "description": "Identity provider for owners",
-                    "enum": ["google", "github", "email"],
+                    "enum": ["google", "github", "email", "admin"],
                     "default": "google"
                 },
                 "owners_login": {
@@ -48,7 +48,7 @@ tools_guest = [
 tools_dev = [
     {
         "name": "get_configuration",
-        "description": "Get the configuration data.",
+        "description": "Get the wallet configuration data and DID Document.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -57,7 +57,7 @@ tools_dev = [
     },
     {
         "name": "create_OASF",
-        "description": "Add OASF record to DID Document.",
+        "description": "Add an OASF record to the DID Document as a Linked VP. The Open Agent Schema Framework (OASF) is a standardized schema system for defining and managing AI agents and MCP server.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -83,13 +83,12 @@ tools_dev = [
                 "ecosystem": {
                     "type": "string",
                     "description": "Ecosystem profile",
-                    "enum": ["EBSI V3", "DIIP V4", "DIIP V3", "ARF"],
-                    "default": "DIIP V4"
+                    "enum": ["DIIP V4", "DIIP V3", "ARF"],
                 },
                 "agent_framework": {
                     "type": "string",
                     "description": "Agent framework",
-                    "enum": ["None", "Agntcy"],
+                    "enum": ["None"],
                     "default": "None"
                 },
                 "agentcard_url": {
@@ -124,7 +123,7 @@ tools_dev = [
     },
     {
         "name": "rotate_personal_access_token",
-        "description": "Rotate one of the bearer tokens",
+        "description": "Rotate one of the bearer personal access tokens (PAT)",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -151,6 +150,10 @@ tools_dev = [
                 "public_key": {
                     "type": "string",
                     "description": "Public key as a JWK (JSON Web Key) encoded as a JSON string. "
+                },
+                "controller": {
+                    "type": "string",
+                    "description": "Optional. It must be a DID. By default the key controller will be the DID Document controller. "
                 }
             },
             "required": ["public_key"]
@@ -326,6 +329,8 @@ def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str
         "controller": did,
         "publicKeyJwk": jwk,
     }
+    if arguments.get("controller") and arguments.get("controller").startswith("did:"):
+        new_verification_method["controller"] = arguments.get("controller")
 
     verification_methods.append(new_verification_method)
     did_document["verificationMethod"] = verification_methods
@@ -380,7 +385,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")  # remove for testing
     jwk, kid, alg = manager.get_public_key_jwk(key_id) # remove for testing
     jwk = json.dumps({})
-    url = mode.server + "did/" + agent_did
+    url = mode.server + agent_did
     did_document = create_did_document(agent_did, jwk, url, agent_card_url=agent_card_url)
     dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_did, "dev", "pat")
     agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_did, "agent", "pat", duration=90*24*60*60)

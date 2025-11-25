@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import timedelta
 
-from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify
+from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify, render_template
 #from flask_mobility import Mobility
 from flask_session import Session
 from flask_qrcode import QRcode
@@ -13,6 +13,7 @@ import env
 import json
 from db_model import Wallet
 import tenant_kms
+from jinja2 import TemplateNotFound
 
 
 # Your modules
@@ -187,6 +188,11 @@ def create_app() -> Flask:
         except Exception as x:
             logging.warning("message() failed: %s", x)
         return redirect(mode.server + "/")
+    
+    @app.errorhandler(404)
+    def page_not_found(e):
+        return jsonify("Page not found")
+
 
     # ---- Helpers attached to app context ----
     def front_publish(stream_id: str, error: str, error_description: str) -> None:
