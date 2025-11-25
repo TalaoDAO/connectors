@@ -128,7 +128,6 @@ conversation_history = [
             "- 'poll_user_verification': check the current result of the most recent user verification.\n"
             "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
             "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
-     
         ),
     }
 ]
@@ -136,6 +135,21 @@ conversation_history = [
 
 # Short acknowledgement words that should be treated as confirmations
 ACK_WORDS = {"yes", "ok", "okay", "done", "yep", "yeah", "sure", "alright", "go ahead"}
+
+# Heuristic patterns that indicate the assistant is asking for explicit confirmation
+CONFIRMATION_PATTERNS = (
+    "may i ",
+    "do you want me to",
+    "should i ",
+    "shall i ",
+    "do you want me to start",
+    "do you want me to send",
+    "may i send",
+    "may i start",
+)
+
+# Stores the last assistant message that actually asked for confirmation
+pending_confirmation = None
 
 
 # --------- CORE CALL TO GPT + MCP ---------
@@ -146,6 +160,8 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
     Call GPT with MCP tools enabled (Agent role, using the demo Agent wallet)
     and return the assistant text reply as a string.
     """
+    global pending_confirmation
+
     messages = history + [
         {
             "role": "user",
@@ -189,7 +205,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
         input=messages,
     )
 
-    #logging.info("response in chat = %s", response.output)
+    # logging.info("response in chat = %s", response.output)
 
     texts: List[str] = []
     try:
@@ -206,6 +222,12 @@ def call_agent(prompt: str, history: List[Dict[str, str]]) -> str:
     history.append({"role": "user", "content": prompt})
     if reply_text:
         history.append({"role": "assistant", "content": reply_text})
+
+    # --- Detect if this assistant message is asking for confirmation ---
+    pending_confirmation = None  # reset by default
+    lower_reply = reply_text.lower()
+    if any(pattern in lower_reply for pattern in CONFIRMATION_PATTERNS):
+        pending_confirmation = reply_text
 
     return reply_text
 
@@ -238,26 +260,39 @@ def chat():
     if not user_message:
         return jsonify({"error": "missing 'message' in JSON body"}), 400
 
-    global conversation_history
+    global conversation_history, pending_confirmation
 
     # If the user sends only a short acknowledgement, rewrite it with context
     if user_message.lower() in ACK_WORDS:
-        last_assistant = None
-        for msg in reversed(conversation_history):
-            if msg.get("role") == "assistant":
-                last_assistant = msg.get("content", "")
-                break
-
-        if last_assistant:
-            # Truncate the last assistant message to avoid huge prompts
-            snippet = last_assistant[-1000:]
+        if pending_confirmation:
+            # The user is confirming the last *explicit* proposal that needed confirmation.
+            snippet = pending_confirmation[-1000:]
             user_message = (
-                "Yes. This 'yes' is explicitly confirming your previous proposal "
-                "and answering your last question. The previous assistant message was:\n"
-                "```" + snippet + "```\n"
-                "Please continue with the exact flow you proposed there, using the "
-                "appropriate MCP tools, instead of changing topic."
+                "The user is confirming your previous concrete proposal. "
+                "Treat this as explicit approval and proceed with that exact flow.\n\n"
+                "Here is the proposal the user is confirming:\n"
+                "```" + snippet + "```"
             )
+            # Clear the pending confirmation so the next 'yes' doesn't reuse it
+            pending_confirmation = None
+        else:
+            # Fallback: no known pending action; interpret 'yes' in context
+            last_assistant = None
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "assistant":
+                    last_assistant = msg.get("content", "")
+                    break
+
+            if last_assistant:
+                snippet = last_assistant[-1000:]
+                user_message = (
+                    "The user answered only with a short acknowledgement like 'yes', "
+                    "but there is no explicit pending action tracked. "
+                    "Please interpret this 'yes' in context of your previous message:\n"
+                    "```" + snippet + "```\n"
+                    "If that message contained multiple options, pick the most likely one. "
+                    "If it didn't actually request confirmation, ask the user to clarify."
+                )
 
     reply = call_agent(user_message, conversation_history)
     return jsonify({"reply": reply})
