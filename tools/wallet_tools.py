@@ -31,7 +31,7 @@ tools_guest = [
                 "owners_identity_provider": {
                     "type": "string",
                     "description": "Identity provider for owners",
-                    "enum": ["google", "github", "email", "admin"],
+                    "enum": ["google", "github"],
                     "default": "google"
                 },
                 "owners_login": {

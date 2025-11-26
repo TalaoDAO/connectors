@@ -150,13 +150,13 @@
 </header>
 
 <div class="container">
-  <h1>{{ title or 'Enter Transaction Code' }}</h1>
+  <h1>{{ title or 'Enter Secret Code' }}</h1>
 
   {% if intro_text %}
     <p class="lead">{{ intro_text }}</p>
   {% else %}
     <p class="lead">
-      To continue issuing your credential, please enter the transaction code you received.
+      To continue issuing your credential, please enter the code you received.
     </p>
   {% endif %}
 
@@ -172,8 +172,7 @@
 
   <div class="section-card">
     <p class="hint">
-      This transaction code is part of the OIDC4VCI pre-authorized code flow.  
-      It may be numeric or alphanumeric, depending on the issuer.
+      This secret code may be numeric or alphanumeric, depending on the issuer. It is not the PIN code of your smartphone.
     </p>
 
     <form method="post" action="/{{wallet_did}}/user/tx_code">
@@ -184,7 +183,7 @@
         <input hidden name="session_id" value="{{session_id}}"
 
       <div class="form-group">
-        <label class="form-label" for="tx_code">Transaction code</label>
+        <label class="form-label" for="tx_code">Secret code</label>
         <input
           id="tx_code"
           name="tx_code"

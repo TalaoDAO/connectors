@@ -236,11 +236,7 @@ def authorize(wallet_did):
 
 def build_session_config(agent_id: str, credential_offer: dict, mode):
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
-    profile = this_wallet.ecosystem_profile
-    if profile == "DIIP V4":
-        draft = 15
-    else:
-        draft = 13
+    #profile = this_wallet.ecosystem_profile
     if not this_wallet:
         logging.warning("wallet not found")
         return None, "wallet not found"
@@ -341,8 +337,8 @@ def build_session_config(agent_id: str, credential_offer: dict, mode):
         "credential_configuration_id": credential_configuration_id,
         "format": format,
         "scope": scope,
-        "type": type,  # not used
-        "vct": vct,  # not used
+        "type": type, # unused
+        "vct": vct,  
         "grant_type": grant_type,
         "code": code,
         "issuer_state": issuer_state, 
@@ -503,7 +499,7 @@ def credential_offer(wallet_did):
     
     # it tx_code is required but human not in the loop.
     if session_config["tx_code"]:
-        message = "Attestation cannot be issued as human is not in the loop"
+        message = "This attestation cannot be issued as it requires a secret code and human is not in the loop."
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     
     # get attestation
@@ -676,7 +672,6 @@ def token_request(session_config, mode):
 
 
 def credential_request(session_config, access_token, proof):
-    print("credential request call")
     credential_endpoint = session_config['credential_endpoint']
     headers = {
         'Content-Type': 'application/json',
@@ -688,16 +683,20 @@ def credential_request(session_config, access_token, proof):
             "proof": {
                 "proof_type": "jwt",
                 "jwt": proof
-            },
-            "credential_configuration_id": session_config["credential_configuration_id"]
+            }
         }
-    elif profile in ["ARF"]:
+    else:  # profile in ["ARF"]:
         data = { 
             "proofs": {
                 "jwt": [proof]
-            },
-            "credential_configuration_id": session_config["credential_configuration_id"]
+            }
         }
+    if profile == "DIIP V3":
+        data["format"] = session_config["format"]
+        data["vct"] = session_config.get("vct") 
+    else:
+        data["credential_configuration_id"] = session_config["credential_configuration_id"]
+    
     #logging.info('credential endpoint request = %s', data)
     try:
         resp_json = requests.post(credential_endpoint, headers=headers, data = json.dumps(data), timeout=10).json()
