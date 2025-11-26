@@ -158,7 +158,6 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
         "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
     )
-    print(content)
     return {"role": "system", "content": content}
 
 
