@@ -320,8 +320,10 @@ def build_session_config(agent_id: str, credential_offer: dict, mode):
     if format in ["vc+sd-jwt", "dc+sd-jwt"]:
         vct = credential_configuration.get("vct")
         type = None
+        context = None
     else:
         type = credential_configuration['credential_definition']['type']
+        context = credential_configuration['credential_definition'].get("@context", "")        
         vct = None
     scope = credential_configuration.get("scope")
     code_verifier, code_challenge = pkce.generate_pkce_pair()
@@ -337,8 +339,9 @@ def build_session_config(agent_id: str, credential_offer: dict, mode):
         "credential_configuration_id": credential_configuration_id,
         "format": format,
         "scope": scope,
-        "type": type, # unused
-        "vct": vct,  
+        "@context": context,
+        "type": type, # used for jwt_vc_json
+        "vct": vct,  # used for vc+sd-jwt
         "grant_type": grant_type,
         "code": code,
         "issuer_state": issuer_state, 
@@ -397,6 +400,7 @@ def user_tx_code(wallet_did):
     raw = red.get(session_id)
     if not raw:
         return render_template("wallet/session_expired.html")
+    red.delete(session_id)
     session_config = json.loads(raw)
     session_config["tx_code_value"] = request.form.get("tx_code")
     sd_jwt_vc, text = code_flow(session_config, mode, manager)
@@ -657,7 +661,6 @@ def token_request(session_config, mode):
         })
     else:
         return None, "grant type is unknown"
-    print("data = ", data)
 
     try:
         resp_json = requests.post(token_endpoint, headers={'Content-Type': 'application/x-www-form-urlencoded'}, data=data, timeout=10).json()
@@ -693,7 +696,17 @@ def credential_request(session_config, access_token, proof):
         }
     if profile == "DIIP V3":
         data["format"] = session_config["format"]
-        data["vct"] = session_config.get("vct") 
+        if data["format"] in ["jwt_vc_json"]:
+            data["credential_definition"] = {
+                "type": session_config.get("type")
+            } 
+        elif data["format"] in ["ldp_vc", "jwt_vc_json-ld"]:
+            data["credential_definition"] = {
+                "type": session_config.get("type"),
+                "@context": session_config["@context"]
+            }
+        else:    
+            data["vct"] = session_config.get("vct") 
     else:
         data["credential_configuration_id"] = session_config["credential_configuration_id"]
     
@@ -746,18 +759,23 @@ def code_flow(session_config, mode, manager):
     access_token = token_endpoint_response.get("access_token")
     if not access_token:
         return None, "access token missing"
-    try:
-        nonce_endpoint_url = session_config["nonce_endpoint"]
-        headers = {'Authorization': f'Bearer {access_token}'}
-        result = requests.post(nonce_endpoint_url, headers=headers, timeout=10).json()
-        nonce = result.get("c_nonce")
-    except Exception as e:
-        return None, str(e)
+    
+    # get nonce
+    nonce = token_endpoint_response.get("c_nonce")
+    if not nonce:
+        try:
+            nonce_endpoint_url = session_config["nonce_endpoint"]
+            headers = {'Authorization': f'Bearer {access_token}'}
+            result = requests.post(nonce_endpoint_url, headers=headers, timeout=10).json()
+            nonce = result.get("c_nonce")
+        except Exception as e:
+            return None, str(e)
         
     #build proof of key ownership
     try:
         proof = build_proof_of_key_ownership(session_config, nonce, manager)
     except Exception as e:
+        logging.warning("proof of key ownership failed %s", str(e))
         return None, str(e)
     logging.info("proof of key ownership sent = %s", proof)
 
@@ -784,34 +802,59 @@ def code_flow(session_config, mode, manager):
 
 
 def store_and_publish(cred, session_config, manager, published=False):
-    # store attestation
-    vcsd = cred.split("~") 
-    vcsd_jwt = vcsd[0]
-    try:
-        attestation_header = oidc4vc.get_header_from_token(vcsd_jwt)
-        attestation_payload = oidc4vc.get_payload_from_token(vcsd_jwt)
-    except Exception:
-        return None, "Attestation is in an incorrect format and cannot be stored"
 
-    # attestation as a service id
+    vc_format = session_config["format"]
+    
+    if vc_format in ["dc+sd-jwt", "vc+sd-jwt", "jwt_vc_json", "jwt_vc_json-ld"]:
+        vcsd = cred.split("~") 
+        vcsd_jwt = vcsd[0]
+        try:
+            attestation_payload = oidc4vc.get_payload_from_token(vcsd_jwt)
+        except Exception:
+            return None, "Attestation is in an incorrect format and cannot be stored"
+        exp = datetime.fromtimestamp(attestation_payload.get("exp")) 
+        issuer=attestation_payload.get("iss")
+        if vc_format in ["dc+sd-jwt", "vc+sd-jwt"]:
+            vct = attestation_payload.get("vct")
+            name = attestation_payload.get("name","")
+            description = attestation_payload.get("description","")
+        elif vc_format in ["jwt_vc_json", "jwt_vc_json-ld"]:
+            name = attestation_payload["vc"].get("name","")
+            description = attestation_payload["vc"].get("description","")
+            vct = json.dumps(attestation_payload["vc"].get("type", {})) # type
+    
+    elif vc_format == "ldp_vc":
+        name = cred.get("name", "")
+        description = cred.get("description","")
+        vct = json.dumps(cred.get("type", {})) # type
+        _exp = cred.get("issuanceDate")
+        exp = datetime.strptime(_exp, "%Y-%m-%dT%H:%M:%SZ")
+        issuer = cred.get("issuer", "")
+        cred = json.dumps(cred)
+        
+    else:
+        return None, "Attestation has no correct format and cannot be stored"
+
+    # Publish attestation
     id = secrets.token_hex(16)
     service_id = session_config["wallet_did"] + "#" + id
-    
     if published:
-        result = publish(service_id, cred, session_config["server"], manager)
+        result = publish(service_id, cred, session_config, manager)
         if not result:
             logging.warning("publish failed")
             published = False
-            
+    
+    # Store attestation     
     attestation = Attestation(
             wallet_did=session_config["wallet_did"],
             service_id=service_id,
             vc=cred,
-            vc_format=attestation_header.get("typ"),
-            issuer=attestation_payload.get("iss"),
-            vct=attestation_payload.get("vct"),
-            name=attestation_payload.get("name",""),
-            description=attestation_payload.get("description",""),
+            vc_format=vc_format,
+            exp=exp,
+            issuer=issuer,
+            vct=vct,  # type = vct
+            name=name,
+            description=description,
             published=published
         )
     db.session.add(attestation)
@@ -827,8 +870,8 @@ def base64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
-def publish(service_id, attestation, server, manager):
-
+def publish(service_id, attestation, session_config, manager):
+    """ all disclosure are removed before the VC is published """
     # 1. Look up wallet did and id
     wallet_did = service_id.split("#")[0]
     id = service_id.split("#")[1]
@@ -845,28 +888,45 @@ def publish(service_id, attestation, server, manager):
         logging.exception("Invalid DID Document in wallet")
         return None
 
-    # 3. Normalize / validate incoming SD-JWT VC presentation (SD-JWT)
-    sd_jwt_presentation = attestation.strip()
-    if not sd_jwt_presentation.endswith("~"):
-        sd_jwt_presentation = sd_jwt_presentation + "~"
-
-    # remove disclosure if any
-    sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
-    if not sd_jwt_plus_kb:
-        return None
-
-    # 6. Wrap into a VC Data Model 2.0-style Verifiable Presentation envelope
-    #    Using media type application/dc+sd-jwt in a data: URI.
-    vp_resource = {
-        "@context": ["https://www.w3.org/ns/credentials/v2"],
-        "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
-        "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
-    }
+    if session_config["format"] in ["vc+sd-jwt", "dc+sd-jwt"]:
+        sd_jwt_presentation = attestation.strip()
+        if not sd_jwt_presentation.endswith("~"):
+            sd_jwt_presentation = sd_jwt_presentation + "~"
+        # remove disclosure if any and add KB
+        sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
+        if not sd_jwt_plus_kb:
+            return None
+        vp_jwt = sd_jwt_plus_kb
+    else:
+        #  Build VP
+        payload = {
+            "iss": wallet_did,
+            "sub": wallet_did,
+            "jti": secrets.token_urlsafe(16),
+            "iat": int(datetime.now().timestamp()),
+            "vp": {  
+                "@context": ["https://www.w3.org/ns/credentials/v2"],
+                "type": ["VerifiablePresentation"],
+                "holder": wallet_did,
+                "verifableCredential":  [attestation]
+            }
+        }
+        # Sign VP
+        vm = wallet_did + "#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        header = {
+            "kid": vm,
+            "alg": alg,
+            'typ': "JWT"
+        }
+        vp_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
+    
     try:
         linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
     except Exception:
         linked_vp_json = {}
-    linked_vp_json[id] = vp_resource
+    linked_vp_json[id] = vp_jwt
     this_wallet.linked_vp = json.dumps(linked_vp_json)
 
     # 8. Create LinkedVerifiablePresentation service endpoint in DID Doc
@@ -875,7 +935,7 @@ def publish(service_id, attestation, server, manager):
     new_service = {
         "id": service_id,
         "type": "LinkedVerifiablePresentation",
-        "serviceEndpoint": server + "service/" + wallet_did + "/" + id,
+        "serviceEndpoint": session_config["server"] + "service/" + wallet_did + "/" + id,
     }
 
     service_array.append(new_service)
@@ -890,7 +950,7 @@ def publish(service_id, attestation, server, manager):
     return {
         "service_id": service_id,
         "service": new_service,
-        "verifiable_presentation": vp_resource,
+        "verifiable_presentation": vp_jwt,
     }
 
     

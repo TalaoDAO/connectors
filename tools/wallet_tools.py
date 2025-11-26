@@ -22,6 +22,12 @@ tools_guest = [
                     "type": "string",
                     "description": "Optional agent name. If it exists this name will be used to create the DID of the Agent."                    
                 },
+                "ecosystem_profile": {
+                    "type": "string",
+                    "description": "Ecosystem profile",
+                    "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF"],
+                    "default": "DIIP V3"
+                },
                 "mcp_client_authentication": {
                     "type": "string",
                     "description": "Authentication between MCP client and MCP server for agent. Dev and admin use PAT",
@@ -240,6 +246,9 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
         column.name: getattr(this_wallet, column.name)
         for column in Wallet.__table__.columns
     }
+    attestations = Attestation.query.filter(Attestation.wallet_did == agent_identifier).all()
+    structured["nb_attestations"] = len(attestations)
+    structured["nb attestations_published"] = len(json.loads(this_wallet.linked_vp))
     if structured.get("created_at"):
         structured["created_at"] = structured.get("created_at").isoformat()
     if structured.get("did_document"):

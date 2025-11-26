@@ -65,16 +65,23 @@ for profile, did in AGENT_DIDS.items():
         duration=360 * 24 * 60 * 60,
     )
     MCP_AGENT_PATS[profile] = pat
+    print("agent PAT for "+ profile + " -> ", pat)
 
 
-# Optional dev PAT (still using demo DID, if you need it somewhere else)
-MCP_DEV_PAT, _jti = oidc4vc.generate_access_token(
-    AGENT_DIDS["demo"],
-    "dev",
-    "pat",
-    jti="demo-dev",
-    duration=360 * 24 * 60 * 60,
-)
+# Generate an Dev PAT per profile once at startup
+MCP_DEV_PATS: Dict[str, str] = {}
+for profile, did in AGENT_DIDS.items():
+    pat, _jti = oidc4vc.generate_access_token(
+        did,
+        "dev",
+        "pat",
+        jti=profile,
+        duration=360 * 24 * 60 * 60,
+    )
+    MCP_DEV_PATS[profile] = pat
+    print("dev PAT for " + profile + " -> ", pat)
+
+
 
 
 # --------- HELPER: SYSTEM MESSAGE PER PROFILE ---------
@@ -127,6 +134,15 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "  selection of that option.\n"
         "- Never ask the user again to provide information (such as email or verification type) "
         "  if you already have that information from earlier in the conversation.\n\n"
+        
+        "ATTENTIONS FOR ATTESTATIONS:\n"
+        "- If the user asks for attestations / credentials / Linked Verifiable Presentations "
+        "  of ANY DID (including another agent), you MUST first call the MCP tool "
+        "  'get_attestations_of_another_agent' with 'agent_identifier' equal to that DID.\n"
+        "- Only after you have tried the tool and received a response may you explain "
+        "  limitations (for example, DID not resolvable, no LinkedVerifiablePresentation "
+        "  services, etc.). Never claim you 'cannot access' another agent's attestations "
+        "  unless the tool result actually indicates that.\n\n"
 
         "EMAIL MEMORY:\n"
         "- As soon as the user provides text that looks like an email address (for example "
@@ -149,7 +165,7 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "  and attach a wallet to an Agent.\n"
         "- 'get_this_wallet_data': inspect your own agent_identifier (DID), wallet URL, and wallet metadata.\n"
         "- 'get_attestations_of_this_wallet': list all attestations (verifiable credentials) in your wallet.\n"
-        "- 'get_attestations_of_another_agent': list published attestations of another Agent DID.\n"
+        "- 'get_attestations_of_another_agent': Fetch published attestations of another Agent with its DID.\n"
         "- 'accept_credential_offer': accept an OIDC4VCI credential offer for this Agent.\n"
         "- 'sign_text_message': sign a text message using your DID keys.\n"
         "- 'sign_json_payload': sign a json payload using your DID keys.\n"
@@ -214,7 +230,7 @@ def call_agent(prompt: str, history: List[Dict[str, str]], profile: str) -> str:
             # Agent-level wallet tools
             "describe_wallet4agent",
             "explain_how_to_install_wallet4agent",
-            "get_this_wallet_data",
+            "get_this_agent_data",
             "get_attestations_of_this_wallet",
             "get_attestations_of_another_agent",
             "accept_credential_offer",

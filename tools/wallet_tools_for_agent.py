@@ -331,6 +331,7 @@ def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
                 "attestation_content": decoded_vc,
                 "name": attestation.name,
                 "description": attestation.description,
+                "type": attestation.vct,
                 "issuer": attestation.issuer,
                 "iat": attestation.created_at.isoformat() if attestation.created_at else None,
                 "validity": validity,
@@ -408,6 +409,7 @@ def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
     except Exception:
         logging.exception("Failed to decode JWT payload")
         return None
+
 
 def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, Any]]:
     """
