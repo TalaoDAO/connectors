@@ -736,21 +736,77 @@ def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
 
 
 # agent tool
-def call_accept_credential_offer(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
-    credential_offer = arguments.get("credential_offer")
-    if isinstance(credential_offer, str):
-        credential_offer = json.loads(credential_offer)
+def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: str, config: dict ) -> Dict[str, Any]:
+    """
+    MCP tool: accept an OIDC4VCI credential offer for this Agent.
+    The 'credential_offer' argument may be:
+    - the full 'openid-credential-offer://' URI,
+    - an HTTPS URL with 'credential_offer_uri' or 'credential_offer' params,
+    - or the JSON 'credential_offer' object as a string.
+    We delegate the heavy lifting to wallet.build_session_config / wallet.wallet.
+    """
+    raw_offer = arguments.get("credential_offer")
+    logging.info("accept_credential_offer called with: %r (%s)", raw_offer, type(raw_offer))
+
+    if raw_offer is None:
+        return _ok_content(
+            [{"type": "text", "text": "Missing 'credential_offer' argument."}],
+            is_error=True,
+        )
+
+    # Normalize input for wallet.wallet():
+    # - dict -> keep as-is
+    # - string:
+    #     * if it looks like JSON, try json.loads
+    #     * otherwise, pass the string through (URI / URL case)
+    if isinstance(raw_offer, dict):
+        normalized_offer = raw_offer
+    elif isinstance(raw_offer, str):
+        stripped = raw_offer.strip()
+
+        # Heuristic: only try to parse as JSON if it *looks* like JSON
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                normalized_offer = json.loads(stripped)
+                logging.info("Parsed credential_offer string as JSON object.")
+            except Exception:
+                # Not actually valid JSON → let wallet.build_session_config do its own parsing
+                logging.exception("Failed to json.loads credential_offer string; using raw string instead.")
+                normalized_offer = raw_offer
+        else:
+            # Likely an openid-credential-offer:// or HTTPS URL.
+            # build_session_config() will handle 'credential_offer_uri' / 'credential_offer'.
+            normalized_offer = raw_offer
+    else:
+        # Unsupported type
+        msg = f"Unsupported credential_offer type: {type(raw_offer)}. Expected string or object."
+        logging.warning(msg)
+        return _ok_content([{"type": "text", "text": msg}], is_error=True)
+
     mode = config["MODE"]
     manager = config["MANAGER"]
-    attestation, text = wallet.wallet(agent_identifier, credential_offer, mode, manager)
-    if not attestation:
-        return _ok_content([{"type": "text", "text": text}], is_error=True)     
-    structured = {
-        "attestation": attestation
-    }
-    text = "Attestation successfully received (not stored automatically)."
-    return _ok_content([{"type": "text", "text": text}], structured=structured)
 
+    # Delegate to the wallet OIDC4VCI client logic to receive the attestation
+    session_config, attestation, text = wallet.wallet(agent_identifier, normalized_offer, mode, manager) 
+    
+    # store and publish if consent
+    if attestation:
+        if session_config["always_human_in_the_loop"]:
+            structured = {
+                "attestation": attestation
+            }
+            text = "Thank you, I have received the attestation but I cannot store this attestation without the owner consent."
+            return _ok_content([{"type": "text", "text": text}], is_error=False, structured=structured)
+        else:
+            result, message = wallet.store_and_publish(attestation, session_config, manager, published=True)
+            if result:
+                message = "Thank you, the attestation has been issued, stored and published successfully"
+                return _ok_content([{"type": "text", "text": message}], is_error=False)
+            else:
+                message = "Thank you, the attestation has been issued but not stored."
+                return _ok_content([{"type": "text", "text": text}], is_error=False)
+    else:
+        return _ok_content([{"type": "text", "text": text}], is_error=True)
 
 
 def call_describe_wallet4agent() -> Dict[str, Any]:

@@ -155,7 +155,7 @@ class Wallet(db.Model):
     mcp_authentication = db.Column(db.String(256), default="Personal Access Token (PAT)")
     owners_identity_provider = db.Column(db.String(64))
     owners_login = db.Column(db.String(64))
-    ecosystem_profile = db.Column(db.String(64), default="DIIP V3")
+    ecosystem_profile = db.Column(db.String(64), default="DIIP V3") # to comply with default Talao profile
     agent_framework = db.Column(db.String(64), default="None")
     url = db.Column(db.Text, unique=True)
     linked_vp = db.Column(db.Text)

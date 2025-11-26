@@ -234,7 +234,7 @@ def authorize(wallet_did):
     return render_template("wallet/session_screen.html", message=message, title=title)
 
 
-def build_session_config(agent_id: str, credential_offer, mode):
+def build_session_config(agent_id: str, credential_offer: dict, mode):
     this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
     profile = this_wallet.ecosystem_profile
     if profile == "DIIP V4":
@@ -360,7 +360,10 @@ def build_session_config(agent_id: str, credential_offer, mode):
     }
     
     # mandatory fields
-    for claim in ["credential_issuer", "token_endpoint", "credential_endpoint", "format", "scope"]:
+    mandatory_claims = ["credential_issuer", "token_endpoint", "credential_endpoint", "format"]
+    if this_wallet.ecosystem_profile == "ARF":
+        mandatory_claims.append("nonce_endpoint")
+    for claim in mandatory_claims:
         if not session_config[claim]:
             logging.error("%s is missing in the session config", claim)
             return None, claim + ' is missing or unknown'
@@ -372,16 +375,17 @@ def build_session_config(agent_id: str, credential_offer, mode):
     return session_config, " ok "
 
 
-# for MCP tools
+# Entry point for tools from wallet for agent
 def wallet(agent_id, credential_offer, mode, manager):
     session_config, text = build_session_config(agent_id, credential_offer, mode)
     if not session_config:
         return None, text
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
         attestation, text = code_flow(session_config, mode, manager)
-        return attestation, text
+        return session_config, attestation, text
     else:
-        return None, "this grant type is not supported here"
+        return session_config, None, "this grant type is not supported here"
+
 
 # standard route to home
 def wallet_route():
@@ -679,7 +683,7 @@ def credential_request(session_config, access_token, proof):
         'Authorization': 'Bearer ' + access_token
         }
     profile = session_config["wallet_profile"]
-    if profile in ["DIIP V3", "DIIP V4"]: 
+    if profile in ["DIIP V3", "DIIP V4", "EWC"]: 
         data = { 
             "proof": {
                 "proof_type": "jwt",
@@ -687,7 +691,7 @@ def credential_request(session_config, access_token, proof):
             },
             "credential_configuration_id": session_config["credential_configuration_id"]
         }
-    elif profile == "ARF":
+    elif profile in ["ARF"]:
         data = { 
             "proofs": {
                 "jwt": [proof]
@@ -697,8 +701,10 @@ def credential_request(session_config, access_token, proof):
     #logging.info('credential endpoint request = %s', data)
     try:
         resp_json = requests.post(credential_endpoint, headers=headers, data = json.dumps(data), timeout=10).json()
+        logging.info("credential endpoint response = %s", resp_json)
     except Exception as e:
-        return None, "credential endpoint failure " +str(e)
+        logging.warning("credentila request failure = %s", str(e))
+        return None, "credential endpoint failure " + str(e)
     return resp_json, "ok"
 
 
@@ -709,18 +715,22 @@ def build_proof_of_key_ownership(session_config, nonce, manager):
     jwk, kid, alg = manager.get_public_key_jwk(key_id)
     header = {
         'typ': 'openid4vci-proof+jwt',
-        'alg': alg,
-        "kid": wallet_kid
+        'alg': alg
     }
     payload = {
         'iss': wallet_did,
         'iat': int(datetime.timestamp(datetime.now())),
         'aud': session_config["credential_issuer"]  # Credential Issuer URL
     }
+    if session_config["wallet_profile"] in ["EWC","ARF"]:
+        header["jwk"] = jwk
+        header["jwk"].pop("kid", None)
+    else:
+        header["kid"] = wallet_kid
     if nonce:
         payload["nonce"] = nonce
-    jwt_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
-    return jwt_token
+    proof = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
+    return proof
 
 
 # process code flow

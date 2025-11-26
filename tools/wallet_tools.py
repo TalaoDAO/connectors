@@ -83,7 +83,7 @@ tools_dev = [
                 "ecosystem": {
                     "type": "string",
                     "description": "Ecosystem profile",
-                    "enum": ["DIIP V4", "DIIP V3", "ARF"],
+                    "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF"],
                 },
                 "agent_framework": {
                     "type": "string",

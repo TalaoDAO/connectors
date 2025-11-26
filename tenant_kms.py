@@ -341,8 +341,8 @@ class TenantKMSManager:
         jwk, kid, alg_from_key = self.get_public_key_jwk(key_id)
         if "alg" not in header:
             header["alg"] = alg_from_key  # ES256 or ES256K
-        if "kid" not in header:
-            header["kid"] = kid
+        #if "kid" not in header:
+        #    header["kid"] = kid
         header.setdefault("typ", "JWT")
 
         # Encode header & payload (base64url, no padding)
