@@ -227,7 +227,7 @@
   <div id="chat-messages" class="chat-messages">
        <div class="chat-message assistant">
         <div class="bubble assistant">
-          Hi! 👋 I’m your demo Agent <strong>did:web:wallet4agent.com:demo</strong>, equipped with a Wallet4Agent identity and connected through the MCP server.
+          Hi! 👋 I’m your demo Agent <strong>did:web:wallet4agent.com:{{profile}}</strong>, equipped with a Wallet4Agent identity and connected through the MCP server.
           <br>• I can show my wallet data and decentralized identifier (DID)
           <br>• I can list my digital credentials  
           <br>• I can authenticate another agent or inspect another agent’s public credentials  
@@ -242,6 +242,8 @@
       </div>
 
       <form id="chat-form" class="chat-input-row">
+        <input hidden name="profile" value="{{profile}}">
+
         <textarea id="chat-input" placeholder="Ask this agent what it can do with its wallet and DID…"></textarea>
         <button id="chat-send" type="submit">Send</button>
       </form>
@@ -249,6 +251,9 @@
   </main>
 
   {% include "footer.html" %}
+<script>
+  const AGENT_PROFILE = "{{ profile }}";
+</script>
 
 <script>
   (function () {
@@ -289,11 +294,13 @@
       sendBtn.textContent = "…";
 
       try {
-        const resp = await fetch("/chat", {
+
+        const resp = await fetch(`/chat?profile=${encodeURIComponent(AGENT_PROFILE)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text })
+          body: JSON.stringify({ message: text }),
         });
+
 
         const data = await resp.json();
         appendMessage("assistant", data.reply || "No reply.");

@@ -72,12 +72,12 @@ tools_agent = [
         }
     },
     {
-        "name": "get_this_wallet_data",  # get agent identity ?
+        "name": "get_this_agent_data",  # get agent identity ?
         "description": (
-            "Retrieve a high-level overview of this Agent's identity and its attached wallet. "
+            "Retrieve a high-level overview of this Agent's identity and its attached wallet configuration. "
             "The Agent is identified by its DID. The wallet is a secure component attached "
             "to the Agent that stores verifiable credentials on its behalf. "
-            "This tool returns metadata such as the Agent's DID, the wallet endpoint URL, "
+            "This tool returns metadata such as the Agent's DID, the ecosystem profile, the wallet endpoint URL, "
             "the number of stored attestations, and whether a human is always kept in the loop."
         ),
         "inputSchema": {
@@ -697,7 +697,7 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
 
 
 
-def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
+def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
     """
     Return a high-level overview of this Agent's identity (DID) and its attached wallet.
 
@@ -712,7 +712,7 @@ def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
             "did": agent_identifier,
         },
         "wallet": {
-            "endpoint": this_wallet.url if this_wallet else None,
+            "wallet_endpoint": this_wallet.url if this_wallet else None,
             "ecosystem": this_wallet.ecosystem_profile,
             "number_of_attestations": len(attestations_list),
             "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,

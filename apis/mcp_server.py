@@ -617,11 +617,11 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_update_configuration(arguments, agent_identifier, config())
                 
-            elif name == "get_this_wallet_data":
+            elif name == "get_this_agent_data":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools_for_agent.call_get_this_wallet_data(agent_identifier)
+                out = wallet_tools_for_agent.call_get_this_agent_data(agent_identifier)
             
             elif name == "describe_wallet4agent":
                 out = wallet_tools_for_agent.call_describe_wallet4agent()

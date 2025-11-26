@@ -223,6 +223,68 @@ def seed_wallet(mode, manager):
         )
         db.session.add(wallet_2)
         
+        did = "did:web:wallet4agent.com:diipv4"
+        vm = did + "#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        url = mode.server + did
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="diipv4")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="diipv4", duration=90*24*60*60)
+        wallet_3 = Wallet(
+            dev_pat_jti=dev_pat_jti,
+            agent_pat_jti=agent_pat_jti,
+            ecosystem_profile="DIIP V4",
+            always_human_in_the_loop=False,
+            did=did,
+            status="active",
+            url=url,
+            owners_identity_provider="google",
+            owners_login=json.dumps(["thierry.thevenet@talao.io"]),
+            did_document=create_did_document(did, jwk, url)
+        )
+        db.session.add(wallet_3)
+        
+        did = "did:web:wallet4agent.com:ewc"
+        vm = did + "#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        url = mode.server + did
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="ewc")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="ewc", duration=90*24*60*60)
+        wallet_4 = Wallet(
+            dev_pat_jti=dev_pat_jti,
+            agent_pat_jti=agent_pat_jti,
+            ecosystem_profile="EWC",
+            always_human_in_the_loop=False,
+            did=did,
+            status="active",
+            url=url,
+            owners_identity_provider="google",
+            owners_login=json.dumps(["thierry.thevenet@talao.io"]),
+            did_document=create_did_document(did, jwk, url)
+        )
+        db.session.add(wallet_4)
+        
+        did = "did:web:wallet4agent.com:arf"
+        vm = did + "#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        url = mode.server + did
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="arf")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="arf", duration=90*24*60*60)
+        wallet_5 = Wallet(
+            dev_pat_jti=dev_pat_jti,
+            agent_pat_jti=agent_pat_jti,
+            ecosystem_profile="ARF",
+            always_human_in_the_loop=False,
+            did=did,
+            status="active",
+            url=url,
+            owners_identity_provider="google",
+            owners_login=json.dumps(["thierry.thevenet@talao.io"]),
+            did_document=create_did_document(did, jwk, url)
+        )
+        db.session.add(wallet_5)
         db.session.commit()
 
 
