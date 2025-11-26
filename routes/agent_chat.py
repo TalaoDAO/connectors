@@ -34,6 +34,14 @@ AGENT_DIDS: Dict[str, str] = {
     profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
 }
 
+def ecosystem(wallet_profile):
+    if wallet_profile in ["demo", "demo2"]:
+        return "DIIP V3"
+    elif wallet_profile == "diipv4":
+        return "DIIP V4"
+    else:
+        return "EUDIW-ARF"
+
 
 def _normalize_profile(profile) -> str:
     """
@@ -71,7 +79,7 @@ MCP_DEV_PAT, _jti = oidc4vc.generate_access_token(
 
 # --------- HELPER: SYSTEM MESSAGE PER PROFILE ---------
 
-def _build_system_message(agent_did: str) -> Dict[str, str]:
+def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
     """
     Build the system prompt for a given agent DID.
     """
@@ -81,6 +89,9 @@ def _build_system_message(agent_did: str) -> Dict[str, str]:
         "This DID identifies you as an Agent.\n"
         "Your wallet is already attached to this DID and you are authenticated with an "
         "Agent-level bearer token (Agent PAT) that is managed outside the chat.\n\n"
+        f"You are compliant with the ecosystem: {ecosystem}" 
+        "Your owner is the company Web3 Digital Wallet (Talao)"
+        "\n\n"
 
         "OBJECTIVE:\n"
         "- Demonstrate what an Agent with a Wallet4Agent wallet can do through the MCP server.\n"
@@ -147,6 +158,7 @@ def _build_system_message(agent_did: str) -> Dict[str, str]:
         "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
         "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
     )
+    print(content)
     return {"role": "system", "content": content}
 
 
@@ -159,7 +171,7 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 
 # Map profile -> conversation history list
 conversation_histories: Dict[str, List[Dict[str, str]]] = {
-    profile: [_build_system_message(AGENT_DIDS[profile])]
+    profile: [_build_system_message(AGENT_DIDS[profile], ecosystem(profile))]
     for profile in ALLOWED_PROFILES
 }
 

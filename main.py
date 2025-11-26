@@ -263,8 +263,9 @@ def create_app() -> Flask:
         else:
             return jsonify({"error": "linked VP Not found"}), 401
     
-    
     return app
+
+
 
 # ---- Dev entrypoint: `python app.py` ----
 if __name__ == "__main__":
