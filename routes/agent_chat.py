@@ -320,7 +320,7 @@ def agent_page():
     Render the web chat UI for the default 'demo' Agent profile.
     Endpoint: /agent
     """
-    return render_template("agent_chat.html", profile="demo")
+    return render_template("agent_chat.html", profile="demo", profile_name="did:web:wallet4agent.com:demo")
 
 
 def chat():
