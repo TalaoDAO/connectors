@@ -1,0 +1,278 @@
+import base64
+import random
+import string
+import uuid
+from typing import Any, Dict, Optional, Tuple
+import logging
+import requests
+
+from db_model import Wallet
+from key_manager import TenantKMSManager  # type: ignore
+
+UNIVERSAL_REGISTRAR_BASE_URL = "http://localhost:9080/1.0"
+
+
+# -------------------------------------------------------------------
+# Helpers for secp256k1 JWK -> uncompressed publicKeyHex (for did:ethr)
+# -------------------------------------------------------------------
+def _b64url_nopad(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64url_to_bytes(s: str) -> bytes:
+    padding = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + padding)
+
+
+def jwk_to_uncompressed_secp256k1_hex(jwk: Dict[str, Any]) -> str:
+    if jwk.get("kty") != "EC":
+        raise ValueError(f"Expected EC JWK, got kty={jwk.get('kty')}")
+    if jwk.get("crv") not in ("secp256k1", "P-256K", "P-256K1"):
+        raise ValueError(f"Expected secp256k1 JWK, got crv={jwk.get('crv')}")
+
+    x_bytes = _b64url_to_bytes(jwk["x"])
+    y_bytes = _b64url_to_bytes(jwk["y"])
+
+    if len(x_bytes) != 32 or len(y_bytes) != 32:
+        raise ValueError("Unexpected coordinate length for secp256k1 (expected 32 bytes each)")
+
+    return "04" + x_bytes.hex() + y_bytes.hex()
+
+
+# -------------------------------------------------------------------
+# Generic DID Document builder (JsonWebKey2020 + OIDC4VP / A2A service)
+# -------------------------------------------------------------------
+
+def build_jwk_did_document(
+    did: str,
+    jwk: Dict[str, Any],
+    url: str,
+    agent_card_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Build a DID Document using JsonWebKey2020 and your existing service model.
+
+    Conceptual model:
+      - tenant  = DID (did)
+      - key     = verificationMethod (vm_id = did + "#key-1")
+    """
+    vm_id = did + "#key-1"
+    vm = {
+        "id": vm_id,
+        "type": "JsonWebKey2020",
+        "controller": did,
+        "publicKeyJwk": jwk,
+    }
+
+    document: Dict[str, Any] = {
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            {
+                "@id": "https://w3id.org/security#publicKeyJwk",
+                "@type": "@json",
+            },
+        ],
+        "id": did,
+        "controller": [did],
+        "verificationMethod": [vm],
+        "assertionMethod": [vm_id],
+        "authentication": [vm_id],
+        "service": [
+            {
+                "id": did + "#oidc4vp",
+                "type": "OIDC4VP",
+                "serviceEndpoint": url,
+            }
+        ],
+    }
+
+    if agent_card_url:
+        document["service"].append(
+            {
+                "id": did + "#a2a",
+                "type": "A2AService",
+                "serviceEndpoint": agent_card_url,
+            }
+        )
+
+    return document
+
+
+class UniversalRegistrarClient:
+    """
+    Helper around your local Universal Registrar instance.
+
+    - tenant = DID (the identity)
+    - key    = verificationMethod (vm.id), mapped to an AWS KMS key
+
+    It knows how to:
+      - Create did:web using P-256 keys from your KMS
+      - Create did:ethr using secp256k1 from your KMS
+      - Create did:cheqd using secp256k1 from your KMS with 2-step signing
+    """
+
+    def __init__(self, base_url: str = UNIVERSAL_REGISTRAR_BASE_URL):
+        self.base_url = base_url.rstrip("/")
+
+    def create_did_web(
+        self,
+        manager: TenantKMSManager,
+        mode,
+        agent_card_url: Optional[str] = None,
+        name: Optional[str] = None,
+        domain: str = "wallet4agent.com",
+    ) -> Tuple[str, Dict[str, Any], str]:
+        """
+        Create a did:web *locally* using a P-256 key in KMS.
+
+        IMPORTANT:
+        - We do NOT call the did:web Universal Registrar driver here,
+          because your driver instance is returning 503 on /1.0/create.
+        - For did:web, "registration" is just: serve this DID Document
+          under the correct HTTPS path on your own server.
+
+        tenant = DID
+        key = verificationMethod (vm_id = did + "#key-1")
+        """
+        # Use agent name if provided, or random digits to avoid collisions
+        random_numbers = "".join(random.choice(string.digits) for _ in range(5))
+        if not name:
+            name = random_numbers
+
+        did = f"did:web:{domain}:{name}"        
+
+        # avoid collision in your Wallet table
+        one_wallet = Wallet.query.filter(Wallet.did == did).one_or_none()
+        if one_wallet:
+            did = f"{did}-{random_numbers}"
+
+        key_spec = "ECC_NIST_P256"
+        vm_id = did + "#key-1"
+        url = mode.server + did
+
+        # create/fetch key for this verificationMethod
+        key_id = manager.create_or_get_key_for_verification_method(vm_id, key_spec)
+
+        # get JWK from KMS
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+
+        # build DID Document locally (JsonWebKey2020 + OIDC4VP/A2A)
+        did_document = build_jwk_did_document(did, jwk, url, agent_card_url)
+
+        # ✅ No call to Universal Registrar here
+        return did, did_document, key_id
+
+    # -------------------- did:cheqd --------------------
+
+    def _build_cheqd_did_and_vm(
+        self,
+        network: str,
+    ) -> Tuple[str, str]:
+        method_specific_id = str(uuid.uuid4())
+        did = f"did:cheqd:{network}:{method_specific_id}"
+        vm_id = did + "#key-1"
+        return did, vm_id
+
+    def create_did_cheqd(
+        self,
+        manager: TenantKMSManager,
+        mode,
+        agent_card_url: Optional[str] = None,
+        network: str = "testnet",
+    ) -> Tuple[str, Dict[str, Any], str]:
+        """
+        Create a did:cheqd via the cheqd DID Registrar driver using Universal Registrar,
+        with signatures done by your KMS (client-managed secret mode).
+
+        - tenant = did:cheqd:<network>:<uuid>
+        - key    = vm_id = did + "#key-1"
+        """
+        did, vm_id = self._build_cheqd_did_and_vm(network)
+        key_spec = "ED25519"
+        url = mode.server + did
+
+        # Key = verificationMethod
+        key_id = manager.create_or_get_key_for_verification_method(vm_id, key_spec)
+
+        # Build DID Document from the KMS key's JWK
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        did_doc = build_jwk_did_document(did, jwk, url, agent_card_url)
+
+        # 1st call: ask driver to prepare signPayload
+        initial_body = {
+            "didDocument": did_doc,
+            "options": {"network": network},
+            "secret": {},
+        }
+
+        resp1 = requests.post(
+            f"{self.base_url}/create",
+            params={"method": "cheqd"},
+            json=initial_body,
+            timeout=30,
+        )
+        resp1.raise_for_status()
+        data1 = resp1.json()
+
+        did_state1 = data1.get("didState", {})
+        
+        did_state1 = data1.get("didState", {})
+        if did_state1.get("state") != "action":
+            raise RuntimeError(f"Expected 'action' state, got: {did_state1}")
+
+        job_id = data1.get("jobId")
+        action = did_state1.get("action")
+        if action not in ("signPayload", "sign"):
+            raise RuntimeError(f"Unexpected action from cheqd driver: {action}")
+
+        # Universal Registrar → map of signingRequest0, signingRequest1, ...
+        signing_requests = did_state1.get("signingRequest") or {}
+        if not signing_requests:
+            raise RuntimeError(f"cheqd driver returned no signingRequest; didState was: {did_state1}")
+
+        signing_responses: Dict[str, Dict[str, str]] = {}
+
+        for label, req in signing_requests.items():
+            # cheqd docs/tests call this 'serializedPayload'
+            payload_b64 = req.get("payload") or req["serializedPayload"]
+            vm_id_req = req.get("verificationMethodId") or req["kid"]
+
+            payload_bytes = base64.b64decode(payload_b64)
+            
+            signature, _ = manager.sign_message(key_id, payload_bytes, local=True)
+            # For Ed25519, the signature is already 64
+            raw_sig = signature
+            sig_b64 = _b64url_nopad(raw_sig)
+
+            # value shape compatible with both UR driver + cheqd registrar
+            signing_responses[label] = {
+                "verificationMethodId": vm_id_req,
+                "kid": vm_id_req,
+                "signature": sig_b64,
+            }
+
+        final_body = {
+            "jobId": job_id,
+            "secret": {
+                "signingResponse": signing_responses,
+            },
+        }
+
+        resp2 = requests.post(
+            f"{self.base_url}/create",
+            params={"method": "cheqd"},
+            json=final_body,
+            timeout=30,
+        )
+        resp2.raise_for_status()
+        data2 = resp2.json()
+
+        did_state2 = data2.get("didState", {})
+        if did_state2.get("state") != "finished":
+            raise RuntimeError(f"cheqd DID registration failed: {did_state2}")
+
+        final_did = did_state2["did"]
+        did_doc_result = did_state2.get("didDocument", {})
+        return final_did, did_doc_result, key_id
+        
+        

@@ -2,7 +2,7 @@ from flask import request, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
 from db_model import db, Credential
 from sqlalchemy.exc import IntegrityError
-from utils.kms import encrypt_json, decrypt_json
+from kms_model import encrypt_json, decrypt_json
 import json
 from utils.key_validator import validate_asymmetric_private_jwk
     

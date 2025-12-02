@@ -1,14 +1,13 @@
 import json
 from typing import Any, Dict, List, Optional
-from db_model import Wallet, db, User
+from db_model import Wallet, db, User, Attestation
 import secrets
 import logging
-from db_model import Attestation
 from utils import oidc4vc, message
 import hashlib
-import random, string
 from datetime import datetime
 import base64
+from universal_registrar import UniversalRegistrarClient
 
 # do not provide this tool to an LLM
 tools_guest = [
@@ -22,10 +21,16 @@ tools_guest = [
                     "type": "string",
                     "description": "Optional agent name. If it exists this name will be used to create the DID of the Agent."                    
                 },
+                "did_method": {
+                    "type": "string",
+                    "description": "Optionl DID Method, did:web by default",
+                    "enum": ["did:web", "did:cheqd"],
+                    "default": "did:web"
+                },
                 "ecosystem_profile": {
                     "type": "string",
                     "description": "Ecosystem profile",
-                    "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF"],
+                    "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF", "CHEQD"],
                     "default": "DIIP V3"
                 },
                 "mcp_client_authentication": {
@@ -373,33 +378,80 @@ def hash_client_secret(text: str) -> str:
 
 
 # guest tool
+
+from typing import Dict, Any
+
 def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
     manager = config["MANAGER"]
-    agent_name = "-".join(arguments.get("agent_name", "").split())
+
+    # Normalise agent_name → "my-agent" instead of "my agent"
+    raw_agent_name = arguments.get("agent_name", "") or ""
+    agent_name = "-".join(raw_agent_name.split()) or None
+
     owners_identity_provider = arguments.get("owners_identity_provider")
-    owners_login = arguments.get("owners_login").split(",")
+    owners_login = (arguments.get("owners_login") or "").split(",")
     agent_card_url = arguments.get("agentcard_url")
-    
-    # if did:web / persistent agent
-    if not agent_name:
-        agent_name = secrets.token_hex(16)
-    agent_did = "did:web:wallet4agent.com:" + agent_name 
-    # test if DID already exists
-    one_wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
-    if one_wallet:
-        random_numbers = ''.join(random.choice(string.digits) for _ in range(3))
-        agent_did += "-" + random_numbers 
-    
-    key_id = manager.create_or_get_key_for_tenant(agent_did + "#key-1")  # remove for testing
-    jwk, kid, alg = manager.get_public_key_jwk(key_id) # remove for testing
-    jwk = json.dumps({})
-    url = mode.server + agent_did
-    did_document = create_did_document(agent_did, jwk, url, agent_card_url=agent_card_url)
+
+    # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
+    client = UniversalRegistrarClient()
+
+    method = arguments.get("did_method")
+
+    # Build service endpoints dynamically from your mode.server
+    # e.g. https://wallet4agent.com/agents/<did> or similar
+    # Here we keep it simple: OIDC4VP and A2A entrypoints under your base server URL.
+    a2a_endpoint = agent_card_url or (mode.server.rstrip("/") + "/a2a-card")
+
+    # ----------------------------------------------------------------------
+    # 2) Create DID + DID Document using the Universal Registrar
+    # ----------------------------------------------------------------------
+    if method == "did:web":
+        # did:web: use P-256 key in KMS; vm_id = did#key-1
+        agent_did, did_document, key_id = client.create_did_web(
+            manager=manager,
+            mode=mode,
+            agent_card_url=a2a_endpoint,
+            name=agent_name)
+
+    elif method == "did:cheqd":
+        # did:cheqd: 2-step signPayload flow, with secp256k1 key in KMS
+        agent_did, did_document, key_id = client.create_did_cheqd(
+            manager=manager,
+            mode=mode,
+            agent_card_url=a2a_endpoint,
+            network="testnet",  # "testnet" or "mainnet"
+        )
+    else:
+        return _ok_content(
+            [{"type": "text", "text": f"Unsupported DID method: {method}"}],
+            is_error=True,
+        )
+
+    print("agent DID = ", agent_did)
+    wallet_url = mode.server.rstrip("/") + "/" + agent_did
+
+    if not did_document:
+        return _ok_content(
+            [{"type": "text", "text": "DID Document registration failed"}],
+            is_error=True,
+        )
+
+    # ----------------------------------------------------------------------
+    # 4) Generate dev + agent PATs
+    # ----------------------------------------------------------------------
     dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_did, "dev", "pat")
-    agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_did, "agent", "pat", duration=90*24*60*60)
+    agent_pat, agent_pat_jti = oidc4vc.generate_access_token(
+        agent_did, "agent", "pat", duration=90 * 24 * 60 * 60
+    )
+
     mcp_authentication = arguments.get("mcp_client_authentication")
     client_secret = secrets.token_urlsafe(64)
+
+    # ----------------------------------------------------------------------
+    # 5) Create / update owners and wallet in DB
+    # ----------------------------------------------------------------------
+
     wallet = Wallet(
         dev_pat_jti=dev_pat_jti,
         agent_pat_jti=agent_pat_jti,
@@ -410,8 +462,11 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         agent_framework="None",
         did=agent_did,
         did_document=json.dumps(did_document),
-        url=url
+        url=wallet_url,
     )
+    # If your Wallet model has a key_id column, you can also store:
+    # wallet.key_id = key_id
+
     for user_login in owners_login:
         if owners_identity_provider == "google":
             email = user_login
@@ -427,6 +482,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             email = ""
         else:
             break
+
         if not owner:
             owner = User(
                 email=email,
@@ -435,14 +491,20 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
                 subscription="free",
                 profile_picture="default_picture.jpeg",
             )
-        db.session.add(owner)  
+        db.session.add(owner)
+
     db.session.add(wallet)
     db.session.commit()
+
+    # ----------------------------------------------------------------------
+    # 6) Build structured response
+    # ----------------------------------------------------------------------
     structured = {
         "agent_identifier": agent_did,
         "dev_personal_access_token": dev_pat,
-        "wallet_url": wallet.url
+        "wallet_url": wallet.url,
     }
+
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
         structured["agent_client_id"] = agent_did
         structured["agent_client_secret"] = client_secret
@@ -466,50 +528,19 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             "they are not stored and will not be shown again."
         )
 
-    # send message
+    # ----------------------------------------------------------------------
+    # 7) Notify admin / user
+    # ----------------------------------------------------------------------
     message_text = "Wallet created for " + " ".join(owners_login)
-    message.message("A new wallet for AI Agent has been created", "thierry.thevenet@talao.io", message_text, mode)
+    message.message(
+        "A new wallet for AI Agent has been created",
+        "thierry.thevenet@talao.io",
+        message_text,
+        mode,
+    )
+
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
-
-def create_did_document(did, jwk_1, url, agent_card_url=False):
-    document = {
-        "@context": [
-            "https://www.w3.org/ns/did/v1",
-            {
-                "@id": "https://w3id.org/security#publicKeyJwk",
-                "@type": "@json"
-            }
-        ],
-        "id": did,
-        "verificationMethod": [ 
-            {
-                "id": did + "#key-1",
-                "type": "JsonWebKey2020",
-                "controller": did,
-                "publicKeyJwk": jwk_1
-            }
-        ],
-        "assertionMethod" : [
-            did + "#key-1",
-        ],
-        "service": [
-            {
-                "id": did + "#oidc4vp",
-                "type": "OIDC4VP",
-                "serviceEndpoint": url
-            }  
-        ]
-    }
-    if agent_card_url:
-        document["service"].append(
-            {
-                "id": did + "#a2a",
-                "type": "A2AService",
-                "serviceEndpoint": agent_card_url
-            }
-        )
-    return document
 
 # dev
 def call_update_configuration(
@@ -580,7 +611,6 @@ def call_update_configuration(
         new_services = [s for s in services if s.get("id") != a2a_id]
 
         if agentcard_url:
-            # Keep the same ID and type as in create_did_document()
             new_services.append(
                 {
                     "id": a2a_id,
@@ -664,7 +694,6 @@ def call_create_oasf(agent_identifier, config):
     oasf_json["id"] = agent_identifier
     oasf_json["disclosure"] = ["all"]
     oasf_json["vct"] = "urn:ai-agent:oasf:0001"
-    print("avant signature =", oasf_json)
     cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=13, duration=360*24*60*60)
     success, message = store_and_publish(cred, agent_identifier, manager, mode, published=True)
     if success:

@@ -1,7 +1,6 @@
 import os
 import logging
 from datetime import timedelta
-
 from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify, render_template
 #from flask_mobility import Mobility
 from flask_session import Session
@@ -12,14 +11,14 @@ import markdown
 import env
 import json
 from db_model import Wallet
-import tenant_kms
-from jinja2 import TemplateNotFound
+import key_manager
 
 
 # Your modules
 from utils import message
+from database import db
 from db_model import (
-    load_user, db,
+    load_user, 
     seed_credential, seed_signin_for_wallet_registration,
     seed_user, seed_wallet
 )
@@ -92,9 +91,24 @@ def create_app() -> Flask:
     except Exception:
         app.jinja_env.globals["Created"] = ""
 
-    # ---- SQLAlchemy ----
-    db_path = os.getenv("SQLALCHEMY_DATABASE_URI") or ("sqlite:///" + os.path.abspath("data/connectors.db"))
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_path
+
+    # Default / primary DB
+    main_db = os.getenv("SQLALCHEMY_DATABASE_URI") or (
+        "sqlite:///" + os.path.abspath("data/connectors.db")
+    )
+
+    # Local KMS DB 
+    local_kms_db = os.getenv("SQLALCHEMY_SECOND_DATABASE_URI") or (
+        "sqlite:///" + os.path.abspath("data/local_kms.db")
+    )
+
+    # Primary DB URI (used for models without __bind_key__)
+    app.config["SQLALCHEMY_DATABASE_URI"] = main_db
+
+    # Additional binds
+    app.config["SQLALCHEMY_BINDS"] = {
+        "second": local_kms_db,   # "second" is the bind key name
+    }
 
     # ---- App-wide config values (shared deps) ----
     app.config["MODE"] = mode
@@ -107,12 +121,13 @@ def create_app() -> Flask:
     app.config["ALLOWED_IMAGE_EXTENSIONS"] = ["jpeg", "jpg", "png", "gif"]
     app.config["AUDIT_LOG_DIR"] = "./log"  # or instance_path/audit-logs
     
+   
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
         os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
         
     # initialize KMS
-    manager = tenant_kms.kms_init(myenv)
+    manager = key_manager.kms_init(myenv)
     app.config["MANAGER"] = manager
 
     # ---- Init extensions bound to app ----

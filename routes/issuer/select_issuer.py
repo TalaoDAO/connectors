@@ -2,7 +2,6 @@ from flask import render_template, redirect, flash
 from flask_login import login_required, current_user
 from db_model import db, Issuer
 import json
-from utils.kms import encrypt_json, decrypt_json
 
 def init_app(app):
     app.add_url_rule('/issuer/select/<issuer_type>',  view_func=list_issuers, methods = ['GET'])

@@ -918,18 +918,27 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
 
     # Prefer injected manager
     manager = config.get("MANAGER")
+    vm_id = agent_identifier + "#key-1"
 
     try:
         # lazily create or fetch tenant key
-        key_id = manager.create_or_get_key_for_tenant(agent_identifier)
-        sig, _ = manager.sign_message(key_id, message.encode("utf-8"))
+        if agent_identifier.startswith("did:cheqd"):
+            key_spec = "ED25519"
+            signing_algorithm = "EDDSA_SHA_256"
+            local = True
+        else:
+            local = False
+            key_spec = None
+            signing_algorithm = "ECDSA_SHA_256"
+        key_id = manager.create_or_get_key_for_tenant(vm_id, key_spec=key_spec)
+        sig, _ = manager.sign_message(key_id, message.encode("utf-8"), local=local)
         sig_b64 = base64.b64encode(sig).decode("ascii")
 
         structured = {
             "agent_did": agent_identifier,
             "message": message,
             "signature_base64": sig_b64,
-            "signing_algorithm": "ECDSA_SHA_256",
+            "signing_algorithm": signing_algorithm,
         }
         text = f"Signed message for Agent {agent_identifier}. Base64 signature: {sig_b64}"
         return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -946,17 +955,24 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
 
     # Prefer injected manager
     manager = config.get("MANAGER")
+    vm_id = agent_identifier + "#key-1"
     
     try:
         # lazily create or fetch tenant key
-        key_id = manager.create_or_get_key_for_tenant(agent_identifier)
+        if agent_identifier.startswith("did:cheqd"):
+            key_spec = "ED25519"
+            local = True
+        else:
+            local = False
+            key_spec = None
+        key_id = manager.create_or_get_key_for_tenant(vm_id, key_spec=key_spec)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         header = {
             "typ": "JWT",
             "alg": alg,
             "kid": agent_identifier + "#key-1"
         }
-        signed_json = manager.sign_jwt_with_key(key_id, header, payload)
+        signed_json = manager.sign_jwt_with_key(key_id, header, payload, local=local)
         structured = {
             "agent_did": agent_identifier,
             "payload": payload,

@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 import logging
 from flask import request, jsonify, current_app, make_response, Response
 from db_model import Wallet
-from utils.kms import decrypt_json
 from tools import wallet_tools, verifier_tools, wallet_tools_for_agent
 from utils import oidc4vc
 import importlib
@@ -102,13 +101,14 @@ def init_app(app):
         this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
         # if pat check if token is still valid for this agent_identifier
         if type == "pat":
+            print("agent_pat_jti = ", this_wallet.agent_pat_jti)
             try:
                 if jti == this_wallet.dev_pat_jti and role == "dev":
                     return role, agent_identifier
                 elif jti == this_wallet.agent_pat_jti and role == "agent":
                     return role, agent_identifier
                 else:
-                    print("B")
+                    print("Exit B")
                     return "guest", None
             except Exception as e:
                 logging.warning(str(e))

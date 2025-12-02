@@ -1,57 +1,4 @@
 
-# =============================================================================
-# OIDC ⇄ OIDC4VP BRIDGE — DEVELOPER OVERVIEW (COMMENT-ONLY)
-# =============================================================================
-# This module acts as a bridge between:
-#   • Relying Party (RP) / Client applications that speak **classic OIDC**
-#   • Wallet/Holders that speak **OIDC4VP** (OpenID for Verifiable Presentations)
-#
-# GOAL
-# ----
-# Make RPs happy by exposing standard OIDC endpoints (/authorize, /token, /userinfo,
-# /.well-known/openid-configuration, /jwks.json, /logout) while we do the VC/VP dance
-# with the wallet behind the scenes using OIDC4VP. The RP never needs to understand
-# VC formats; it only consumes normal OIDC tokens + an optional `/userinfo` call.
-#
-# HIGH-LEVEL HAPPY PATH
-# ---------------------
-# 1) RP → /authorize?client_id=...&redirect_uri=...&response_type=code&scope=openid
-#               &state=...&nonce=...&code_challenge=...&authorization_details=...
-#    - We validate client + redirect_uri, generate an authorization code `code`,
-#      store request context in Redis under key `{code}`, and redirect the user to
-#      our wallet UI (/verifier/wallet?code=...).
-#
-# 2) Wallet flow (OIDC4VP) happens:
-#    - We request a VP that satisfies the presentation definition (from scope or
-#      `authorization_details`), verify it, and store results in Redis as
-#      `{code}_wallet_data`.
-#
-# 3) We finish the OIDC front-channel step:
-#    - For response_type=code (recommended): redirect RP back with ?code=...&state=...
-#    - (Sandbox only) For response_type=id_token: we return an ID Token directly to
-#      redirect_uri (fragment by default unless response_mode=query).
-#
-# 4) RP → /token (POST) with client authentication and:
-#      grant_type=authorization_code, code=..., redirect_uri=..., code_verifier=...
-#    - We validate client credentials (Basic or client_secret_post), the code, the
-#      redirect_uri binding and PKCE (code_verifier). On success we return:
-#        {
-#          "id_token": <JWT signed by this bridge (issuer = our OP)>,
-#          "access_token": <opaque uuid4>,
-#          "token_type": "Bearer",
-#          "expires_in": ACCESS_TOKEN_LIFE
-#        }
-#    - We also store `{access_token}_wallet_data` so `/userinfo` can later return
-#      the verified VP to the RP.
-#
-# 5) RP → /userinfo with Authorization: Bearer <access_token>
-#    - On success (200) we return:
-#        { "sub": "<subject>", "vp_token": <the verified VP> }
-#    - On failure (expired/unknown token) we return 401 with
-#        { "error": "invalid_token", "error_description": "..." }
-#      and a WWW-Authenticate: Bearer header.
-
-
 
 from flask import request, render_template, redirect,current_app
 from flask import session, Response, jsonify, flash
@@ -66,7 +13,7 @@ from utils import oidc4vc, signer
 import didkit
 import base64
 from db_model import Signin, Credential, User, db
-from utils.kms import decrypt_json
+from kms_model import decrypt_json
 from flask_login import logout_user
 import secrets
 from urllib.parse import urlparse, urlencode

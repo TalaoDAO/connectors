@@ -6,34 +6,55 @@ import re
 import base64
 import boto3
 from botocore.exceptions import ClientError
+import hashlib
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.serialization import load_der_public_key
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-import hashlib
-from jwcrypto import jwk as _jwk, jws as _jws
-import json as _json
+from jwcrypto import jwk, jws 
 import logging
-
+from typing import Dict, Any, Tuple, Optional
+from kms_model import Key, db, encrypt_json, decrypt_json
 
 REGION = "eu-west-3"   # Paris
 KEY_SPEC = "ECC_NIST_P256"  # or "ECC_SECG_P256K1" if you want Ethereum-style keys
 KEY_USAGE = "SIGN_VERIFY"
 KMS_ADMIN_ROLE_ARN = None
 
+def key_spec_from_verification_method(vm: Dict[str, Any]) -> str:
+    """Infer the appropriate KMS KeySpec from a verificationMethod.
+
+    We look first at publicKeyJwk.crv, then fall back to the VM type.
+    """
+    jwk = vm.get("publicKeyJwk") or {}
+    crv = jwk.get("crv")
+    if crv == "P-256":
+        return "ECC_NIST_P256"
+    elif crv == "secp256k1":
+        return "ECC_SECG_P256K1"
+    elif crv == "Ed25519":
+        return "ED25519"
+
+    vm_type = vm.get("type")
+    if vm_type == "EcdsaSecp256k1VerificationKey2019":
+        return "ECC_SECG_P256K1"
+
+    raise ValueError(f"Cannot infer KeySpec from verificationMethod: {vm}")
+
+def _b64url_decode(data: str) -> bytes:
+    """
+    Helper to decode base64url (JWK style) with missing padding.
+    """
+    padding = '=' * (-len(data) % 4)
+    return base64.urlsafe_b64decode(data + padding)
 
 def kms_init(myenv):
-    
     if myenv == "local":
-        
         BASE_PROFILE = "dev-user"  # the profile you configured via aws
         TARGET_ROLE_ARN = "arn:aws:iam::623031118740:role/my-app-signing-role"
         base_sess = boto3.Session(profile_name=BASE_PROFILE, region_name=REGION)
 
-        #logging.info("Base identity: %s", json.dumps(base_sess.client("sts").get_caller_identity(), indent=2))
-
-        # 2) assume the application role using the SAME session
         sts = base_sess.client("sts")
         resp = sts.assume_role(
             RoleArn=TARGET_ROLE_ARN,
@@ -46,27 +67,49 @@ def kms_init(myenv):
             aws_session_token=c["SessionToken"],
             region_name=REGION,
         )
-        #logging.info("Assumed identity: %s", json.dumps(assumed_sess.client("sts").get_caller_identity(), indent=2))
         manager = TenantKMSManager(boto3_session=assumed_sess, region_name="eu-west-3")
         return manager
     else:
         manager = TenantKMSManager(region_name=REGION)
         return manager
-    
 
 
+def sanitize_alias_from_did(did_or_vm: str) -> str:
+    """
+    Sanitize a DID *or* verificationMethod.id into a KMS alias base.
 
-def sanitize_alias_from_did(did: str) -> str:
-    # Allow only A–Z a–z 0–9 / _ -
-    body = re.sub(r'[^A-Za-z0-9/_-]', '_', did)
+    NOTE:
+    - In the new model, we use verificationMethod.id as the alias owner.
+    - For legacy DID-level keys, this still works the same.
+    """
+    body = re.sub(r'[^A-Za-z0-9/_-]', '_', did_or_vm)
     body = body.strip('_')
-    # keep total length within KMS limits
     body = body[:250]
     return "alias/" + body
 
 
+def alias_for_tenant(vm_id: str, key_spec: str = None) -> str:
+    """
+    Build a KMS alias from a tenant identifier (DID or verificationMethod.id),
+    optionally namespaced by key_spec.
+
+    - For P-256 (default), we keep 'alias/<sanitized_id>'
+    - For secp256k1, we suffix '/secp256k1'
+    - This works whether vm_id is the DID or directly the VM id.
+    """
+    base = sanitize_alias_from_did(vm_id)
+
+    if key_spec is None or key_spec == "ECC_NIST_P256":
+        return base
+
+    if key_spec == "ECC_SECG_P256K1":
+        return base + "/secp256k1"
+
+    suffix = key_spec.replace("_", "-").lower()
+    return f"{base}/{suffix}"
+
+
 def sanitize_tag_value(value: str) -> str:
-    # Allow only valid AWS tag characters: [\p{L}\p{Z}\p{N}_.:/=+\-@]
     return re.sub(r"[^\w\s\.:\/=\+\-@]", "_", value)
 
 
@@ -80,11 +123,10 @@ def b64url_json(obj: dict) -> str:
 
 
 # --- map KeySpec <-> JOSE params ---
-def _spec_to_alg_and_crv(key_spec: str):
+def _spec_to_alg_and_crv(key_spec: str) -> Tuple[str, str]:
     if key_spec == "ECC_NIST_P256":
         return "ES256", "P-256"
     elif key_spec == "ECC_SECG_P256K1":
-        # widely used in DID / Web3 JWTs
         return "ES256K", "secp256k1"
     else:
         raise ValueError(f"Unsupported KeySpec for JWT/JWK: {key_spec}")
@@ -92,14 +134,14 @@ def _spec_to_alg_and_crv(key_spec: str):
 
 def build_initial_policy(app_role_arn: str, account_id: str, admin_role_arn: str = None) -> dict:
     stmts = [
-        {  # root admin so someone can always recover/manage
+        {
             "Sid": "EnableIAMUserPermissions",
             "Effect": "Allow",
             "Principal": { "AWS": f"arn:aws:iam::{account_id}:root" },
             "Action": "kms:*",
             "Resource": "*"
         },
-        {  # app role: allow usage + PutKeyPolicy temporarily
+        {
             "Sid": "AllowAppRoleUseAndPolicyUpdate",
             "Effect": "Allow",
             "Principal": { "AWS": app_role_arn },
@@ -149,7 +191,6 @@ def build_final_policy(app_role_arn: str, account_id: str, admin_role_arn: str =
 def build_key_policy(app_role_arn: str, account_id: str, admin_role_arn: str = None) -> dict:
     statements = []
 
-    # 1) REQUIRED: enable account-level admin via the root principal (KMS default pattern)
     statements.append({
         "Sid": "EnableIAMUserPermissions",
         "Effect": "Allow",
@@ -158,7 +199,6 @@ def build_key_policy(app_role_arn: str, account_id: str, admin_role_arn: str = N
         "Resource": "*"
     })
 
-    # 2) Optional: narrow admin role (if you have one)
     if admin_role_arn:
         statements.append({
             "Sid": "AllowAdminToManageKey",
@@ -172,7 +212,6 @@ def build_key_policy(app_role_arn: str, account_id: str, admin_role_arn: str = N
             "Resource": "*"
         })
 
-    # 3) App role: only usage permissions
     statements.append({
         "Sid": "AllowAppRoleUse",
         "Effect": "Allow",
@@ -208,7 +247,6 @@ class TenantKMSManager:
         return ident.get("Arn"), ident.get("Account")
 
     def alias_exists(self, alias_name):
-        # KMS list_aliases returns up to 100 items; do a paginated search
         paginator = self.kms.get_paginator("list_aliases")
         for page in paginator.paginate():
             for a in page.get("Aliases", []):
@@ -216,40 +254,74 @@ class TenantKMSManager:
                     return a
         return None
 
-    def create_or_get_key_for_tenant(self, tenant_did, description=None):
-        alias_name = sanitize_alias_from_did(tenant_did)
-        # if alias already exists, return its TargetKeyId
+    # -------- core / legacy: tenant-level key (DID) --------
+
+    def create_or_get_key_for_tenant(self, vm_id, description=None, key_spec: str = None):
+        if key_spec == "ED25519":
+            # test if it exist
+            key_exist = Key.query.filter(Key.key_id == vm_id).one_or_none()
+            if key_exist:
+                logging.info("Key for cheqd exist")
+                return vm_id
+            # create a new key
+            ed_jwk = jwk.JWK.generate(kty="OKP", crv="Ed25519")
+            private_key = ed_jwk.export(private_key=True, as_dict=True)
+            private_key["kid"] = ed_jwk.thumbprint()
+            key_data = encrypt_json(private_key)
+            new_key = Key(
+                key_id=vm_id,
+                key_data=key_data
+            )
+            db.session.add(new_key)
+            db.session.commit()
+            return vm_id
+            
+        key_spec_to_use = key_spec or KEY_SPEC
+        alias_name = alias_for_tenant(vm_id, key_spec_to_use)
+
         existing_alias = self.alias_exists(alias_name)
         if existing_alias and existing_alias.get("TargetKeyId"):
-            logging.info("Alias exists for tenant: %s", alias_name)
+            logging.info("Alias exists for tenant/key: %s", alias_name)
             return existing_alias["TargetKeyId"]
 
         app_arn, account_id = self.get_app_role_arn()
         logging.info("App running as ARN: %s", app_arn)
 
-        initial_policy = build_initial_policy(app_role_arn=app_arn, account_id=account_id, admin_role_arn=KMS_ADMIN_ROLE_ARN)
+        initial_policy = build_initial_policy(
+            app_role_arn=app_arn,
+            account_id=account_id,
+            admin_role_arn=KMS_ADMIN_ROLE_ARN
+        )
 
-        logging.info("Creating KMS key for tenant: %s", tenant_did)
+        logging.info(
+            "Creating KMS key for tenant/key %s with KeySpec=%s",
+            vm_id, key_spec_to_use
+        )
         resp = self.kms.create_key(
             Policy=json.dumps(initial_policy),
-            KeySpec=KEY_SPEC,
+            KeySpec=key_spec_to_use,
             KeyUsage=KEY_USAGE,
             Origin="AWS_KMS",
-            Description=(description or f"Tenant key for {tenant_did}")
+            Description=(description or f"Tenant key for {vm_id} ({key_spec_to_use})")
         )
         key_id = resp["KeyMetadata"]["KeyId"]
         logging.info("Created key id: %s", key_id)
 
-        # Immediately lock the policy down (drop PutKeyPolicy from the app role)
-        final_policy = build_final_policy(app_role_arn=app_arn, account_id=account_id, admin_role_arn=KMS_ADMIN_ROLE_ARN)
-        self.kms.put_key_policy(KeyId=key_id, PolicyName="default", Policy=json.dumps(final_policy))
+        final_policy = build_final_policy(
+            app_role_arn=app_arn,
+            account_id=account_id,
+            admin_role_arn=KMS_ADMIN_ROLE_ARN
+        )
+        self.kms.put_key_policy(
+            KeyId=key_id,
+            PolicyName="default",
+            Policy=json.dumps(final_policy)
+        )
 
-        # create alias
         try:
             self.kms.create_alias(AliasName=alias_name, TargetKeyId=key_id)
             logging.info("Created alias: %s", alias_name)
         except ClientError as e:
-            # if alias already exists (race), fetch the alias target
             logging.warning("create_alias error: %s", str(e))
             existing_alias = self.alias_exists(alias_name)
             if existing_alias and existing_alias.get("TargetKeyId"):
@@ -257,8 +329,8 @@ class TenantKMSManager:
             else:
                 raise
 
-        # tag the key with the tenant DID for discoverability
-        safe_tag = sanitize_tag_value(tenant_did)
+        # Tag the key; for VM ids this tag will be the VM id, for DID-level keys it is the DID
+        safe_tag = sanitize_tag_value(vm_id)
         try:
             self.kms.tag_resource(
                 KeyId=key_id,
@@ -267,9 +339,80 @@ class TenantKMSManager:
         except Exception as e:
             logging.warning("Warning: failed tagging key: %s", str(e))
 
-        # KMS may take a second to become fully available via get_public_key
         time.sleep(0.5)
         return key_id
+
+
+    def ensure_alias_for_verification_method(self, vm: Dict[str, Any], key_id: str) -> None:
+        """Ensure that there is a KMS alias for this verificationMethod.id.
+
+        This is useful when the key was originally created under an internal
+        alias (e.g. an internal vm_id before the final DID was known), and you
+        now want to be able to resolve key_id from the public verificationMethod
+        in the DID Document.
+
+        If the alias already exists and points to the same key_id, this is a no-op.
+        If the alias exists and points to a *different* key, we log a warning
+        and do not overwrite it.
+        """
+
+        vm_id = vm["id"]
+        key_spec = key_spec_from_verification_method(vm)
+        alias_name = alias_for_tenant(vm_id, key_spec)
+
+        existing = self.alias_exists(alias_name)
+        if existing and existing.get("TargetKeyId"):
+            if existing["TargetKeyId"] == key_id:
+                # already correct
+                return
+            # Same alias name but different target: this is suspicious, don't overwrite.
+            logging.warning(
+                "KMS alias %s already exists and points to a different key (%s != %s)",
+                alias_name,
+                existing["TargetKeyId"],
+                key_id,
+            )
+            return
+
+        try:
+            self.kms.create_alias(AliasName=alias_name, TargetKeyId=key_id)
+        except ClientError as e:
+            # If another process created it concurrently and it's now correct,
+            # we can ignore; otherwise re-raise.
+            if e.response.get("Error", {}).get("Code") == "AlreadyExistsException":
+                existing = self.alias_exists(alias_name)
+                if existing and existing.get("TargetKeyId") == key_id:
+                    return
+            raise
+
+
+    def create_or_get_key_for_verification_method(self, vm_id: str, key_spec: str) -> str:
+        """
+        Create or fetch a KMS key for a specific verificationMethod.id.
+
+        This is the recommended way to manage keys when a DID has multiple VMs.
+        """
+        return self.create_or_get_key_for_tenant(vm_id, key_spec=key_spec)
+
+
+    def get_key_id_for_verification_method(self, vm: Dict[str, Any]) -> str:
+        """
+        Resolve the KMS key_id for a verificationMethod from a DID Document.
+
+        Expects:
+          - vm["id"]  (verificationMethod.id)
+          - vm["publicKeyJwk"]["crv"] or a known 'type' to infer KeySpec
+        """
+        vm_id = vm["id"]
+        if vm_id.startswith("did:cheqd"):
+            return vm_id
+        
+        key_spec = key_spec_from_verification_method(vm)
+        alias_name = alias_for_tenant(vm_id, key_spec)
+        md = self.kms.describe_key(KeyId=alias_name)
+        return md["KeyMetadata"]["KeyId"]
+
+    # -------- utilities: public key & signatures --------
 
     def get_public_key_pem(self, key_id):
         resp = self.kms.get_public_key(KeyId=key_id)
@@ -279,6 +422,13 @@ class TenantKMSManager:
         return pem.decode(), pubkey
 
     def get_public_key_jwk(self, key_id):
+        # check for local key
+        key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
+        if key_in_db:
+            key = decrypt_json(key_in_db.key_data)
+            key.pop("d")
+            return key, key["kid"], "EdDSA"
+            
         md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]
         key_spec = md["KeySpec"]
         alg, crv = _spec_to_alg_and_crv(key_spec)
@@ -301,7 +451,6 @@ class TenantKMSManager:
             "y": b64url(y_bytes),
         }
 
-        # RFC 7638 JWK thumbprint as kid
         thumb_input = json.dumps(
             {"crv": jwk["crv"], "kty": jwk["kty"], "x": jwk["x"], "y": jwk["y"]},
             separators=(",", ":"), sort_keys=True
@@ -309,17 +458,32 @@ class TenantKMSManager:
         kid = b64url(hashlib.sha256(thumb_input).digest())
 
         return jwk, kid, alg
-    
-    def sign_message(self, key_id, message_bytes):
-        """
-        Sign an arbitrary-length message with KMS using ECDSA + SHA-256.
 
-        We hash locally and pass the digest to KMS with MessageType="DIGEST"
-        to avoid the 4096-byte RAW message limit.
-        """
-        # Compute SHA-256 digest of the message
+    def sign_message(self, key_id, message_bytes: bytes, local=False) -> Tuple[bytes, Tuple[int, int]]:
         digest = hashlib.sha256(message_bytes).digest()
+        if local:
+            # --- Local Ed25519 path using jwcrypto ---
+            key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
+            if key_in_db is None:
+                raise ValueError(f"No local key found for key_id={key_id}")
 
+            # decrypt_json should return the JWK (dict or JSON string)
+            jwk_data = decrypt_json(key_in_db.key_data)
+            jwk_json = json.dumps(jwk_data)
+            jwk_key = jwk.JWK.from_json(jwk_json)
+
+            # Export full JWK and pull out the private component "d"
+            full_jwk = json.loads(jwk_key.export(private_key=True))
+            priv_bytes = _b64url_decode(full_jwk["d"])
+
+            # Build an Ed25519 private key from the raw private key bytes
+            private_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
+
+            # Ed25519 signs the *raw* message (no external hashing)
+            signature = private_key.sign(message_bytes)  # 64 bytes
+
+            return signature, ("", "")
+    
         resp = self.kms.sign(
             KeyId=key_id,
             Message=digest,
@@ -327,43 +491,73 @@ class TenantKMSManager:
             SigningAlgorithm="ECDSA_SHA_256",
         )
         signature = resp["Signature"]
-        # decode ASN.1 DER ECDSA signature into (r,s)
         r, s = decode_dss_signature(signature)
         return signature, (r, s)
+
     
-    def sign_jwt_with_key(self, key_id, header: dict, payload: dict) -> str:
-        # Choose alg from the KMS key spec
-        md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]
-        key_spec = md["KeySpec"]
-        alg, _crv = _spec_to_alg_and_crv(key_spec)
+    def sign_jwt_with_key(self, key_id, header: dict, payload: dict, local: bool = False) -> str:
+        """
+        Sign a JWT with either:
+        - a local Ed25519 key stored in the DB (local=True, alg=EdDSA), or
+        - an EC key in AWS KMS (local=False, alg=ES256/ES256K).
 
-        # Ensure 'alg' in header; add kid from JWK thumbprint unless caller set one
-        jwk, kid, alg_from_key = self.get_public_key_jwk(key_id)
+        key_id:
+        - local=True  -> DID / verificationMethod.id used as Key.key_id
+        - local=False -> KMS key id or alias
+        """
+        # --- Figure out alg & JWK (works for both local and KMS) ---
+        jwk_dict, kid, alg_from_key = self.get_public_key_jwk(key_id)
+
+        # Header defaults
         if "alg" not in header:
-            header["alg"] = alg_from_key  # ES256 or ES256K
-        #if "kid" not in header:
-        #    header["kid"] = kid
+            header["alg"] = alg_from_key  # "EdDSA" for local Ed25519, ES256/ES256K for KMS
         header.setdefault("typ", "JWT")
+        # You can also set kid if you want:
+        # header.setdefault("kid", kid)
 
-        # Encode header & payload (base64url, no padding)
+        # --- Build signing input ---
         encoded_header = b64url_json(header)
         encoded_payload = b64url_json(payload)
         signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
 
-        # Sign with KMS (SHA-256 over signing_input)
+        # --- Local Ed25519 path (EdDSA) ---
+        if local:
+            # sign_message() will use the local Ed25519 key when local=True
+            signature, _ = self.sign_message(key_id, signing_input, local=True)
+
+            # For EdDSA/Ed25519, JOSE signature is just the 64 raw bytes, base64url-encoded
+            jose_sig = b64url(signature)
+
+            return f"{encoded_header}.{encoded_payload}.{jose_sig}"
+
+        # --- KMS EC path (ES256 / ES256K) ---
+        # Still use describe_key for EC KMS keys if you need the KeySpec; not strictly required
+        md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]
+        key_spec = md["KeySpec"]
+        alg, _crv = _spec_to_alg_and_crv(key_spec)  # kept for sanity/logging; header["alg"] already set
+
         der_sig, (r, s) = self.sign_message(key_id, signing_input)
 
-        # Convert ASN.1/DER ECDSA sig -> JOSE raw (r||s), each 32 bytes, then base64url
+        # Convert DER ECDSA sig to JOSE format: r || s (32 bytes each, big-endian)
         r_bytes = r.to_bytes(32, "big")
         s_bytes = s.to_bytes(32, "big")
         jose_sig = b64url(r_bytes + s_bytes)
 
         return f"{encoded_header}.{encoded_payload}.{jose_sig}"
 
-    # === convenience: sign JWT for a tenant DID (by alias) ===
+
+    # === convenience: DID-level signing (legacy) ===
+
     def sign_jwt_for_tenant(self, tenant_did: str, header: dict, payload: dict) -> str:
+        """
+        Legacy convenience: treat the DID as the tenant identifier and
+        sign with its *default* key (P-256).
+
+        For multiple verificationMethods, prefer:
+          - create_or_get_key_for_verification_method(vm_id, key_spec)
+          - sign_jwt_with_key(key_id, ...)
+        """
         alias_name = sanitize_alias_from_did(tenant_did)
-        # resolve alias -> key id
         md = self.kms.describe_key(KeyId=alias_name)
         key_id = md["KeyMetadata"]["KeyId"]
         return self.sign_jwt_with_key(key_id, header, payload)
@@ -371,7 +565,10 @@ class TenantKMSManager:
 
     def verify_tenant_jwt_with_jwcrypto(self, tenant_did: str, jwt_compact: str):
         """
-        Convenience: resolve tenant alias -> key -> JWK, then verify the JWT with jwcrypto.
+        Legacy convenience: resolve DID-level alias -> key -> JWK, then verify JWT.
+
+        For multiple verificationMethods, prefer using get_key_id_for_verification_method()
+        and verify_jwt_with_jwcrypto() directly.
         """
         alias = sanitize_alias_from_did(tenant_did)
         md = self.kms.describe_key(KeyId=alias)
@@ -380,21 +577,13 @@ class TenantKMSManager:
         return verify_jwt_with_jwcrypto(jwt_compact, jwk)
 
 
-    # --- JWS verification with jwcrypto ---
+# --- JWS verification with jwcrypto ---
+
 def verify_jwt_with_jwcrypto(jwt_compact: str, jwk_dict: dict):
-    """
-    Verifies a compact JWS/JWT using jwcrypto and the given public JWK.
-    Returns (header_dict, payload_dict) on success; raises on failure.
-
-    Note: jwcrypto supports ES256 (P-256). ES256K (secp256k1) requires jwcrypto/cryptography
-    versions that include secp256k1; if not available, you'll get NotImplementedError.
-    """
-
-    key = _jwk.JWK.from_json(_json.dumps(jwk_dict))
-    token = _jws.JWS()
+    key = jwk.JWK.from_json(json.dumps(jwk_dict))
+    token = jws.JWS()
     token.deserialize(jwt_compact)
 
-    # Let jwcrypto select the algorithm from the header (alg)
     try:
         token.verify(key)
     except NotImplementedError as e:
@@ -403,15 +592,14 @@ def verify_jwt_with_jwcrypto(jwt_compact: str, jwk_dict: dict):
             "(likely ES256K). Upgrade jwcrypto & cryptography, or verify via cryptography manually."
         ) from e
 
-    # Extract JOSE header + payload as dicts
-    header = _json.loads(token.jose_header) if isinstance(token.jose_header, str) else token.jose_header
-    payload = _json.loads(token.payload.decode("utf-8"))
+    header = json.loads(token.jose_header) if isinstance(token.jose_header, str) else token.jose_header
+    payload = json.loads(token.payload.decode("utf-8"))
     return header, payload
-    
-    
-# === demo flow ===
+
+
+# === simple demo ===
 def test_flow(tenant_did: str):
-    manager = TenantKMSManager()
+    manager = kms_init("local")
     key_id = manager.create_or_get_key_for_tenant(tenant_did)
     print("Key available:", key_id)
 
@@ -424,7 +612,9 @@ def test_flow(tenant_did: str):
     print("r:", r)
     print("s:", s)
 
+
 if __name__ == "__main__":
-    # quick demo
     demo_did = "did:web:wallet4agent.com:demo#key-1"
-    test_flow(demo_did)
+    # test_flow(demo_did)
+    manager = kms_init("local")
+    print("Demo OK, KMS manager initialised.")

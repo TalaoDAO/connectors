@@ -34,9 +34,13 @@ AGENT_DIDS: Dict[str, str] = {
     profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
 }
 
+AGENT_DIDS.update({"cheqd" : "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"})
+
 def ecosystem(wallet_profile):
     if wallet_profile in ["demo", "demo2"]:
         return "DIIP V3"
+    elif wallet_profile == "cheqd":
+        return "CHEQD"
     elif wallet_profile == "diipv4":
         return "DIIP V4"
     else:

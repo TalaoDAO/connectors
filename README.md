@@ -1,313 +1,77 @@
-# MCP Server for Data Wallets — **Complete Remote Usage & Integration Guide**
+# cheqd-node: Ledger code cheqd network
 
-Connect **EUDI‑compliant wallets** (e.g., **Talao**) to **AI agents** via the **Model Context Protocol (MCP)**.  
-This hosted service exposes your OIDC4VP verifier as MCP tools using a **pull** model (no webhooks or callbacks).
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/cheqd/cheqd-node?color=green&label=stable%20release&style=flat-square)](https://github.com/cheqd/cheqd-node/releases/latest) ![GitHub Release Date](https://img.shields.io/github/release-date/cheqd/cheqd-node?color=green&style=flat-square) [![GitHub license](https://img.shields.io/github/license/cheqd/cheqd-node?color=blue&style=flat-square)](https://github.com/cheqd/cheqd-node/blob/main/LICENSE)
 
-- **Base URL**: [https://wallet-connectors.com](https://wallet-connectors.com) 
-- **MCP RPC endpoint**: `POST https://wallet-connectors.com/mcp` 
-- **Manifest**: [https://wallet-connectors.com/manifest.json](https://wallet-connectors.com/manifest.json)
-- **Spec version**: MCP **2025‑06‑18** — uses `params.arguments`; returns `result.content` (blocks) + `result.structuredContent`.
+[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/cheqd/cheqd-node?include_prereleases&label=dev%20release&style=flat-square)](https://github.com/cheqd/cheqd-node/releases/) ![GitHub commits since latest release (by date)](https://img.shields.io/github/commits-since/cheqd/cheqd-node/latest?style=flat-square) [![GitHub contributors](https://img.shields.io/github/contributors/cheqd/cheqd-node?label=contributors%20%E2%9D%A4%EF%B8%8F&style=flat-square)](https://github.com/cheqd/cheqd-node/graphs/contributors)
 
-> ✅ This README explains both **how to use** and **how to integrate** the Wallet Connectors MCP server with ChatGPT, VS Code, or your own clients.  
-> No self‑hosting is required.
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cheqd/cheqd-node/dispatch.yml?label=workflows&style=flat-square)](https://github.com/cheqd/cheqd-node/actions/workflows/dispatch.yml) [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cheqd/cheqd-node/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/cheqd/cheqd-node/actions/workflows/codeql.yml) ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/cheqd/cheqd-node?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/cheqd/cheqd-node?style=flat-square)
 
----
+## ℹ️ Overview
 
-## 🚀 Quick Setup for MCP Clients
+[**cheqd**](https://www.cheqd.io) is a public self-sovereign identity (SSI) network for building secure 🔐 and private 🤫 self-sovereign identity systems on [Cosmos](https://cosmos.network) 💫. Our core vision is to add viable commercial models to decentralised digital 🆔
 
-### 🧠 ChatGPT Desktop (Developer Preview)
+`cheqd-node` is the ledger/node component of the cheqd network tech stack, built using [Cosmos SDK](https://github.com/cosmos/cosmos-sdk) and [CometBFT](https://cometbft.com/).
 
-1. Locate your config file:  
-   `~/.config/openai/mcp/servers.json` (create if missing)
+## ▶️ Quick start for joining cheqd networks
 
-2. Add this block:
+Join our [**Discord server**](http://cheqd.link/discord-github) for help, questions, and support if you are looking to join our [mainnet](https://explorer.cheqd.io) or [testnet](https://testnet-explorer.cheqd.io).
 
-   ```json
-   {
-     "wallet-connectors": {
-       "command": "bash",
-       "args": ["-lc", "echo ready"],
-       "env": { "X_API_KEY": "0000" },
-       "transport": {
-         "type": "http",
-         "url": "https://wallet-connectors.com/mcp",
-         "headers": {
-           "X-API-KEY": "0000",
-           "Accept": "application/json"
-         }
-       }
-     }
-   }
-   ```
-
-3. Restart ChatGPT → open *Settings → MCP Servers* → see **wallet‑connectors** appear.
-
-### 🧩 VS Code MCP Extension
-
-Create `.vscode/mcp.json`:
-
-```json
-{
-  "servers": {
-    "wallet-connectors": {
-      "transport": {
-        "type": "http",
-        "url": "https://wallet-connectors.com/mcp",
-        "headers": { "X-API-KEY": "0000" }
-      }
-    }
-  }
-}
-```
-
-Then reload VS Code → open the MCP panel.
-
----
-
-## 🔑 Authentication
-
-Send your verifier key in a header on **every** call:
-```
-X-API-KEY: <YOUR_VERIFIER_KEY>
-```
-
-Use **0000** as `verifier_id` and `X-API-KEY` for demo/testing with [Talao wallet](https://talao.io).  
-Other verifier profiles are available at [wallet‑connectors.com](https://wallet-connectors.com).
-
-No cookies or OAuth are used.
-
----
-
-## 🧩 Available Tools
-
-| Tool | Purpose | Key arguments | Returns (`structuredContent`) |
-|------|----------|---------------|-------------------------------|
-| `start_wallet_verification` | Start an OIDC4VP flow and get a **deeplink** + **QR** | `verifier_id` (required), optional `scope`, `session_id`, `mode`, `presentation` | `session_id`, `deeplink_url`, `pull_url`, `public_base_url` |
-| `poll_wallet_verification` | Poll verification status | `session_id` | `status` (`pending / verified / denied`), plus wallet claims (tokens redacted) |
-| `revoke_wallet_flow` | Acknowledge cleanup for a session | `session_id` | `{ ok: true, session_id }` |
-
-**Supported scopes:**  
-`profile`, `email`, `phone`, `over18`, `wallet_identifier`, `custom`
-
-Using `wallet_identifier` maps to **no scope** in the OIDC layer — produces an **ID‑token only** flow (wallet DID).
-
----
-
-## 🧠 Scope → Returned Claims
-
-| scope | Returned claims | Notes |
-|---|---|---|
-| `email` | `email_address`, `email` | Provided as **PID** (eIDAS v2 rulebook). |
-| `phone` | `mobile_phone_number`, `phone` | Provided as **PID**. |
-| `profile` | `family_name`, `given_name`, `birth_date` | OIDF standard scope. |
-| `wallet_identifier` | `wallet_identifier` (wallet DID or public key thumbprint) | ID‑token only flow. |
-| `over18` | `over_18` (boolean) or age‑attestation | Wallet‑dependent format. |
-| `custom` | Defined by your Presentation Definition | Requires registration with your PEX/DCQL. |
-
----
-
-## 🧪 Quick Start (curl)
-
-List tools:
-```bash
-curl -s https://wallet-connectors.com/mcp   -H 'Content-Type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq
-```
-
-Start a flow (demo mode, 0000):
-```bash
-curl -s https://wallet-connectors.com/mcp   -H 'Content-Type: application/json'   -H 'Accept: application/json'   -H 'X-API-KEY: 0000'   -d '{
-    "jsonrpc":"2.0",
-    "id":"start",
-    "method":"tools/call",
-    "params":{
-      "name":"start_wallet_verification",
-      "arguments":{"verifier_id":"0000","scope":"profile"}
-    }
-  }' | jq
-```
-
-Poll until verified:
-```bash
-curl -s https://wallet-connectors.com/mcp   -H 'Content-Type: application/json'   -H 'Accept: application/json'   -H 'X-API-KEY: 0000'   -d '{
-    "jsonrpc":"2.0",
-    "id":"poll",
-    "method":"tools/call",
-    "params":{
-      "name":"poll_wallet_verification",
-      "arguments":{"session_id":"<SESSION_ID_FROM_START>"}
-    }
-  }' | jq
-```
-
----
-
-## 🧩 Response Shapes (MCP 2025‑06‑18)
-
-All tool results return:
-
-```json
-{
-  "result": {
-    "content": [ /* array of blocks (text/image/...) */ ],
-    "structuredContent": { /* machine-readable JSON */ }
-  }
-}
-```
-
-### `start_wallet_verification` — example result
-```json
-{
-  "result": {
-    "content": [
-      {"type":"image","data":"<base64-PNG>", "mimeType":"image/png"},
-      {"type":"text","text":"Scan the QR or open: openid4vp://...?request_uri=..."}
-    ],
-    "structuredContent": {
-      "session_id": "3e02ac7e-da66-4dd1-9abe-30348dcc728f",
-      "deeplink_url": "openid4vp://...?request_uri=https://.../request_uri/abc",
-      "pull_url": "https://wallet-connectors.com/verifier/wallet/pull/3e02...",
-      "public_base_url": "https://wallet-connectors.com"
-    }
-  }
-}
-```
-
-### `poll_wallet_verification` — example result
-```json
-{
-  "result": {
-    "content": [{ "type":"text","text":"{"status":"verified","session_id":"3e02..."}" }],
-    "structuredContent": {
-      "status": "verified",
-      "session_id": "3e02ac7e-da66-4dd1-9abe-30348dcc728f",
-      "scope": "profile",
-      "wallet_identifier": "did:jwk:...",
-      "first_name": "John",
-      "last_name": "DOE"
-    }
-  }
-}
-```
-
-> Claims may be **flattened** or nested under `wallet_data`.  
-> Raw `vp_token` and `id_token` are **redacted**.
-
----
-
-## 💻 Minimal Clients
-
-### JavaScript (Browser)
-```js
-const mcpUrl = "https://wallet-connectors.com/mcp";
-const apiKey = "<X-API-KEY>";
-
-async function rpc(method, params) {
-  const res = await fetch(mcpUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "X-API-KEY": apiKey
-    },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-  });
-  return res.json();
-}
-
-const start = await rpc("tools/call", {
-  name: "start_wallet_verification",
-  arguments: { verifier_id: "0000", scope: "profile" }
-});
-const flow = start.result.structuredContent;
-console.log(flow.deeplink_url);
-
-const poll = await rpc("tools/call", {
-  name: "poll_wallet_verification",
-  arguments: { session_id: flow.session_id }
-});
-console.log(poll.result.structuredContent.status);
-```
-
-### Python (requests)
-```py
-import requests, time
-
-MCP = "https://wallet-connectors.com/mcp"
-HDR = {"Content-Type":"application/json","Accept":"application/json","X-API-KEY":"0000"}
-
-def rpc(method, params):
-    body = {"jsonrpc":"2.0","id":"1","method":method,"params":params}
-    return requests.post(MCP, headers=HDR, json=body, timeout=30).json()
-
-start = rpc("tools/call", {"name":"start_wallet_verification","arguments":{"verifier_id":"0000","scope":"profile"}})
-flow = start["result"]["structuredContent"]
-print("deeplink:", flow["deeplink_url"], "session:", flow["session_id"])
-
-while True:
-    poll = rpc("tools/call", {"name":"poll_wallet_verification","arguments":{"session_id": flow["session_id"]}})
-    status = poll["result"]["structuredContent"]["status"]
-    print("status:", status)
-    if status != "pending": break
-    time.sleep(2)
-```
-
----
-
-## 🌐 Browser Clients & CORS
-
-- Supports preflight (`OPTIONS /mcp`)
-- Use `Accept: application/json` + `Content-Type: application/json`
-- Call directly from any origin
-
----
-
-## ⚠️ Error Handling
-
-Two layers:
-
-1️⃣ **JSON‑RPC errors** — top‑level:
-```json
-{"error":{"code":401,"message":"Missing or invalid X-API-KEY"}}
-```
-2️⃣ **Tool‑level errors** — inside `result`:
-```json
-{"result":{"isError":true,"structuredContent":{"error":"invalid_arguments","missing":["verifier_id"]}}}
-```
-
-Common messages: `401`, `400`, `upstream_error`, `network_error`
-
----
-
-## 🔒 Privacy & Security
-
-- Header‑only auth (`X-API-KEY`) — rotate regularly  
-- `vp_token` / `id_token` are **redacted**  
-- Implement polling backoff (1–2 s)
-
----
-
-## 📈 Demos
-
-- **Web QR demo** → renders QR & polls until verified → `examples/web-demo.html`
-- **CLI demo** → runs full flow → `examples/demo.mjs`
-
----
-
-## 🧰 Developer Resources
-
-- `GET /mcp/info` → `{ name, version, protocolVersion, endpoints, auth }`
-- `GET /mcp/healthz` → `{ ok: true }`
-- Spec: [Model Context Protocol 2025‑06‑18](https://github.com/modelcontextprotocol/spec)
-- Home: [https://wallet-connectors.com](https://wallet-connectors.com)
-
----
-
-## 🗓️ Changelog
-
-- **1.2.0** — Unified README with full examples & setup for ChatGPT + VS Code  
-- **1.1.0** — Added quick‑install, helper clients, and demo scripts  
-- **1.0.0** — Initial release, MCP 2025‑06‑18 compliance
-
----
-
-**Maintainer:** [Talao DAO](https://github.com/TalaoDAO) • MIT License
+Either the cheqd team, or one of your fellow node operators will be happy to offer some guidance.
+
+### ✅ Mainnet
+
+Getting started as a node operator on the cheqd network [mainnet](https://explorer.cheqd.io) is as simple as...
+
+1. Install [the latest stable release](https://github.com/cheqd/cheqd-node/releases/latest) of `cheqd-node` software (currently `v3.x.x`) on a hosting platform of your choice by [following the setup guide](https://docs.cheqd.io/node/getting-started/setup-and-configure).
+2. Once you have acquired CHEQ tokens, [promote your node to a validator](https://docs.cheqd.io/node/validator-guides/validator-guide)
+
+If successfully configured, your node would become the latest validator on the cheqd mainnet. Welcome to the new digital ID revolution!
+
+### 🚧 Testnet
+
+Our [testnet](https://testnet-explorer.cheqd.io) is the easiest place for developers and node operators to get started if you're not *quite* ready yet to dive into building apps on our mainnet. To get started...
+
+1. Install [the latest stable release](https://github.com/cheqd/cheqd-node/releases/latest) of `cheqd-node` software (currently `v3.x.x`) on a hosting platform of your choice by [following the setup guide](https://docs.cheqd.io/node/getting-started/setup-and-configure).
+2. Acquire testnet CHEQ tokens through [our testnet faucet](https://testnet-faucet.cheqd.io).
+3. Once you have acquired CHEQ tokens, [promote your node to a validator](https://docs.cheqd.io/node/validator-guides/validator-guide)
+
+## 🧑‍💻 Using cheqd
+
+Once installed, `cheqd-node` can be controlled using the [cheqd Cosmos CLI guide](https://docs.cheqd.io/node/getting-started/cheqd-cli).
+
+### 📌 Currently supported functionality
+
+* Basic token functionality for holding and transferring tokens to other accounts on the same network
+* Creating, managing, and configuring accounts and keys on a cheqd node
+* Staking and participating in public-permissionless governance
+* Governance framework for public-permissionless self-sovereign identity networks
+* Creating [`did:cheqd` method DIDs](https://docs.cheqd.io/identity/architecture/adr-list/adr-001-cheqd-did-method), DID Documents ("DIDDocs")
+* Querying DIDs/DIDDocs using our [Universal Resolver driver](https://docs.cheqd.io/identity/advanced/did-resolver)
+* Creating and managing Verifiable Credentials anchored to DIDs on cheqd mainnet
+* Creating [on-ledger DID-Linked "resources" (e.g., schemas, visual representations of credentials, etc)](https://docs.cheqd.io/identity/guides/did-linked-resources) that can be used in DIDDocs and Verifiable Credentials. This is used to support [AnonCreds on cheqd](https://docs.cheqd.io/identity/guides/anoncreds)
+* Custom [pricing for DID and Resources](https://cheqd.io/developers/) with burn to manage inflation.
+* EIP-1559 style feemarkets pricing for dynamic fees.
+
+## 🛠 Developing & contributing to cheqd
+
+`cheqd-node` is written in Go and built using Cosmos SDK. The [Cosmos SDK Developer Guide](https://docs.cosmos.network/main) explains a lot of the [basic concepts](https://docs.cosmos.network/main/basics/app-anatomy) of how the cheqd network functions.
+
+If you want to build a node from source or contribute to the code, please read our guide to [building and testing](https://docs.cheqd.io/node/developing-on-cheqd/build-and-networks).
+
+### Creating a local network
+
+If you are building from source, or otherwise interested in running a local network, we have [instructions on how to set up a new network](https://docs.cheqd.io/node/developing-on-cheqd/build-and-networks) for development purposes.
+
+## 🐞 Bug reports & 🤔 feature requests
+
+If you notice anything not behaving how you expected, or would like to make a suggestion / request for a new feature, please create a [**new issue**](https://github.com/cheqd/cheqd-node/issues/new/choose) and let us know.
+
+## 💬 Community
+
+Our [**Discord server**](http://cheqd.link/discord-github) is our primary chat channel for the open-source community, software developers, and node operators.
+
+Please reach out to us there for discussions, help, and feedback on the project.
+
+## 🙋 Find us elsewhere
+
+[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/cheqd) [![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](http://cheqd.link/discord-github) [![Twitter](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/intent/follow?screen_name=cheqd_io) [![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](http://cheqd.link/linkedin) [![Medium](https://img.shields.io/badge/Medium-12100E?style=for-the-badge&logo=medium&logoColor=white)](https://blog.cheqd.io) [![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/channel/UCBUGvvH6t3BAYo5u41hJPzw/)

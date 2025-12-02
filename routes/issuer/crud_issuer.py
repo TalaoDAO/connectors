@@ -4,10 +4,8 @@ from flask_login import login_required, current_user
 from db_model import db, Issuer, Credential
 import secrets
 import json
-import os
 import re
-from utils.kms import encrypt_json, decrypt_json
-from utils import oidc4vc
+from kms_model import encrypt_json, decrypt_json
 
 
 def init_app(app):

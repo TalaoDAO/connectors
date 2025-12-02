@@ -1,10 +1,9 @@
 from flask import request, render_template, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
-from db_model import db, Signin, default_verifier_request_key, Credential
+from db_model import db, Signin, Credential
 import secrets
 import json
-import os
-from utils.kms import encrypt_json, decrypt_json
+from kms_model import encrypt_json, decrypt_json
 from utils import oidc4vc
 
 

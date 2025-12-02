@@ -3,12 +3,12 @@ from flask_login import UserMixin
 from datetime import datetime, timezone
 from jwcrypto import jwk 
 import json
-from utils.kms import encrypt_json
+from kms_model import encrypt_json
 from utils import oidc4vc
 from sqlalchemy import CheckConstraint, Enum, UniqueConstraint, Index
 import logging
+from database import db
 
-db = SQLAlchemy()
 
 
 class User(UserMixin, db.Model):
@@ -285,6 +285,28 @@ def seed_wallet(mode, manager):
             did_document=create_did_document(did, jwk, url)
         )
         db.session.add(wallet_5)
+        
+        did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+        vm = did + "#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        url = mode.server + did
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="cheqd")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="cheqd", duration=90*24*60*60)
+        wallet_6 = Wallet(
+            dev_pat_jti=dev_pat_jti,
+            agent_pat_jti=agent_pat_jti,
+            ecosystem_profile="CHEQD",
+            always_human_in_the_loop=False,
+            did=did,
+            status="active",
+            url=url,
+            owners_identity_provider="google",
+            owners_login=json.dumps(["thierry.thevenet@talao.io"]),
+            did_document=create_did_document(did, jwk, url)
+        )
+        db.session.add(wallet_6)
+        
         db.session.commit()
 
 
@@ -427,3 +449,5 @@ def create_did_document(did, jwk_1, url) -> str:
         ]
     }
     return json.dumps(document)
+
+

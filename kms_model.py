@@ -1,7 +1,19 @@
-# simple_kms.py
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime, timezone
 import os, base64, json
 from typing import Any, Dict, Optional, List
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from database import db
+
+
+class Key(db.Model):
+    __bind_key__ = "second"  # this model goes to the second database
+    id = db.Column(db.Integer, primary_key=True)
+    key_id = db.Column(db.String(128))
+    key_data = db.Column(db.Text)
+    type = db.Column(db.String(128))
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
 
 
 def load_keys() -> bytes:
@@ -10,7 +22,6 @@ def load_keys() -> bytes:
             keys = json.load(f)
         kms_key =  keys.get("kms_key")
     except Exception:
-        print('Unable to load keys.json — file missing or corrupted.')
         return
     return base64.b64decode(kms_key)
 

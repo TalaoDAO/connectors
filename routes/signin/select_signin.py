@@ -1,8 +1,7 @@
 from flask import render_template, redirect, flash
 from flask_login import login_required, current_user
 from db_model import db, Signin
-import json
-from utils.kms import encrypt_json, decrypt_json
+from kms_model import encrypt_json, decrypt_json
 
 def init_app(app):
     app.add_url_rule('/signin/select/<signin_type>',  view_func=list_signins, methods = ['GET'])

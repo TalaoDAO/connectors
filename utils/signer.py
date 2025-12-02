@@ -5,7 +5,7 @@ from jwcrypto import jwk, jwt
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from QTSP.vintegris.vintegris import TrustedAppSigner
-from utils.kms import decrypt_json
+from kms_model import decrypt_json
 
 
 # ---- helpers ----

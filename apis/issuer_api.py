@@ -7,7 +7,7 @@ from flask import jsonify, request, Response, current_app
 from flask_restx import Api, Namespace, Resource, fields
 from flask import Blueprint  
 from db_model import Issuer, db
-from utils.kms import encrypt_json, decrypt_json
+from kms_model import decrypt_json
 from routes.issuer import build_issuer_metadata
 
 

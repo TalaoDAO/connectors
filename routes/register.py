@@ -5,7 +5,7 @@ import json
 from flask_login import login_user, logout_user
 from db_model import User, db, Signin, Wallet
 import logging
-from utils.kms import decrypt_json
+from kms_model import decrypt_json
 import urllib
 import sys
 

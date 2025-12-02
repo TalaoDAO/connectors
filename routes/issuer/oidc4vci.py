@@ -16,9 +16,11 @@ import requests
 from flask import (Response, flash, jsonify, redirect,
                 render_template, request, session, current_app)
 import didkit
-from utils import x509_attestation, signer, oidc4vc, kms
+from utils import x509_attestation, signer, oidc4vc
 from db_model import Issuer, Credential, User
 from routes.issuer import build_issuer_metadata
+from kms_model import decrypt_json
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -135,7 +137,7 @@ def build_signed_metadata(issuer_id, metadata) -> str:
     user_id = issuer.user_id
     credential = Credential.query.filter(Credential.credential_id == issuer.credential_id).first()
     user = User.query.filter_by(id=user_id).first()
-    key = kms.decrypt_json(credential.key)
+    key = decrypt_json(credential.key)
     alg = oidc4vc.alg(key)
     header = {
         'typ': "openidvci-issuer-metadata+jwt",
