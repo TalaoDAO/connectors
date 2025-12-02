@@ -27,14 +27,14 @@ MCP_SERVER_URL = "https://wallet4agent.com/mcp"
 # --------- PROFILES / DIDs / PATs ---------
 
 # Allowed profiles
-ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc"}
+ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc", "cheqd"}
 
 # Map profile -> DID
 AGENT_DIDS: Dict[str, str] = {
     profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
 }
+AGENT_DIDS["cheqd"] = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
 
-AGENT_DIDS.update({"cheqd" : "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"})
 
 def ecosystem(wallet_profile):
     if wallet_profile in ["demo", "demo2"]:
@@ -178,6 +178,23 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
         "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
     )
+    
+    cheqd = (
+        "ECOSYSTEM DESCRIPTION: \n" 
+        "- cheqd is a decentralized identity network built on Cosmos SDK and Tendermint."
+        "- It provides infrastructure for self-sovereign identity (SSI) and verifiable credentials."
+        "- cheqd enables creation, update, and resolution of DIDs, especially did:cheqd.\n"
+        "- The network includes mainnet and testnet, with high throughput and low fees.\n"
+        "- It supports trust frameworks, governance, and interoperable credential schemas."
+        "- cheqd integrates with the Universal Resolver and Universal Registrar ecosystems.\n"
+        "- A key innovation is payment rails, enabling usage-based payments for identity data.\n"
+        "- Developers can interact with cheqd using REST, RPC, CLI, and DID registrar drivers.\n"
+        "- The network prioritizes privacy-preserving identity, zero-knowledge credentials, and user control."
+        "- cheqd provides documentation, SDKs, and tooling for building decentralized identity apps. \n\n")
+    
+    if ecosystem == "CHEQD":
+        content += cheqd
+    
     return {"role": "system", "content": content}
 
 
@@ -294,7 +311,8 @@ def agent_page_profile(profile):
     Example: /agent/demo2 or /agent/diipv4
     """
     normalized = _normalize_profile(profile)
-    return render_template("agent_chat.html", profile=normalized)
+    profile_name = AGENT_DIDS[normalized]
+    return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
 
 def agent_page():

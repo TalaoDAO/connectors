@@ -11,7 +11,7 @@ class Key(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key_id = db.Column(db.String(128))
     key_data = db.Column(db.Text)
-    type = db.Column(db.String(128))
+    type = db.Column(db.String(128), default="Ed25519")
     created_at = db.Column(db.DateTime, default=datetime.now)
 
 
