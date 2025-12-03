@@ -279,7 +279,12 @@ def call_start_agent_authentication(
         )
 
     # 2. Fetch authorization_endpoint from well-known endpoint
-    well_known_url = oidc4vp_endpoint.rstrip("/") + "/.well-known/openid-configuration"
+    try:
+        well_known_url = oidc4vp_endpoint.rstrip("/") + "/.well-known/openid-configuration"
+    except Exception:
+        logging.info("serviceEndpoint is an array")
+        well_known_url = oidc4vp_endpoint[0].rstrip("/") + "/.well-known/openid-configuration"        
+    
     try:
         wk_resp = requests.get(well_known_url, timeout=5)
         wk_resp.raise_for_status()

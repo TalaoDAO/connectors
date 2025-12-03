@@ -123,14 +123,7 @@ class UniversalRegistrarClient:
         domain: str = "wallet4agent.com",
     ) -> Tuple[str, Dict[str, Any], str]:
         """
-        Create a did:web *locally* using a P-256 key in KMS.
-
-        IMPORTANT:
-        - We do NOT call the did:web Universal Registrar driver here,
-          because your driver instance is returning 503 on /1.0/create.
-        - For did:web, "registration" is just: serve this DID Document
-          under the correct HTTPS path on your own server.
-
+        Create a did:web remotely using a P-256 key in KMS.
         tenant = DID
         key = verificationMethod (vm_id = did + "#key-1")
         """
@@ -197,6 +190,8 @@ class UniversalRegistrarClient:
         # Build DID Document from the KMS key's JWK
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did_doc = build_jwk_did_document(did, jwk, url, agent_card_url)
+        
+        print("did document for cheqd ", did_doc)
 
         # 1st call: ask driver to prepare signPayload
         initial_body = {

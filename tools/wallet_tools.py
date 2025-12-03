@@ -381,6 +381,7 @@ def hash_client_secret(text: str) -> str:
 
 from typing import Dict, Any
 
+
 def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
     manager = config["MANAGER"]
@@ -415,7 +416,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             name=agent_name)
 
     elif method == "did:cheqd":
-        # did:cheqd: 2-step signPayload flow, with secp256k1 key in KMS
+        # did:cheqd: 2-step signPayload flow, with key in local KMS
         agent_did, did_document, key_id = client.create_did_cheqd(
             manager=manager,
             mode=mode,
@@ -428,7 +429,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             is_error=True,
         )
 
-    print("agent DID = ", agent_did)
     wallet_url = mode.server.rstrip("/") + "/" + agent_did
 
     if not did_document:
