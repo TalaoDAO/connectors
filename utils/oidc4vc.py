@@ -316,7 +316,6 @@ def sign_sdjwt_by_agent(unsecured, agent_identifier, manager, draft=13, duration
     if not payload.get("_sd"):
         logging.info("no _sd present")
         payload.pop("_sd_alg", None)
-    logging.info("sd-jwt payload = %s", json.dumps(payload, indent=4))
     # build header
     if draft >= 15:
         header['typ'] = "dc+sd-jwt"
@@ -616,7 +615,6 @@ def did_resolve_lp(did):
         except Exception:
             logging.warning('fails to access to both universal resolver')
             return "{'error': 'cannot access to Universal Resolver'}"
-    logging.info("DID Document = %s", r.json())
     return r.json().get('didDocument')
 
 

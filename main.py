@@ -12,6 +12,8 @@ import env
 import json
 from db_model import Wallet
 import key_manager
+import linked_vp
+from utils import oidc4vc
 
 
 # Your modules
@@ -22,6 +24,7 @@ from db_model import (
     seed_credential, seed_signin_for_wallet_registration,
     seed_user, seed_wallet
 )
+from kms_model import seed_key
 
 # Routes / APIs (kept as they are, just registered here)
 from routes import (
@@ -31,15 +34,10 @@ from routes import (
 
 
 from routes import verifier  
-
 from routes.issuer import oidc4vci, select_issuer, crud_issuer
-    
 from routes.signin import bridge, select_signin, crud_signin
-
 from routes.credential import crud_credential, select_credential
-
 from routes.status_list import statuslist
-
 from apis import issuer_api,  signin_api,  mcp_server
 
 
@@ -49,6 +47,28 @@ DEFAULT_GRANT_LIFE = 5000
 DEFAULT_ACCEPTANCE_TOKEN_LIFE = 28 * 24 * 60 * 60
 
 
+def create_oasf_vp(agent_identifier, manager, mode):
+        with open("OASF.json", "r", encoding="utf-8") as f:
+            oasf_json = json.load(f)
+        oasf_json["id"] = agent_identifier
+        oasf_json["disclosure"] = ["all"]
+        oasf_json["vct"] = "urn:ai-agent:oasf:0001"
+        this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+        if not this_wallet:
+            return None
+        profile = this_wallet.ecosystem_profile
+        if profile == "DIIP V3":
+            draft = 13
+        else:
+            draft = 15
+        cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360*24*60*60)
+        success, message = linked_vp.store_and_publish(cred, agent_identifier, manager, mode, published=True, type="OASF")
+        if success:
+            return True
+        logging.warning("Failed to publish OASF record as Linked VP " + message)
+        return False
+    
+    
 def create_app() -> Flask:
     """Application factory: configure, wire dependencies, register routes/APIs."""
     # Base Flask app
@@ -137,6 +157,8 @@ def create_app() -> Flask:
     #Mobility(app)
 
     # ---- DB bootstrap / seed (idempotent) ----
+    agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
+    "did:web:wallet4agent.com:arf", "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"]
     with app.app_context():
         db.create_all()
         # NOTE: seeding in production can be dangerous; guard by env flag
@@ -145,8 +167,10 @@ def create_app() -> Flask:
             seed_user()
             seed_credential()
             seed_signin_for_wallet_registration(mode)
-            #seed_issuer_for_testing(mode)
             seed_wallet(mode, manager)
+            seed_key()
+            for agent in agent_list:
+                create_oasf_vp(agent, manager, mode)
 
     # ---- Flask-Login ----
     login_manager = LoginManager()

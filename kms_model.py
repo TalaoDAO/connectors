@@ -15,6 +15,15 @@ class Key(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
 
 
+def seed_key():
+    if not Key.query.first():
+        key = Key(
+            key_id="did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac",
+            key_data="K3P4+sYmUX0ltDDwCIbMC4ulE6szPwBjTAxQJgJ+kTBPh9RZj0MnuMAoJmBqn6koq+rtl5A9NTFbQ+msGGiM7Ka8HNq8UCBPoJwk1yrYzRjD3rGz2PJyBO0KZrEeuYWvUH/9IdJDGHQUuldDUC67wvukI7aWkZl+7eD0o3ARYfMTMMeqqB6+O4Ps5p3pDnzJEN778hfv/E9VrPWrZ3Nt5SA6O4TBlmFbAKUXoZ2EGpfdxmp8g0YvhJIemOvqVnoqVosOBMe3kXAfkeNjEPClVlE=",
+            type="Ed25519"
+        )
+        db.session.add(key)
+
 
 def load_keys() -> bytes:
     try:
@@ -24,6 +33,7 @@ def load_keys() -> bytes:
     except Exception:
         return
     return base64.b64decode(kms_key)
+
 
 KEY = load_keys()
 

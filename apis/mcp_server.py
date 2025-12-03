@@ -101,7 +101,6 @@ def init_app(app):
         this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
         # if pat check if token is still valid for this agent_identifier
         if type == "pat":
-            print("agent_pat_jti = ", this_wallet.agent_pat_jti)
             try:
                 if jti == this_wallet.dev_pat_jti and role == "dev":
                     return role, agent_identifier

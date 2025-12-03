@@ -106,9 +106,8 @@ class UniversalRegistrarClient:
     - key    = verificationMethod (vm.id), mapped to an AWS KMS key
 
     It knows how to:
-      - Create did:web using P-256 keys from your KMS
-      - Create did:ethr using secp256k1 from your KMS
-      - Create did:cheqd using secp256k1 from your KMS with 2-step signing
+      - Create did:web using P-256 keys from AWS KMS
+      - Create did:cheqd using Ed25519 from local KMS with 2-step signing
     """
 
     def __init__(self, base_url: str = UNIVERSAL_REGISTRAR_BASE_URL):
@@ -234,7 +233,7 @@ class UniversalRegistrarClient:
 
             payload_bytes = base64.b64decode(payload_b64)
             
-            signature, _ = manager.sign_message(key_id, payload_bytes, local=True)
+            signature, _ = manager.sign_message(key_id, payload_bytes)
             # For Ed25519, the signature is already 64
             raw_sig = signature
             sig_b64 = _b64url_nopad(raw_sig)

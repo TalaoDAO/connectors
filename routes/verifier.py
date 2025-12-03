@@ -78,17 +78,6 @@ def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> 
         # Your existing signer for JWS
         return signer.sign_jwt(account, credential, header, payload)
 
-"""
-def build_verifier_metadata(verifier_id) -> dict:
-    verifier = Verifier.query.filter(Verifier.application_api_verifier_id == verifier_id).one_or_none()
-    if not verifier:
-        logging.warning("verifier does not exist")
-        return {}
-    verifier_metadata = json.loads(verifier.verifier_metadata or "{}")
-    logging.info("verifier metadata = %s", verifier_metadata)        
-    return verifier_metadata
-"""
-
 # build the authorization request for user                                   
 def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     
@@ -129,8 +118,7 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         "nonce": nonce
     }
     response_type = ["vp_token"]
-    
-        
+          
     if 'vp_token' in response_type:         
         if presentation_format == "presentation_exchange":
             path = "presentation_exchange/"

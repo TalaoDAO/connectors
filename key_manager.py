@@ -258,6 +258,8 @@ class TenantKMSManager:
 
     def create_or_get_key_for_tenant(self, vm_id, description=None, key_spec: str = None):
         if vm_id.startswith("did:cheqd:"):
+            if "#" not in vm_id:
+                vm_id = vm_id + "#key-1"
             # test if it exist
             key_exist = Key.query.filter(Key.key_id == vm_id).one_or_none()
             if key_exist:
@@ -459,7 +461,7 @@ class TenantKMSManager:
 
         return jwk, kid, alg
 
-    def sign_message(self, key_id, message_bytes: bytes, local=False) -> Tuple[bytes, Tuple[int, int]]:
+    def sign_message(self, key_id, message_bytes: bytes) -> Tuple[bytes, Tuple[int, int]]:
         digest = hashlib.sha256(message_bytes).digest()
         
         if key_id.startswith("did:cheqd:"):
@@ -496,7 +498,7 @@ class TenantKMSManager:
         return signature, (r, s)
 
     
-    def sign_jwt_with_key(self, key_id, header: dict, payload: dict, local: bool = False) -> str:
+    def sign_jwt_with_key(self, key_id, header: dict, payload: dict) -> str:
         """
         Sign a JWT with either:
         - a local Ed25519 key stored in the DB (local=True, alg=EdDSA), or
@@ -524,7 +526,7 @@ class TenantKMSManager:
         # --- Local Ed25519 path (EdDSA) ---
         if key_id.startswith("did:cheqd"):
             # sign_message() will use the local Ed25519 key when local=True
-            signature, _ = self.sign_message(key_id, signing_input, local=True)
+            signature, _ = self.sign_message(key_id, signing_input)
 
             # For EdDSA/Ed25519, JOSE signature is just the 64 raw bytes, base64url-encoded
             jose_sig = b64url(signature)
@@ -597,21 +599,6 @@ def verify_jwt_with_jwcrypto(jwt_compact: str, jwk_dict: dict):
     payload = json.loads(token.payload.decode("utf-8"))
     return header, payload
 
-
-# === simple demo ===
-def test_flow(tenant_did: str):
-    manager = kms_init("local")
-    key_id = manager.create_or_get_key_for_tenant(tenant_did)
-    print("Key available:", key_id)
-
-    pem, pubkey = manager.get_public_key_pem(key_id)
-    print("Public key PEM:\n", pem)
-
-    message = f"POC signing for tenant {tenant_did}"
-    sig, (r, s) = manager.sign_message(key_id, message.encode("utf-8"))
-    print("Signature (base64):", base64.b64encode(sig).decode())
-    print("r:", r)
-    print("s:", s)
 
 
 if __name__ == "__main__":

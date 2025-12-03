@@ -158,7 +158,7 @@ class Wallet(db.Model):
     ecosystem_profile = db.Column(db.String(64), default="DIIP V3") # to comply with default Talao profile
     agent_framework = db.Column(db.String(64), default="None")
     url = db.Column(db.Text, unique=True)
-    linked_vp = db.Column(db.Text)
+    linked_vp = db.Column(db.Text, default="{}")
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text)
     status = db.Column(db.String(256), default="pending")
@@ -182,24 +182,28 @@ class Attestation(db.Model):
 
 
 def seed_wallet(mode, manager):
+    config ={
+        "MANAGER": manager,
+        "MODE": mode
+    }
     if not Wallet.query.first():
         vm = "did:web:wallet4agent.com:demo#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
-        did = "did:web:wallet4agent.com:demo"
-        url = mode.server  + did
-        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "dev", "pat", jti="demo", duration=90*24*60*60)
+        did_1 = "did:web:wallet4agent.com:demo"
+        url = mode.server  + did_1
+        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(did_1, "dev", "pat", jti="demo")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did_1, "dev", "pat", jti="demo", duration=90*24*60*60)
         wallet_1 = Wallet(
             dev_pat_jti=dev_pat_jti,  # 365 days
             agent_pat_jti=agent_pat_jti,
             always_human_in_the_loop=False,
-            did=did,
+            did=did_1,
             url=url,
             status="active",
             owners_identity_provider="google",
             owners_login=json.dumps(["thierry.thevenet@talao.io"]),
-            did_document=create_did_document(did, jwk, url)
+            did_document=create_did_document(did_1, jwk, url)
         )
         db.session.add(wallet_1)
         
@@ -296,7 +300,7 @@ def seed_wallet(mode, manager):
         wallet_6 = Wallet(
             dev_pat_jti=dev_pat_jti,
             agent_pat_jti=agent_pat_jti,
-            ecosystem_profile="CHEQD",
+            ecosystem_profile="DIIP V3",
             always_human_in_the_loop=False,
             did=did,
             status="active",
@@ -368,7 +372,6 @@ def seed_signin_for_wallet_registration(mode):
 
 def seed_user():
     if not User.query.first():
-        
         default_user = User(
             email="thierry.thevenet@talao.io",
             created_at=datetime.now(timezone.utc),
@@ -417,6 +420,8 @@ def seed_user():
         db.session.add(default_user)
         
         db.session.commit()
+
+
 
 
 def create_did_document(did, jwk_1, url) -> str:

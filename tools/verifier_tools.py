@@ -120,14 +120,6 @@ tools_agent: List[Dict[str, Any]] = [
 ]
 
 
-def _qr_png_b64(text: str) -> Optional[str]:
-    """Return base64 PNG of QR for 'text'; None if qrcode not available."""
-    img = qrcode.make(text)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode()
-
-
 def _ok_content(
     blocks: List[Dict[str, Any]],
     structured: Optional[Dict[str, Any]] = None,
