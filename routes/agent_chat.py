@@ -224,6 +224,7 @@ CONFIRMATION_PATTERNS = (
     "do you want me to send",
     "may i send",
     "may i start",
+    "if you'd like,"
 )
 
 # Map profile -> last assistant message that actually asked for confirmation
