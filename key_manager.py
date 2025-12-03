@@ -257,7 +257,7 @@ class TenantKMSManager:
     # -------- core / legacy: tenant-level key (DID) --------
 
     def create_or_get_key_for_tenant(self, vm_id, description=None, key_spec: str = None):
-        if key_spec == "ED25519":
+        if vm_id.startswith("did:cheqd:"):
             # test if it exist
             key_exist = Key.query.filter(Key.key_id == vm_id).one_or_none()
             if key_exist:
@@ -461,7 +461,8 @@ class TenantKMSManager:
 
     def sign_message(self, key_id, message_bytes: bytes, local=False) -> Tuple[bytes, Tuple[int, int]]:
         digest = hashlib.sha256(message_bytes).digest()
-        if local:
+        
+        if key_id.startswith("did:cheqd:"):
             # --- Local Ed25519 path using jwcrypto ---
             key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
             if key_in_db is None:
@@ -521,7 +522,7 @@ class TenantKMSManager:
         signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
 
         # --- Local Ed25519 path (EdDSA) ---
-        if local:
+        if key_id.startswith("did:cheqd"):
             # sign_message() will use the local Ed25519 key when local=True
             signature, _ = self.sign_message(key_id, signing_input, local=True)
 

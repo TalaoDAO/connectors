@@ -3,7 +3,6 @@ from flask import request, current_app
 from flask import Response, jsonify, render_template
 import json, base64
 import uuid
-import logging
 from datetime import datetime, timedelta
 from jwcrypto import jwk, jwt
 from utils import oidc4vc, signer
