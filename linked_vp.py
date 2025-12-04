@@ -114,7 +114,7 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, manager, v
                 "@context": ["https://www.w3.org/ns/credentials/v2"],
                 "type": ["VerifiablePresentation"],
                 "holder": wallet_did,
-                "verifableCredential": [attestation],
+                "verifiableCredential": [attestation],
             },
         }
         vm = wallet_did + "#key-1"
