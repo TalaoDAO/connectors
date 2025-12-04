@@ -1,349 +1,331 @@
-# Wallet4Agent — **Technical Stack Overview**  
+# 🏗️ Wallet4Agent — Technical Stack Overview  
+### **For developers building trusted AI Agents able to interact with persons, companies, services, and other agents**  
 
-_For developers building AI Agents with verifiable, accountable identity_
-
-This document provides a **clean, implementation‑independent** overview of the technical architecture and protocols used by **Wallet4Agent**.  
-It is written for **Agent developers** consuming Wallet4Agent — **not for contributors modifying the internal codebase**.  
-No internal code or repository access is required.
-
-The goal is to understand:
-
-- 🧱 **Architecture** — how Wallet4Agent is structured  
-- 🆔 **Identity** — how DIDs and DID Documents are used  
-- 🔐 **Keys & KMS** — how signatures and key material are handled  
-- 🔑 **Authentication** — how Agents and Developers authenticate  
-- 📜 **Protocols** — OIDC4VCI (issuance), OpenID4VP (verification), OAuth2, MCP  
-- 📦 **Credentials** — how they are issued, stored, and exposed to your Agent  
+Wallet4Agent provides the **trust layer** that AI Agents need to operate safely in the real world.  
+This document explains the technical components, standards, and identity mechanisms behind the platform.
 
 ---
 
-## 🧭 1. Purpose of Wallet4Agent
+# 1. 🎯 Purpose of Wallet4Agent
 
-AI agents must be able to:
+AI Agents increasingly take actions, access data, and collaborate.  
+To do this safely, they must be able to:
 
-- Present **verifiable, externally issued credentials**
-- Prove **who they belong to** and **who controls them**
-- Interact with **users**, **organizations**, **infrastructures**, and **other agents** in a trustworthy way  
-- Use signed, KMS‑protected keys for high‑assurance cryptography
-- Participate in **decentralized** and **regulated** digital identity ecosystems
+- 🆔 Prove **who they are**
+- 👤 Prove **who owns or controls them**
+- 📄 Hold **verifiable credentials**
+- 🔐 Sign actions and data securely
+- 🔗 Trust **users**, **companies**, and **other agents**
+- 🪪 Authenticate to external systems without fragile API keys
 
-Wallet4Agent provides exactly that.  
-It turns any AI agent into a **verifiable digital entity** with:
+Wallet4Agent provides AI Agents with:
 
-- A **DID (Decentralized Identifier)**
-- A **wallet** that can hold credentials
-- A **full cryptographic stack**, including signatures bound to cloud KMS
-- A **standards‑compliant interface** exposed through **MCP (Model Context Protocol)**
+- **A DID-based identity**
+- **A secure wallet for credentials**
+- **Cloud KMS-backed signing keys**
+- **Interoperability with OIDC4VCI, OIDC4VP, SD‑JWT, JSON-LD, OAuth2**
+- **An MCP server interface for agents**
 
----
-
-## 🏗️ 2. Architecture Overview
-
-Wallet4Agent is composed of three main layers, all exposed through **MCP tools**:
-
-1. **MCP Server**  
-   - Single RPC endpoint:  
-     `POST https://wallet4agent.com/mcp`  
-   - JSON‑RPC based (`tools/list`, `tools/call`, `initialize`, `ping`, etc.)  
-   - All operations (identity, credentials, verification, configuration) are available as tools.
-
-2. **Identity Wallet**  
-   - Maintains a **DID** and **DID Document** for each Agent.  
-   - Stores and manages **verifiable credentials** (SD‑JWT VC, VC JSON‑LD).  
-   - Publishes public keys and optional Linked Verifiable Presentations.
-
-3. **Authorization & Verification Layer**  
-   - Issues and validates **access tokens** for Agents (OAuth2).  
-   - Integrates with external **credential issuers** (OIDC4VCI).  
-   - Integrates with external **verifiers** (OpenID4VP / OIDC4VP) for user identity checks.
-
-As an Agent developer, you only need to:
-
-- Call the **MCP endpoint**  
-- Provide the correct **Authorization** header  
-- Use the documented **tools** (e.g. `create_agent_identifier_and_wallet`, `get_this_wallet_data`, `accept_credential_offer`, `start_user_verification`).
-
-No database access, internal APIs, or KMS commands are required.
+Everything is standards‑based and interoperable.
 
 ---
 
-## 🆔 3. Identity Layer (DID & DID Document)
+# 2. 🧱 Architecture Overview
 
-Each agent created through Wallet4Agent receives a **W3C DID**, typically:
+Wallet4Agent is built with three coordinated layers:
 
-```text
-did:web:wallet4agent.com:<unique-id>
+## 2.1 🖥️ MCP Server (Model Context Protocol)
+- Single endpoint:  
+  `POST https://wallet4agent.com/mcp`
+- Exposes all operations as **tools**:
+  - Identity creation
+  - Credential issuance
+  - Verification flows
+  - Signing operations
+  - Configuration
+
+## 2.2 👛 Identity Wallet
+Manages:
+
+- The Agent’s DID & DID Document  
+- Stored credentials (SD‑JWT VC, VC JSON‑LD)  
+- Linked Verifiable Presentations  
+- Wallet metadata & service endpoints  
+
+## 2.3 🔐 Authorization & Verification Layer
+Supports:
+
+- OAuth2 access tokens
+- OIDC4VCI (credential issuance)
+- OIDC4VP (presentation)
+- User verification flows
+- Agent‑to‑Agent authentication
+
+All complex cryptographic and identity logic stays in Wallet4Agent.  
+Your agent simply calls MCP tools.
+
+---
+
+# 3. 🆔 Identity Layer (DID & DID Documents)
+
+Each AI Agent receives a **Decentralized Identifier (DID)** compliant with the W3C DID Core specification.
+
+Wallet4Agent supports **two DID methods**:
+
+---
+
+## **3.1 🌐 did:web (DNS-based identity)**  
+A DID anchored on a domain.
+
+```
+did:web:wallet4agent.com:<agent-id>
 ```
 
-This DID is associated with a **DID Document** that:
+⭐ Characteristics:
 
-- Is publicly reachable (e.g. `https://wallet4agent.com/did/<unique-id>`)
-- Contains:
-  - **Verification methods** (public keys as JWK or other forms)
-  - **Authentication methods** (which keys can authenticate the Agent)
-  - Optional **service endpoints** and references to Linked VPs
+- Easy to resolve using HTTPS  
+- DID Document lives at:  
+  `https://wallet4agent.com/did/<agent-id>`  
+- Perfect for SaaS agents  
+- Human-readable, infrastructure-friendly  
+- Works well for corporate or platform-linked AI agents  
 
-The DID Document is automatically updated when the developer:
-
-- Adds a new public key  
-- Rotates an authentication key  
-- Enables or disables certain capabilities  
-
-This allows external systems (other agents, verifiers, infrastructures) to:
-
-- Resolve the DID  
-- Discover the corresponding public keys  
-- Verify signatures and presentations from that Agent.
+🔗 DID:web specification:  
+https://www.w3.org/TR/did-spec-registries/#did-method-web
 
 ---
 
+## **3.2 ⛓️ did:cheqd (ledger-based identity)**  
+A DID anchored on the **Cheqd decentralized ledger**.
 
-### 🔗 3.1 Linked Verifiable Presentations (Linked VP)
-
-Linked Verifiable Presentations (Linked VP) allow Wallet4Agent to publish **public verifiable credentials directly inside a DID Document**...
-
-### 🌐 3.2 DID Resolution (How Agents Discover Other Agents)
-
-Any system can resolve a DID using a universal resolver such as https://dev.uniresolver.io/...
-## 🔐 4. Cryptography & Key Management
-
-### 4.1 KMS‑Bound Keys (Server‑controlled signing keys)
-
-Wallet4Agent uses a **per‑agent, cloud KMS key** for critical signatures.
-
-Key characteristics:
-
-- **Asymmetric EC key** (e.g. P‑256 or secp256k1)
-- **Non‑exportable** — the private key never leaves the cloud KMS
-- Bound to the **cloud workload identity** (e.g. an IAM Role)
-- Used for:
-  - Issuing **OIDC4VCI proofs of key ownership**
-  - Signing **verifiable presentations**
-  - Constructing **DID‑linked proofs**
-  - Other internal verifiable operations
-
-This ensures:
-
-- The agent identity is **cryptographically anchored** to a specific workload  
-- The key cannot be stolen or exported  
-- Every signature has **auditable accountability** (bound to the deployment environment)
-
-In public documents (like the DID Document), these keys appear as JWK values, but **only the public part** is published. The private key remains in KMS.
-
-### 4.2 Developer‑supplied keys
-
-Developers may add additional **public keys** to the wallet (via MCP tools). Typical uses:
-
-- **OAuth2 `private_key_jwt` client authentication**  
-- Keys managed by **external agent frameworks**  
-- Protocol‑specific keys that must be exposed in the DID Document
-
-Only **public keys** are stored and published.  
-The developer keeps and manages the corresponding private keys.
-
----
-
-## 🔑 5. Authentication & Authorization
-
-Wallet4Agent supports multiple actor roles and authentication mechanisms.
-
-### 5.1 Developer Authentication (Dev PAT)
-
-Developers authenticate using a **Developer Personal Access Token** (Dev PAT):
-
-- Returned **once** when the agent wallet is created  
-- Used to configure the agent (e.g. update auth keys, rotate tokens)  
-- Grants full administrative control of that particular agent’s wallet  
-- Never persisted in clear‑text; only a token identifier is stored for validation
-
-All **administrative tools** (configuration, rotation, key management, deletion) require a valid Dev PAT.
-
-### 5.2 Agent Authentication Options
-
-Agents authenticate separately from Developers. Available options:
-
-#### Option A — **Agent Personal Access Token (PAT)**
-
-- Simple bearer token:  
-  `Authorization: Bearer <agent_personal_access_token>`
-- Similar in spirit to GitHub/GitLab PATs
-- Best for:
-  - Rapid prototyping
-  - Single environment deployments
-  - Low‑risk integrations
-- Tokens can be rotated by the developer via MCP.
-
-#### Option B — **OAuth 2.0 Client Credentials**
-
-Agents can act as **OAuth clients**, obtaining access tokens from the authorization server associated with Wallet4Agent.
-
-Supported client authentication methods:
-
-1. `client_secret_post`  
-2. `client_secret_basic`  
-
-In both cases, the agent is identified by:
-
-- `client_id` = Agent DID (e.g. `did:web:wallet4agent.com:<id>`)  
-- `client_secret` = secret generated by Wallet4Agent and returned once to the developer
-
-Wallet4Agent functions as the **Authorization Server (AS)** issuing OAuth2 access tokens for Agents.  
-The Agent then calls the MCP endpoint with:
-
-```text
-Authorization: Bearer <access_token>
+```
+did:cheqd:<network>:<identifier>
 ```
 
-#### Option C — **OAuth 2.0 with `private_key_jwt`**
+⭐ Characteristics:
 
-For higher security and strong binding to keys controlled by the developer, Wallet4Agent also supports **`private_key_jwt`**:
+- Tamper-resistant DID Document stored on-ledger  
+- Supports **ledger-anchored keys**, rotations, service endpoints  
+- Ideal for:
+  - High-assurance identity
+  - Regulated environments
+  - Trust registries
+  - Decentralized compliance ecosystems  
 
-- Developer registers a **public JWK** as the agent’s client key (via an MCP configuration tool)
-- Agent holds and protects the **private part** of that JWK
-- When requesting an access token, the agent signs a `client_assertion` JWT with that key
-- Wallet4Agent validates the assertion using the registered public JWK
-
-This method is ideal when:
-
-- You already manage keys in secure hardware (HSM, KMS in your own stack, secure enclaves)
-- You want to avoid long‑lived client secrets
-- You need cryptographically strong, auditable client authentication
+🔗 DID:cheqd specification:  
+https://docs.cheqd.io/identity/
 
 ---
 
-## 📜 6. Verifiable Credential Issuance (OIDC4VCI)
+# 4. 📄 DID Documents
 
-Wallet4Agent handles **credential issuance** from external issuers using **OIDC4VCI**.
+Regardless of DID method, the DID Document exposes:
 
-Supported credential formats:
+- 🔑 Public keys  
+- 🔐 Authentication methods  
+- 📌 Service endpoints  
+- 🧾 Linked Verifiable Presentations  
+- 🧬 Key types (JWK, Ed25519, etc.)  
 
-- **SD‑JWT VC** (`dc+sd-jwt`)
-- **W3C VC JSON‑LD** (2.0)
+DID Documents are **automatically updated** when:
 
-High‑level flow (from the Agent or Developer perspective):
+- Keys rotate  
+- New developer or agent keys are registered  
+- Credentials are published as Linked VPs  
+- Authentication methods change  
 
-1. You obtain a **credential offer** (URL or JSON) from a trusted issuer.  
-2. The Agent instructs Wallet4Agent, via MCP, to **accept** this credential offer.  
-3. Wallet4Agent:
-   - Fetches issuer metadata:
-     - `openid-credential-issuer`
-     - `oauth-authorization-server`
-   - Acts as an **OAuth client** to that issuer.  
-4. Wallet4Agent obtains a **credential issuance access token**.  
-5. Wallet4Agent generates a **proof of key ownership**:
-   - A dedicated JWT signed by the agent’s **KMS‑backed key**  
-   - Proves that the DID (and wallet) controls the key referenced in the credential.  
-6. Wallet4Agent sends a **credential request** with this proof.  
-7. The issuer returns a Verifiable Credential (SD‑JWT VC or VC JSON‑LD).  
-8. Wallet4Agent stores the credential in the agent’s wallet as an **attestation**.  
-9. The Agent can retrieve or present this credential via MCP tools.
-
-All critical proofs and signatures in this flow are bound to the **KMS key associated with the agent**, not to any local file‑based key.
+External agents and services use the DID Document to verify signatures, credentials, and linked proofs.
 
 ---
 
-## 🧾 7. Verifying Users (OIDC4VP)
+# 5. 🔗 Linked Verifiable Presentations (Linked VP)
 
-Wallet4Agent also integrates with **OIDC4VP** verifier services to validate **user identities**.
+Linked VP allows Wallet4Agent to **publish verifiable credentials inside the DID Document** as references.
 
-From the Agent’s perspective:
+Why this matters:
 
-1. The Agent calls a **verification tool** (via MCP) to start a user verification session.  
-2. Wallet4Agent (or its verifier backend) returns:
-   - A **QR code** (image) or **deeplink URL** that the end‑user can open in their wallet app.  
-   - A `session_id` or correlation identifier.  
-3. The Agent displays the QR code or link to the user.  
-4. The user scans with their **EUDI wallet** or compatible OIDC4VP wallet, and consents to share attributes.  
-5. The Agent then periodically calls another MCP tool to **poll** the verification status.  
-6. When verification completes, Wallet4Agent returns structured claims such as:
-   - Verified **email**  
-   - `over_18` or other age/eligibility attributes  
-   - Profile attributes (name, country, assurance level, etc.)  
-   - A wallet‑specific identifier, if relevant  
+- Public credentials become discoverable  
+- Third parties can verify agent capabilities  
+- Useful for:
+  - Corporate mandates
+  - Agent capabilities
+  - Service trust signals
+  - Compliance proofs  
 
-Design principle:
+Supported formats:
 
-- The Agent **never sees raw tokens** (`id_token`, `vp_token`, etc.).  
-- Only **safe, derived claims** are exposed, protecting the user while still giving the Agent the information it needs.
+- 🟦 SD‑JWT VC  
+- 🟩 JWT‑VC / JWT‑VP  
+- 🟪 JSON‑LD VC / VP  
 
----
-
-## 📦 8. Credential Storage & Retrieval
-
-Each Agent wallet can hold **multiple credentials**. Conceptually, each credential record contains:
-
-- The **format type**:
-  - SD‑JWT VC (compact or JSON wrapped)
-  - W3C VC JSON‑LD
-- The **issuer** (DID or URL)
-- The **credential type** (VCT or VC `type`)
-- Timestamps (issuance time, possibly expiry)
-- The **full verifiable credential payload**
-
-MCP tools allow an Agent to:
-
-- List all its credentials  
-- Inspect a specific credential  
-- Accept new credentials via credential offers  
-- Query credentials issued to **another agent** (within authorization rules) to establish trust between agents
-
-Wallet4Agent does not require the Agent to care about internal storage format; all details are surfaced in a structured, MCP‑friendly way.
+Specification:  
+https://identity.foundation/linked-vp/spec/v1.0.0/
 
 ---
 
-## 🌐 9. Protected Resource Metadata (OAuth PRM)
+# 6. 🔐 Cryptography & Key Management
 
-To make Agent integration easier, Wallet4Agent publishes **OAuth Protected Resource metadata** in line with **RFC 9728**, for example:
+## 6.1 🗝️ Cloud KMS–backed keys (non-exportable)
+Each agent has a dedicated **cloud KMS key**.
 
-```text
+Used for:
+
+- Signing Verifiable Presentations  
+- Proofs of key ownership in OIDC4VCI  
+- JWTs for OAuth2 client authentication  
+- Internal signature operations  
+
+Benefits:
+
+- Private key **never leaves KMS**  
+- Agent identity is tied to a secure execution environment  
+- High‑assurance signatures
+
+## 6.2 🔑 Developer-supplied keys
+Developers may register additional public JWKs:
+
+- For OAuth `private_key_jwt`  
+- For agent frameworks managing their own keys  
+- For corporate signing keys  
+
+Wallet4Agent stores the public keys; developers retain the private keys.
+
+---
+
+# 7. 🔑 Authentication Methods
+
+Wallet4Agent supports **three** agent authentication flows:
+
+## 7.1 🔹 Agent Personal Access Token (PAT)
+
+```
+Authorization: Bearer <agent_pat>
+```
+
+Simple and effective for development or local agents.
+
+## 7.2 🔹 OAuth2 Client Credentials  
+
+Agent receives:
+
+- `client_id` = Agent DID  
+- `client_secret`  
+
+Then exchanges using:
+
+```
+grant_type=client_credentials
+```
+
+Ideal for most production requests.
+
+## 7.3 🔹 OAuth2 private_key_jwt  
+
+Strongest method:
+
+- Developer registers a public JWK  
+- Agent signs a JWT with its private key  
+- Wallet4Agent validates it using the registered public JWK  
+
+Useful for hardware-backed keys and enterprise infrastructures.
+
+---
+
+# 8. 🧾 Credential Issuance (OIDC4VCI)
+
+Wallet4Agent handles complete credential issuance flows:
+
+- Fetch issuer metadata  
+- Obtain OAuth tokens  
+- Create **proof of key ownership** signed by the agent's KMS key  
+- Request credentials  
+- Store as attestations  
+
+Supported formats:
+
+- 🟦 SD‑JWT VC  
+- 🟩 VC JSON‑LD  
+
+Agents only call MCP tools — Wallet4Agent does all protocol-level work.
+
+---
+
+# 9. 🧪 Verification (OIDC4VP)
+
+Wallet4Agent supports verification of:
+
+- Natural persons  
+- Other agents  
+- Credential-based access  
+
+Agents can:
+
+- Start user verification  
+- Poll status  
+- Receive verified attributes safely  
+- Authenticate peer agents  
+
+The agent never sees sensitive tokens; only derived, safe claims are returned.
+
+---
+
+# 10. 📦 Credential Storage & Retrieval
+
+Wallet4Agent stores credentials as **attestations**, including:
+
+- Format  
+- Issuer  
+- VCT/VC type  
+- Expiry  
+- Encrypted payload  
+- Publication status (for Linked VP)  
+
+Agents can:
+
+- List their credentials  
+- Accept new ones  
+- Access credentials of other agents (if published)
+
+---
+
+# 11. 🌐 OAuth Protected Resource Metadata
+
+Published under:
+
+```
 /.well-known/oauth-protected-resource/mcp
 ```
 
-This metadata indicates:
+Includes:
 
-- Supported **authentication methods** (e.g. bearer tokens in the `Authorization` header)  
-- Whether access tokens are **bound to TLS client certificates** or other constraints  
-- Which **authorization servers** are trusted for accessing the MCP resource  
-- One or more **resource identifiers** that confirm to clients they are using the correct access token for this MCP resource
+- Supported authentication methods  
+- Resource identifiers  
+- Trusted authorization servers  
 
-Result: a compliant OAuth2 client (your Agent infrastructure, gateway, or platform) can automatically discover **how to authenticate** against the Wallet4Agent MCP server.
-
----
-
-## 🤝 10. Responsible AI & Human‑in‑the‑loop
-
-Each agent wallet includes configuration that can be used to enforce **responsible behaviour**, such as:
-
-- `always_human_in_the_loop` — a flag indicating that certain high‑impact actions should **require human approval**.
-
-This can be used (by the developer or platform) to:
-
-- Require a human confirmation before accepting high‑value credentials  
-- Display prompts or logs in a human UI when sensitive operations occur  
-- Provide transparency and auditability to users or administrators
-
-These features are optional but recommended for sensitive or regulated use cases.
+Enables automatic configuration by OAuth2 clients and gateways.
 
 ---
 
-## 🛡️ 11. Why Wallet4Agent is Secure by Design
+# 12. 🛡️ Responsible AI Features
 
-Wallet4Agent is built around a few strong security principles:
+Wallet4Agent supports human-in-the-loop requirements:
 
-- ✔ **Immutable cryptographic identity** via DIDs  
-- ✔ **Cloud KMS non‑exportable keys** for critical signatures  
-- ✔ **Strict role separation** (Guest / Developer / Agent)  
-- ✔ **Publicly verifiable DID Documents** containing the relevant keys  
-- ✔ **RFC‑compliant OAuth2 flows** for access tokens  
-- ✔ **Interoperability** with EUDI, OIDC4VP, OIDC4VCI ecosystems  
-- ✔ **Zero‑knowledge handling of user tokens** during verification  
-- ✔ **Accountability anchored to real owners** through owner bindings and config
+```json
+{
+  "always_human_in_the_loop": true
+}
+```
 
-The result: a foundation appropriate for **industrial‑grade agentic systems** where identity, trust, and accountability cannot be optional.
+Used for:
+
+- High-risk operations  
+- Sensitive credential acceptance  
+- Escalation to human review  
 
 ---
 
-## 🧩 12. Summary for Developers
+
+## 🧩 13. Summary for Developers
 
 If you are an Agent developer, Wallet4Agent gives you:
 
