@@ -268,5 +268,117 @@ class UniversalRegistrarClient:
         final_did = did_state2["did"]
         did_doc_result = did_state2.get("didDocument", {})
         return final_did, did_doc_result, key_id
-        
-        
+    
+    def update_did_cheqd(
+        self,
+        did: str,
+        did_document: Dict[str, Any],
+        manager: TenantKMSManager,
+        mode,  # kept for future use (env), but not passed to sign_message
+        network: str = "testnet",
+    ) -> Dict[str, Any]:
+        """
+        Update an existing did:cheqd DID Document via Universal Registrar, with
+        signatures done by your KMS (same pattern as create_did_cheqd).
+
+        - did: the full did:cheqd:<network>:<id>
+        - did_document: the *new* DID Document you want on-ledger
+        """
+        logging.info("Updating did:cheqd DID %s on network %s", did, network)
+
+        # 1) Initial UPDATE call → ask driver to prepare signing payloads
+        # NOTE: didDocument MUST be a *list* of DidDocument, per the Universal Registrar
+        # UpdateRequest model (hence the server log error you saw).
+        initial_body: Dict[str, Any] = {
+            "did": did,
+            "options": {
+                "network": network,
+            },
+            "didDocument": [did_document],
+            "secret": {},
+        }
+
+        resp = requests.post(
+            f"{self.base_url}/update",
+            params={"method": "cheqd"},
+            json=initial_body,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        did_state = data.get("didState", {})
+        state = did_state.get("state")
+        if state == "finished":
+            # Some drivers might do everything in a single step
+            logging.info("cheqd DID update finished in a single step.")
+            return did_state
+
+        if state != "action":
+            raise RuntimeError(f"cheqd DID update unexpected state: {did_state}")
+
+        action = did_state.get("action")
+        if action not in ("signPayload", "sign"):
+            raise RuntimeError(f"Unexpected action from cheqd driver on update: {action}")
+
+        # 2) Sign all requested payloads with our KMS key
+        # For create_did_cheqd the driver returns:
+        #   didState.signingRequest = { "label0": { payload, verificationMethodId, ... }, ... }
+        # We mirror this for update.
+        signing_requests = did_state.get("signingRequest") or {}
+        if not signing_requests:
+            raise RuntimeError(f"cheqd DID update: missing signingRequest in didState: {did_state}")
+
+        signing_responses: Dict[str, Dict[str, str]] = {}
+
+        # Our KMS key id is the vm id, same as in create_did_cheqd:
+        # did:cheqd:<network>:<id>#key-1
+        key_id = did + "#key-1"
+
+        for label, req in signing_requests.items():
+            payload_b64 = req.get("payload") or req.get("serializedPayload")
+            if not payload_b64:
+                raise RuntimeError(f"Missing payload for signingRequest {label}: {req}")
+
+            vm_id_req = (
+                req.get("verificationMethodId")
+                or req.get("kid")
+                or key_id
+            )
+
+            # For cheqd create, we used plain base64 (not urlsafe) from the driver.
+            # We keep the same here for consistency.
+            payload_bytes = base64.b64decode(payload_b64)
+
+            signature, _ = manager.sign_message(key_id, payload_bytes)
+            raw_sig = signature  # Ed25519 = 64 bytes
+            sig_b64 = _b64url_nopad(raw_sig)
+
+            signing_responses[label] = {
+                "verificationMethodId": vm_id_req,
+                "kid": vm_id_req,
+                "signature": sig_b64,
+            }
+
+        final_body: Dict[str, Any] = {
+            "jobId": data.get("jobId"),
+            "secret": {
+                "signingResponse": signing_responses,
+            },
+        }
+
+        resp2 = requests.post(
+            f"{self.base_url}/update",
+            params={"method": "cheqd"},
+            json=final_body,
+            timeout=30,
+        )
+        resp2.raise_for_status()
+        data2 = resp2.json()
+
+        did_state2 = data2.get("didState", {})
+        if did_state2.get("state") != "finished":
+            raise RuntimeError(f"cheqd DID update failed: {did_state2}")
+
+        logging.info("cheqd DID update finished for %s", did)
+        return did_state2

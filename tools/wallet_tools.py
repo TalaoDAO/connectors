@@ -68,6 +68,19 @@ tools_dev = [
         }
     },
     {
+        "name": "describe_identity_document",
+        "description": (
+            "Return a human-readable description of this Agent's DID Document "
+            "(verification methods, authentication methods, services, Linked VPs). "
+            "Use this to understand how the Agent appears to the outside world."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
         "name": "create_OASF",
         "description": "Add an OASF record to the DID Document as a Linked VP. The Open Agent Schema Framework (OASF) is a standardized schema system for defining and managing AI agents and MCP server.",
         "inputSchema": {
@@ -689,7 +702,6 @@ def call_update_configuration(
         structured=structured,
     )
 
-
 # tool
 def call_create_oasf(agent_identifier, config):
     manager = config["MANAGER"]
@@ -718,3 +730,58 @@ def call_create_oasf(agent_identifier, config):
     logging.warning("Failed to publish OASF record as LInked VP " + message)
     text = f"Failed to publish OASF record"
     return _ok_content([{"type": "text", "text": text}], is_error=True)
+
+
+def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
+    """
+    Dev tool: inspect and summarize the DID Document associated with this Agent's wallet.
+    """
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet:
+        return _ok_content(
+            [{"type": "text", "text": f"No wallet found for Agent DID {agent_identifier}."}],
+            is_error=True,
+        )
+
+    try:
+        did_document = json.loads(this_wallet.did_document or "{}")
+    except Exception:
+        did_document = {}
+
+    vm_list = did_document.get("verificationMethod", [])
+    auth = did_document.get("authentication", [])
+    assertion = did_document.get("assertionMethod", [])
+    services = did_document.get("service", [])
+
+    linked_vp_services = [
+        s for s in services if s.get("type") == "LinkedVerifiablePresentation"
+    ]
+
+    structured = {
+        "agent_identifier": agent_identifier,
+        "did_document": did_document,
+        "verification_methods": vm_list,
+        "authentication": auth,
+        "assertionMethod": assertion,
+        "services": services,
+        "linked_vp_services": linked_vp_services,
+    }
+
+    text_lines = [
+        f"DID Document for Agent {agent_identifier}:",
+        f"- verification methods: {len(vm_list)}",
+        f"- authentication refs: {len(auth)}",
+        f"- assertionMethod refs: {len(assertion)}",
+        f"- services: {len(services)}",
+    ]
+    if linked_vp_services:
+        text_lines.append(f"- Linked VP services: {len(linked_vp_services)}")
+    else:
+        text_lines.append("- Linked VP services: none")
+
+    text = "\n".join(text_lines)
+
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        structured=structured,
+    )

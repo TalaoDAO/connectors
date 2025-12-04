@@ -105,7 +105,7 @@ def create_app() -> Flask:
     )
 
     # ---- App metadata / UI helpers ----
-    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.1")
+    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.2")
     try:
         app.jinja_env.globals["Created"] = os.path.getctime(__file__)
     except Exception:
@@ -131,6 +131,7 @@ def create_app() -> Flask:
     }
 
     # ---- App-wide config values (shared deps) ----
+    app.config["MYENV"] = "local"
     app.config["MODE"] = mode
     app.config["SESSION_TYPE"] = "redis"
     app.config["SESSION_REDIS"] = red
@@ -138,8 +139,8 @@ def create_app() -> Flask:
     app.config["API_LIFE"] = int(os.getenv("API_LIFE", DEFAULT_API_LIFE))
     app.config["GRANT_LIFE"] = int(os.getenv("GRANT_LIFE", DEFAULT_GRANT_LIFE))
     app.config["ACCEPTANCE_TOKEN_LIFE"] = int(os.getenv("ACCEPTANCE_TOKEN_LIFE", DEFAULT_ACCEPTANCE_TOKEN_LIFE))
-    app.config["ALLOWED_IMAGE_EXTENSIONS"] = ["jpeg", "jpg", "png", "gif"]
-    app.config["AUDIT_LOG_DIR"] = "./log"  # or instance_path/audit-logs
+    #app.config["ALLOWED_IMAGE_EXTENSIONS"] = ["jpeg", "jpg", "png", "gif"]
+    #app.config["AUDIT_LOG_DIR"] = "./log"  # or instance_path/audit-logs
     
    
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod

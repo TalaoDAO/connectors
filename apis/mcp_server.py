@@ -43,7 +43,8 @@ def init_app(app):
             "REDIS": current_app.config["REDIS"],
             "MODE": current_app.config["MODE"],
             "SERVER": current_app.config["MODE"].server,
-            "MANAGER": current_app.config["MANAGER"]
+            "MANAGER": current_app.config["MANAGER"],
+            "MYENV": current_app.config["MYENV"]
         }
         return config
     
@@ -680,6 +681,12 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: agent_identifier missing "}}
                 out = wallet_tools.call_rotate_personal_access_token(arguments, agent_identifier)
             
+            elif name == "describe_identity_document":
+                if role != "dev":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_describe_identity_document(agent_identifier)
+            
             elif name == "accept_credential_offer":
                 if role not in ["agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
@@ -688,7 +695,15 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing credential_offer"}}
                 out = wallet_tools_for_agent.call_accept_credential_offer(arguments, agent_identifier, config())
-
+            
+            elif name == "resolve_agent_identifier":
+                if role not in ["agent"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("agent_identifier"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: agent identifier is missing²"}}
+                out = wallet_tools_for_agent.call_resolve_agent_identifier(arguments)
             else:
                 return jsonify(_error(-32601, f"Unknown tool: {name}") | {"id": req_id})
             

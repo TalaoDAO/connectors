@@ -210,6 +210,7 @@ def call_start_agent_authentication(
     red = config["REDIS"]
     mode = config["MODE"]
     manager = config["MANAGER"]
+    myenv = config["MYENV"]
 
     # Create OIDC4VP/SIOPV2 request for agent authentication
     data = verifier.agent_authentication(
@@ -230,45 +231,48 @@ def call_start_agent_authentication(
         "authentication_request_id": authentication_request_id,
         "request_sent": False,
     }
-    # 2. Resolve DID Document of the targeted agent
-    for res in RESOLVER_LIST:
+    if myenv != "local":
+        # 2. Resolve DID Document of the targeted agent to get the agent endpoint
+        for res in RESOLVER_LIST:
+            try:
+                r = requests.get(res + target_agent, timeout=10)
+                logging.info("resolver used = %s", res)
+                break
+            except Exception:
+                pass
         try:
-            r = requests.get(res + target_agent, timeout=10)
-            logging.info("resolver used = %s", res)
-            break
+            did_doc = r.json().get('didDocument')
         except Exception:
-            pass
-    try:
-        did_doc = r.json().get('didDocument')
-    except Exception:
-        did_doc= None
-    if not did_doc:
-        logging.exception("Failed to resolve DID Document for %s", target_agent)
-        return _ok_content(
-            [{"type": "text", "text": f"Failed to resolve DID Document for {target_agent}"}],
-            structured=flow,
-            is_error=True,
-        )
+            did_doc = None
+        if not did_doc:
+            logging.exception("Failed to resolve DID Document for %s", target_agent)
+            return _ok_content(
+                [{"type": "text", "text": f"Failed to resolve DID Document for {target_agent}"}],
+                structured=flow,
+                is_error=True,
+            )
 
-    # Find service of type OIDC4VP
-    services = did_doc.get("service", [])
-    oidc4vp_endpoint = None
-    for s in services:
-        stype = s.get("type")
-        if isinstance(stype, list):
-            if "OIDC4VP" in stype:
+        # Find service of type OIDC4VP
+        services = did_doc.get("service", [])
+        oidc4vp_endpoint = None
+        for s in services:
+            stype = s.get("type")
+            if isinstance(stype, list):
+                if "OIDC4VP" in stype:
+                    oidc4vp_endpoint = s.get("serviceEndpoint")
+                    break
+            elif stype == "OIDC4VP":
                 oidc4vp_endpoint = s.get("serviceEndpoint")
                 break
-        elif stype == "OIDC4VP":
-            oidc4vp_endpoint = s.get("serviceEndpoint")
-            break
-
-    if not oidc4vp_endpoint:
-        return _ok_content(
-            [{"type": "text", "text": "No OIDC4VP service endpoint found in the agent's DID Document."}],
-            structured=flow,
-            is_error=True,
-        )
+        
+        if not oidc4vp_endpoint:
+            return _ok_content(
+                [{"type": "text", "text": "No OIDC4VP service endpoint found in the agent's DID Document."}],
+                structured=flow,
+                is_error=True,
+            )
+    else: # for testing
+        oidc4vp_endpoint = mode.server + target_agent 
 
     # 2. Fetch authorization_endpoint from well-known endpoint
     try:
@@ -307,12 +311,12 @@ def call_start_agent_authentication(
     request_url = authorization_endpoint + oidc4vp_request.split("//", 1)[1]
 
     try:
-        auth_resp = requests.get(request_url, timeout=5)
+        auth_resp = requests.get(request_url, timeout=10)
         success = auth_resp.ok
     except Exception as e:
         logging.exception("Failed to call authorization_endpoint %s: %s", authorization_endpoint, str(e))
         return _ok_content(
-            [{"type": "text", "text": "Failed to send authentication request to the other agent."}],
+            [{"type": "text", "text": f"Failed to send authentication request to the other agent: {target_agent}."}],
             structured=flow,
             is_error=True,
         )
@@ -323,7 +327,7 @@ def call_start_agent_authentication(
     if success:
         text_hint = f"Authentication request has been sent to the other agent. The 'authentication_request_id' is {authentication_request_id}"
     else:
-        text_hint = "Authentication request could not be sent successfully."
+        text_hint = f"Authentication request could not be sent successfully to: {target_agent}."
 
     blocks.append({"type": "text", "text": text_hint})
     # No technical IDs in text; authentication_request_id is only in structuredContent

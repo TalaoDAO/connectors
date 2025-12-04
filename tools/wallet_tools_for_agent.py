@@ -11,6 +11,11 @@ from urllib.parse import unquote
 import time                       # <-- ADD
 from datetime import datetime      # <-- ADD
 
+RESOLVER_LIST = [
+    "https://unires:test@unires.talao.co/1.0/identifiers/",
+    "https://dev.uniresolver.io/1.0/identifiers/",
+    "https://resolver.cheqd.net/1.0/identifiers/",
+]
 
 
 
@@ -35,6 +40,23 @@ tools_agent = [
                 }
             },
             "required": ["credential_offer"]
+        }
+    },
+    {
+        "name": "resolve_agent_identifier",
+        "description": (
+            "Resolve an Agent identifier (DID) and summarize its DID Document. "
+            "Useful to understand another Agent's public keys, services and Linked VPs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "The DID of the Agent to resolve (e.g. did:web:wallet4agent.com:xyz)."
+                }
+            },
+            "required": ["agent_identifier"]
         }
     },
     {
@@ -169,6 +191,102 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     if is_error:
         out["isError"] = True
     return out
+
+def _decode_sd_jwt_local(sd_jwt_token: str) -> Optional[Dict[str, Any]]:
+    """
+    Decode a locally stored SD-JWT or SD-JWT+KB (the compact form you keep
+    in Attestation.vc when vc_format is 'dc+sd-jwt' or 'vc+sd-jwt').
+
+    This reuses _extract_sd_jwt_payload_from_data_uri by wrapping the token
+    into a synthetic data: URI, so we get exactly the same behavior and
+    return structure as when parsing SD-JWTs from Linked VPs.
+
+    Returns a dict shaped like:
+      {
+        "vc": {...},
+        "vc_jwt": "<issuer VC-JWT>",
+        "vc_valid": True/False,
+        "vc_validity_status": "valid" | "expired" | "not_yet_valid" | "invalid_date_format",
+        "vc_validity_reasons": [...],
+        "credentialSubject": {...}  # if present
+      }
+    or None if the token cannot be parsed.
+    """
+    if not isinstance(sd_jwt_token, str):
+        return None
+
+    token = sd_jwt_token.strip()
+    if not token:
+        return None
+
+    # Reuse the existing parser logic by constructing a synthetic data: URI
+    synthetic_data_uri = f"data:application/dc+sd-jwt,{token}"
+    return _extract_sd_jwt_payload_from_data_uri(synthetic_data_uri)
+
+
+def _summarize_local_attestation(att: Attestation) -> Dict[str, Any]:
+    """
+    Turn an Attestation SQL row into a structured dict, trying to decode the VC
+    when possible (SD-JWT, JWT VC etc.).
+    """
+    item: Dict[str, Any] = {
+        "id": att.id,
+        "wallet_did": att.wallet_did,
+        "service_id": att.service_id,
+        "name": att.name,
+        "description": att.description,
+        "issuer": att.issuer,
+        "vc_format": att.vc_format,
+        "vct": att.vct,
+        "published": bool(att.published),
+        "created_at": att.created_at.isoformat() if att.created_at else None,
+        "exp": att.exp.isoformat() if att.exp else None,
+    }
+
+    raw_vc = (att.vc or "").strip()
+    if not raw_vc:
+        return item
+
+    fmt = (att.vc_format or "").lower()
+
+    # ---- SD-JWT formats (dc+sd-jwt / vc+sd-jwt) ----
+    if fmt in ["dc+sd-jwt", "vc+sd-jwt"]:
+        decoded = _decode_sd_jwt_local(raw_vc)
+        if decoded:
+            item["decoded"] = decoded
+            item["credentialSubject"] = decoded.get("credentialSubject")
+
+    # ---- JWT-VC formats (jwt_vc_json / jwt_vc_json-ld) ----
+    elif fmt in ["jwt_vc_json", "jwt_vc_json-ld"]:
+        # raw_vc is a JWT, possibly followed by disclosures (for sd-jwt style).
+        jwt_token = raw_vc.split("~", 1)[0]
+        try:
+            payload_full = _decode_jwt_payload_full(jwt_token)
+        except Exception:
+            payload_full = None
+        if isinstance(payload_full, dict):
+            vc_data = payload_full.get("vc", payload_full)
+            if isinstance(vc_data, dict):
+                item["decoded"] = {
+                    "vc": vc_data,
+                    "vc_jwt": jwt_token,
+                }
+                if isinstance(vc_data.get("credentialSubject"), dict):
+                    item["credentialSubject"] = vc_data["credentialSubject"]
+
+    # ---- ldp_vc or plain JSON VC ----
+    else:
+        try:
+            maybe_json = json.loads(raw_vc)
+            if isinstance(maybe_json, dict):
+                item["decoded"] = {"vc": maybe_json}
+                if isinstance(maybe_json.get("credentialSubject"), dict):
+                    item["credentialSubject"] = maybe_json["credentialSubject"]
+        except Exception:
+            # not JSON, leave as is
+            pass
+
+    return item
 
 
 def _parse_iso8601_to_timestamp(value: str) -> Optional[float]:
@@ -318,35 +436,77 @@ def _extract_vc_from_jwt_vp(jwt_vp: str) -> Optional[Dict[str, Any]]:
     return result
 
 # for dev and agent
-def call_get_attestations_of_this_wallet(wallet_did, config) -> Dict[str, Any]:
-    # Query attestations linked to this wallet, published or not 
-    attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
-    wallet_attestations = []
-    for attestation in attestations_list:
-        validity = "active"
-        decoded_vc = _decode_jwt_payload(attestation.vc)
-        wallet_attestations.append(
-            {
-                "attestation_id": attestation.id,
-                "attestation_content": decoded_vc,
-                "name": attestation.name,
-                "description": attestation.description,
-                "type": attestation.vct,
-                "issuer": attestation.issuer,
-                "iat": attestation.created_at.isoformat() if attestation.created_at else None,
-                "validity": validity,
-                "is_published": attestation.published
-            }
-        )        
-    structured = {
-        "nb_of_attestations": len(wallet_attestations),
-        "attestations": wallet_attestations
-    }
-    if not wallet_attestations:
-        text = "0 attestation found"
+def call_get_attestations_of_this_wallet(
+    wallet_did: str,
+    config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    List all attestations stored for THIS Agent's wallet.
+
+    - Looks up Attestation rows by wallet_did
+    - For each one, tries to decode the underlying VC / SD-JWT
+    - Returns both human-readable text blocks and a structured JSON payload
+      suitable for an Agent.
+    """
+
+    logging.info("Listing attestations for wallet %s", wallet_did)
+
+    attestations = (
+        Attestation.query
+        .filter_by(wallet_did=wallet_did)
+        .order_by(Attestation.created_at.desc())
+        .all()
+    )
+
+    items: List[Dict[str, Any]] = []
+    for att in attestations:
+        try:
+            items.append(_summarize_local_attestation(att))
+        except Exception as e:
+            logging.exception("Failed to summarize attestation %s", att.id)
+            # Fallback: minimal info
+            items.append({
+                "id": att.id,
+                "wallet_did": att.wallet_did,
+                "service_id": att.service_id,
+                "name": att.name,
+                "description": att.description,
+                "vc_format": att.vc_format,
+                "published": bool(att.published),
+                "error": f"summary_error: {e}",
+            })
+
+    # Build a short human-readable text summary for MCP UI
+    if not items:
+        text = (
+            "This Agent's wallet does not contain any stored attestations yet. "
+            "You may ask a human or an external issuer to send new credential offers "
+            "that the Agent can accept."
+        )
     else:
-        text = str(len(wallet_attestations)) +  " attestations found in the wallet : " + json.dumps(wallet_attestations)
-    return _ok_content([{"type": "text", "text": text}], structured=structured)
+        lines = [f"Found {len(items)} attestation(s) for this Agent:"]
+        for att in items[:10]:  # don't flood the UI
+            line = f"- #{att.get('id')} — {att.get('name') or 'Unnamed attestation'}"
+            if att.get("issuer"):
+                line += f" | issuer: {att['issuer']}"
+            if att.get("vc_format"):
+                line += f" | format: {att['vc_format']}"
+            if att.get("published"):
+                line += " | published"
+            lines.append(line)
+        if len(items) > 10:
+            lines.append(f"... and {len(items) - 10} more.")
+        text = "\n".join(lines)
+
+    structured = {
+        "wallet_did": wallet_did,
+        "attestations": items,
+    }
+
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        structured=structured,
+    )
 
 
 def _parse_data_uri(data_uri: str) -> (Optional[str], Optional[str]):
@@ -708,7 +868,13 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
     """
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     attestations_list = Attestation.query.filter_by(wallet_did=agent_identifier).all()
-
+    
+    # number of published attestation:
+    nb_published_attestations = 0
+    for a in attestations_list:
+        if a.published == 1:
+            nb_published_attestations += 1
+        
     structured = {
         "agent": {
             "did": agent_identifier,
@@ -717,21 +883,21 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
             "wallet_endpoint": this_wallet.url if this_wallet else None,
             "ecosystem": this_wallet.ecosystem_profile,
             "number_of_attestations": len(attestations_list),
+            "number_of_published_attestations": nb_published_attestations,
             "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,
         },
     }
 
     if this_wallet:
         text = (
-            f"This Agent's DID is {agent_identifier}. "
-            f"It has an attached wallet at {this_wallet.url} "
-            f"with {len(attestations_list)} attestations. "
+            f"My DID is {agent_identifier}. "
+            f"I have an attached wallet at {this_wallet.url} "
+            f"with a total of {len(attestations_list)} attestations. "
             f"Human in the loop: {'yes' if this_wallet.always_human_in_the_loop else 'no'}."
         )
     else:
         text = (
-            f"This Agent's DID is {agent_identifier}, but no wallet record "
-            "was found in the database."
+            f"My DID is {agent_identifier}, but py wallet have not be found in the database."
         )
 
     return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -797,15 +963,15 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             structured = {
                 "attestation": attestation
             }
-            text = "Thank you, I have received the attestation but I cannot store this attestation without the owner consent."
+            text = "Thank you, I have received the attestation but I cannot store this attestation without the my owner consent."
             return _ok_content([{"type": "text", "text": text}], is_error=False, structured=structured)
         else:
-            result, message = wallet.store_and_publish(attestation, session_config, manager, published=True)
+            result, message = wallet.store_and_publish(attestation, session_config, mode, manager, published=True)
             if result:
-                message = "Thank you, the attestation has been issued, stored and published successfully"
+                message = "Thank you, the attestation has been stored and published successfully."
                 return _ok_content([{"type": "text", "text": message}], is_error=False)
             else:
-                message = "Thank you, the attestation has been issued but not stored."
+                message = "Sorry, I have received the attestation but I could not store it."
                 return _ok_content([{"type": "text", "text": text}], is_error=False)
     else:
         return _ok_content([{"type": "text", "text": text}], is_error=True)
@@ -970,3 +1136,78 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
         logging.exception("Failed to sign text message with KMS %s", str(e))
         text = f"Failed to sign message with my DID"
         return _ok_content([{"type": "text", "text": text}], is_error=True)
+    
+    
+def call_resolve_agent_identifier(
+    arguments: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Resolve any DID and return its DID Document + a human-readable summary.
+    This is especially useful for resolving other Agents (did:web, did:cheqd, ...).
+    """
+    target = arguments.get("agent_identifier")
+    if not target:
+        return _ok_content(
+            [{"type": "text", "text": "Missing 'agent_identifier' argument."}],
+            is_error=True,
+        )
+
+    did_document = None
+    last_error = None
+
+    for base in RESOLVER_LIST:
+        try:
+            resp = requests.get(base + target, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                did_document = data.get("didDocument") or data.get("did_document") or data
+                if did_document:
+                    break
+            else:
+                last_error = f"{base}: HTTP {resp.status_code}"
+        except Exception as e:
+            last_error = f"{base}: {str(e)}"
+            continue
+
+    if did_document is None:
+        msg = f"Unable to resolve DID {target} via configured resolvers."
+        if last_error:
+            msg += f" Last error: {last_error}"
+        return _ok_content(
+            [{"type": "text", "text": msg}],
+            is_error=True,
+        )
+
+    vm_list = did_document.get("verificationMethod", [])
+    services = did_document.get("service", [])
+
+    # Quick categorization of services
+    linked_vp_services = [
+        s for s in services if s.get("type") == "LinkedVerifiablePresentation"
+    ]
+
+    structured = {
+        "did": did_document.get("id", target),
+        "did_document": did_document,
+        "verification_methods_count": len(vm_list),
+        "services_count": len(services),
+        "linked_vp_services": linked_vp_services,
+    }
+
+    text_lines = [
+        f"DID resolution for {target}:",
+        f"- id: {structured['did']}",
+        f"- verification methods: {structured['verification_methods_count']}",
+        f"- services: {structured['services_count']}",
+    ]
+    if linked_vp_services:
+        text_lines.append(f"- Linked VP services: {len(linked_vp_services)}")
+    else:
+        text_lines.append("- Linked VP services: none")
+
+    text = "\n".join(text_lines)
+
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        structured=structured,
+    )

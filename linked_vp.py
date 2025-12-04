@@ -6,6 +6,7 @@ from utils import oidc4vc
 import hashlib
 from datetime import datetime
 import base64
+from universal_registrar import UniversalRegistrarClient
 
 
 # FOR OASF only TODO
@@ -28,7 +29,14 @@ def store_and_publish(cred, agent_identifier, manager, mode, published=False, ty
     service_id = agent_identifier + "#" + id
     
     if published:
-        result = publish(service_id, cred, mode.server, manager)
+        result = publish_linked_vp(
+            service_id=service_id,
+            attestation=cred,
+            server=mode.server,
+            mode=mode,
+            manager=manager,
+            vc_format="dc+sd-jwt",
+        )
         if not result:
             logging.warning("publish failed")
             published = False
@@ -60,19 +68,8 @@ def store_and_publish(cred, agent_identifier, manager, mode, published=False, ty
     return True, text
 
 
-# used by wallet.py function for OASF
-def publish(service_id, attestation, server, manager):
-    # Legacy: OASF / LinkedIn flows used an SD-JWT attestation
-    return publish_linked_vp(
-        service_id=service_id,
-        attestation=attestation,
-        server=server,
-        manager=manager,
-        vc_format="dc+sd-jwt",
-    )
 
-
-def publish_linked_vp(service_id: str, attestation: str, server: str, manager, vc_format: str):
+def publish_linked_vp(service_id: str, attestation: str, server: str, mode, manager, vc_format: str):
     wallet_did = service_id.split("#")[0]
     id = service_id.split("#")[1]
 
@@ -157,8 +154,28 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, manager, v
 
     did_document["service"] = new_services
     this_wallet.did_document = json.dumps(did_document)
-
     db.session.commit()
+    
+    # After local update, if this is a did:cheqd, also update on-ledger via Universal Registrar
+    if wallet_did.startswith("did:cheqd:"):
+        try:
+            registrar = UniversalRegistrarClient()
+            # extract network from did:cheqd:<network>:<id>
+            parts = wallet_did.split(":")
+            network = parts[2] if len(parts) > 3 else "testnet"
+
+            registrar.update_did_cheqd(
+                did=wallet_did,
+                did_document=did_document,
+                manager=manager,
+                mode=mode,
+                network=network,
+            )
+            logging.info("Linked VP published on-ledger for %s", wallet_did)
+        except Exception as e:
+            logging.exception("Failed to update cheqd DID document for %s: %s", wallet_did, str(e))
+            return None
+
     logging.info("Linked VP published for %s (format=%s)", service_id, vc_format)
 
     return {

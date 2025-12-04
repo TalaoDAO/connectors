@@ -176,7 +176,7 @@ def authorize(wallet_did):
 
     # 5. Build a Self-Issued id_toke
     now = int(datetime.utcnow().timestamp())
-    exp = now + 600  # 10 minutes validity
+    exp = now + 60*60  # 60 minutes validity
 
     wallet_kid = wallet_did + "#key-1"
     key_id = manager.create_or_get_key_for_tenant(wallet_kid)
@@ -207,9 +207,9 @@ def authorize(wallet_did):
         message = f"Failed to sign id_token: {str(e)}"
         logging.exception(message)
         return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
-
+    
+    logging.info("id token sent back by wallet for authentication request = %s", id_token)
     # 6. Send the Authentication Response by direct_post to response_uri
-    #    As requested: send ONLY id_token (state is optional but usually useful).
     post_data = {"id_token": id_token}
     if state:
         post_data["state"] = state
@@ -512,7 +512,7 @@ def credential_offer(wallet_did):
     
     # store the attestation
     if attestation:
-        result, message = store_and_publish(attestation, session_config, manager, published=True)
+        result, message = store_and_publish(attestation, session_config, mode, manager, published=True)
         if result:
             message = "Attestation has been issued, stored and published successfully"
             return render_template("wallet/session_screen.html", message=message, title="Congrats !")
@@ -527,6 +527,7 @@ def credential_offer(wallet_did):
 
 # route to request user consent then store the VC
 def user_consent(wallet_did):
+    mode = current_app.config["MODE"]
     decision = request.form.get('decision')
     if decision == "reject":
         message = "Attestation has been rejected"
@@ -548,7 +549,7 @@ def user_consent(wallet_did):
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
 
     if public_url == "public":
-        result, message = store_and_publish(attestation, session_config, manager, published=True)
+        result, message = store_and_publish(attestation, session_config, mode,  manager, published=True)
         if result:
             message = "Attestation has been issued, stored an published successfully"
             return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
@@ -558,7 +559,7 @@ def user_consent(wallet_did):
             return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
             
     else:
-        result, message = store_and_publish(attestation, session_config, manager, published=False)
+        result, message = store_and_publish(attestation, session_config, mode, manager, published=False)
         if result:
             message = "Attestation has been issued and stored successfully"
             return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
@@ -802,7 +803,7 @@ def code_flow(session_config, mode, manager):
     return cred, "ok"
 
 
-def store_and_publish(cred, session_config, manager, published=False):
+def store_and_publish(cred, session_config, mode, manager, published=False):
 
     vc_format = session_config["format"]
     if vc_format in ["dc+sd-jwt", "vc+sd-jwt", "jwt_vc_json", "jwt_vc_json-ld"]:
@@ -813,7 +814,7 @@ def store_and_publish(cred, session_config, manager, published=False):
         except Exception:
             return None, "Attestation is in an incorrect format and cannot be stored"
         exp = datetime.fromtimestamp(attestation_payload.get("exp")) 
-        issuer=attestation_payload.get("iss")
+        issuer = attestation_payload.get("iss")
         if vc_format in ["dc+sd-jwt", "vc+sd-jwt"]:
             vct = attestation_payload.get("vct")
             name = attestation_payload.get("name","")
@@ -839,7 +840,14 @@ def store_and_publish(cred, session_config, manager, published=False):
     id = secrets.token_hex(16)
     service_id = session_config["wallet_did"] + "#" + id
     if published:
-        result = publish(service_id, cred, session_config, manager)
+        result = publish_linked_vp(
+            service_id=service_id,
+            attestation=cred,
+            server=mode.server,
+            mode=mode,
+            manager=manager,
+            vc_format=vc_format,
+        )
         if not result:
             logging.warning("publish failed")
             published = False
@@ -865,21 +873,3 @@ def store_and_publish(cred, session_config, manager, published=False):
     return True, "Attestation has been stored"
 
 
-def publish(service_id, attestation, session_config, manager):
-    """
-    Publish a credential as a Linked Verifiable Presentation.
-
-    Delegates to linked_vp.publish_linked_vp, which supports:
-        - vc+sd-jwt / dc+sd-jwt (SD-JWT + KB, dc+sd-jwt data: URI)
-        - other VC formats (jwt_vc_json, jwt_vc_json-ld, ldp_vc, ...)
-    """
-    vc_format = session_config.get("format")
-    server = session_config["server"]
-
-    return publish_linked_vp(
-        service_id=service_id,
-        attestation=attestation,
-        server=server,
-        manager=manager,
-        vc_format=vc_format,
-    )
