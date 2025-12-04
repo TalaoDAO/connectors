@@ -922,13 +922,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
 
     try:
         # lazily create or fetch tenant key
-        if agent_identifier.startswith("did:cheqd"):
-            key_spec = "ED25519"
-            signing_algorithm = "EDDSA_SHA_256"
-        else:
-            key_spec = None
-            signing_algorithm = "ECDSA_SHA_256"
-        key_id = manager.create_or_get_key_for_tenant(vm_id, key_spec=key_spec)
+        key_id = manager.create_or_get_key_for_tenant(vm_id)
         sig, _ = manager.sign_message(key_id, message.encode("utf-8"))
         sig_b64 = base64.b64encode(sig).decode("ascii")
 
@@ -936,7 +930,6 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
             "agent_did": agent_identifier,
             "message": message,
             "signature_base64": sig_b64,
-            "signing_algorithm": signing_algorithm,
         }
         text = f"Signed message for Agent {agent_identifier}. Base64 signature: {sig_b64}"
         return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -957,11 +950,7 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
     
     try:
         # lazily create or fetch tenant key
-        if agent_identifier.startswith("did:cheqd"):
-            key_spec = "ED25519"
-        else:
-            key_spec = None
-        key_id = manager.create_or_get_key_for_tenant(vm_id, key_spec=key_spec)
+        key_id = manager.create_or_get_key_for_tenant(vm_id)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         header = {
             "typ": "JWT",

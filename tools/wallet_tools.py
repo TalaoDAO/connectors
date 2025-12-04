@@ -260,10 +260,12 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
     if structured.get("did_document"):
         structured["did_document"] = json.loads(structured["did_document"])
     
-    structured.pop("id", None)
+    # remove useless info
+    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "dev_pat_jti"]}
+    
     return _ok_content(
         [{"type": "text", "text": "All data"}],
-        structured=structured,
+        structured=final_structured,
     )
     
 

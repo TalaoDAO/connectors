@@ -12,6 +12,7 @@ import secrets
 import json
 import base64
 import hashlib
+from linked_vp import publish_linked_vp
 
 logging.basicConfig(level=logging.INFO)
 
@@ -804,7 +805,6 @@ def code_flow(session_config, mode, manager):
 def store_and_publish(cred, session_config, manager, published=False):
 
     vc_format = session_config["format"]
-    
     if vc_format in ["dc+sd-jwt", "vc+sd-jwt", "jwt_vc_json", "jwt_vc_json-ld"]:
         vcsd = cred.split("~") 
         vcsd_jwt = vcsd[0]
@@ -865,117 +865,21 @@ def store_and_publish(cred, session_config, manager, published=False):
     return True, "Attestation has been stored"
 
 
-# helper: base64url without padding
-def base64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
 def publish(service_id, attestation, session_config, manager):
-    """ all disclosure are removed before the VC is published """
-    # 1. Look up wallet did and id
-    wallet_did = service_id.split("#")[0]
-    id = service_id.split("#")[1]
-    
-    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
-    if this_wallet is None:
-        logging.error("Wallet not found for DID %s", wallet_did)
-        return None
+    """
+    Publish a credential as a Linked Verifiable Presentation.
 
-    # 2. Load existing DID Document
-    try:
-        did_document = json.loads(this_wallet.did_document or "{}")
-    except Exception:
-        logging.exception("Invalid DID Document in wallet")
-        return None
+    Delegates to linked_vp.publish_linked_vp, which supports:
+        - vc+sd-jwt / dc+sd-jwt (SD-JWT + KB, dc+sd-jwt data: URI)
+        - other VC formats (jwt_vc_json, jwt_vc_json-ld, ldp_vc, ...)
+    """
+    vc_format = session_config.get("format")
+    server = session_config["server"]
 
-    if session_config["format"] in ["vc+sd-jwt", "dc+sd-jwt"]:
-        sd_jwt_presentation = attestation.strip()
-        if not sd_jwt_presentation.endswith("~"):
-            sd_jwt_presentation = sd_jwt_presentation + "~"
-        # remove disclosure if any and add KB
-        sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
-        if not sd_jwt_plus_kb:
-            return None
-        vp_jwt = sd_jwt_plus_kb
-    else:
-        #  Build VP
-        payload = {
-            "iss": wallet_did,
-            "sub": wallet_did,
-            "jti": secrets.token_urlsafe(16),
-            "iat": int(datetime.now().timestamp()),
-            "vp": {  
-                "@context": ["https://www.w3.org/ns/credentials/v2"],
-                "type": ["VerifiablePresentation"],
-                "holder": wallet_did,
-                "verifableCredential":  [attestation]
-            }
-        }
-        # Sign VP
-        vm = wallet_did + "#key-1"
-        key_id = manager.create_or_get_key_for_tenant(vm)
-        jwk, kid, alg = manager.get_public_key_jwk(key_id)
-        header = {
-            "kid": vm,
-            "alg": alg,
-            'typ': "JWT"
-        }
-        vp_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
-    
-    try:
-        linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
-    except Exception:
-        linked_vp_json = {}
-    linked_vp_json[id] = vp_jwt
-    this_wallet.linked_vp = json.dumps(linked_vp_json)
-
-    # 8. Create LinkedVerifiablePresentation service endpoint in DID Doc
-    service_array = did_document.get("service", [])
-    
-    new_service = {
-        "id": service_id,
-        "type": "LinkedVerifiablePresentation",
-        "serviceEndpoint": session_config["server"] + "service/" + wallet_did + "/" + id,
-    }
-
-    service_array.append(new_service)
-    did_document["service"] = service_array
-    this_wallet.did_document = json.dumps(did_document)
-
-    # 9. Persist changes
-    db.session.commit()
-    logging.info("attestation is published")
-
-    # Optionally return details for caller
-    return {
-        "service_id": service_id,
-        "service": new_service,
-        "verifiable_presentation": vp_jwt,
-    }
-
-    
-def sign_and_add_kb(sd_jwt, wallet_did, manager):
-    sd_jwt_presentation = sd_jwt.split("~")[0]
-    now = int(datetime.utcnow().timestamp())
-    nonce = secrets.token_urlsafe(16)
-    vm = wallet_did + "#key-1"
-    key_id = manager.create_or_get_key_for_tenant(vm)
-    jwk, kid, alg = manager.get_public_key_jwk(key_id)
-
-    # sd_hash = b64url( SHA-256( ascii(SD-JWT-presentation) ) )
-    digest = hashlib.sha256(sd_jwt_presentation.encode("ascii")).digest()
-    sd_hash = base64url_encode(digest)
-
-    header = {
-        "typ": "kb+jwt",
-        "alg": alg,
-    }
-    payload = {
-        "iat": now,
-        "aud": wallet_did,
-        "nonce": nonce,
-        "sd_hash": sd_hash,
-    }
-    kb_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
-    return sd_jwt_presentation + "~" + kb_token  # compact JWS
-    
+    return publish_linked_vp(
+        service_id=service_id,
+        attestation=attestation,
+        server=server,
+        manager=manager,
+        vc_format=vc_format,
+    )

@@ -8,7 +8,8 @@ from datetime import datetime
 import base64
 
 
-def store_and_publish(cred, agent_identifier, manager, mode, published=False, type=None):
+# FOR OASF only TODO
+def store_and_publish(cred, agent_identifier, manager, mode, published=False, type="OASF"):
     """ The OASF attestation is unique"""
     # store attestation
     vcsd = cred.split("~") 
@@ -56,16 +57,22 @@ def store_and_publish(cred, agent_identifier, manager, mode, published=False, ty
     db.session.commit()
     if attestation: 
         logging.info("credential is stored as attestation #%s", attestation.id)
-    
     return True, text
 
 
-# helper: base64url without padding
-def base64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
+# used by wallet.py function for OASF
 def publish(service_id, attestation, server, manager):
+    # Legacy: OASF / LinkedIn flows used an SD-JWT attestation
+    return publish_linked_vp(
+        service_id=service_id,
+        attestation=attestation,
+        server=server,
+        manager=manager,
+        vc_format="dc+sd-jwt",
+    )
+
+
+def publish_linked_vp(service_id: str, attestation: str, server: str, manager, vc_format: str):
     wallet_did = service_id.split("#")[0]
     id = service_id.split("#")[1]
 
@@ -80,38 +87,61 @@ def publish(service_id, attestation, server, manager):
         logging.exception("Invalid DID Document in wallet")
         return None
 
-    sd_jwt_presentation = attestation.strip()
-    if not sd_jwt_presentation.endswith("~"):
-        sd_jwt_presentation = sd_jwt_presentation + "~"
+    # ---- SD-JWT formats ----
+    if vc_format in ["vc+sd-jwt", "dc+sd-jwt"]:
+        sd_jwt_presentation = attestation.strip()
+        if not sd_jwt_presentation.endswith("~"):
+            sd_jwt_presentation = sd_jwt_presentation + "~"
 
-    sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
-    if not sd_jwt_plus_kb:
-        return None
+        sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
+        if not sd_jwt_plus_kb:
+            return None
 
-    vp_resource = {
-        "@context": ["https://www.w3.org/ns/credentials/v2"],
-        "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
-        "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
-    }
+        vp_value = {
+            "@context": ["https://www.w3.org/ns/credentials/v2"],
+            "type": ["VerifiablePresentation", "EnvelopedVerifiablePresentation"],
+            "id": "data:application/dc+sd-jwt," + sd_jwt_plus_kb,
+        }
 
-    # Update linked_vp JSON: single entry for key "OASF"
+    # ---- Other VC formats (jwt_vc_json, ldp_vc, ...) ----
+    else:
+        payload = {
+            "iss": wallet_did,
+            "sub": wallet_did,
+            "jti": secrets.token_urlsafe(16),
+            "iat": int(datetime.utcnow().timestamp()),
+            "vp": {
+                "@context": ["https://www.w3.org/ns/credentials/v2"],
+                "type": ["VerifiablePresentation"],
+                "holder": wallet_did,
+                "verifableCredential": [attestation],
+            },
+        }
+        vm = wallet_did + "#key-1"
+        key_id = manager.create_or_get_key_for_tenant(vm)
+        jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        header = {
+            "kid": vm,
+            "alg": alg,
+            "typ": "JWT",
+        }
+        vp_jwt = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
+        vp_value = vp_jwt
+
+    # ---- Update wallet.linked_vp ----
     try:
         linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
     except Exception:
         linked_vp_json = {}
-    linked_vp_json[id] = vp_resource
+    linked_vp_json[id] = vp_value
     this_wallet.linked_vp = json.dumps(linked_vp_json)
 
-    # Update DID Document service entries:
-    # remove any existing LinkedVerifiablePresentation for this id / OASF
+    # ---- Update DID Document service entries (this is where #OASF uniqueness happens) ----
     service_array = did_document.get("service", []) or []
     endpoint = server + "service/" + wallet_did + "/" + id
 
     new_services = []
     for s in service_array:
-        # Keep all services except:
-        #  - exact same id, or
-        #  - LinkedVerifiablePresentation with same endpoint
         if s.get("id") == service_id:
             continue
         if s.get("type") == "LinkedVerifiablePresentation" and s.get("serviceEndpoint") == endpoint:
@@ -129,13 +159,19 @@ def publish(service_id, attestation, server, manager):
     this_wallet.did_document = json.dumps(did_document)
 
     db.session.commit()
-    logging.info("attestation is published")
+    logging.info("Linked VP published for %s (format=%s)", service_id, vc_format)
 
     return {
         "service_id": service_id,
         "service": new_service,
-        "verifiable_presentation": vp_resource,
+        "verifiable_presentation": vp_value,
     }
+
+
+# helper: base64url without padding
+def base64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
 
     
 def sign_and_add_kb(sd_jwt, wallet_did, manager):
