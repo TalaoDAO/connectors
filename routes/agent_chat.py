@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Any
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, current_app
 from openai import OpenAI
 from utils import oidc4vc
 import logging
@@ -313,6 +313,12 @@ def agent_page_profile(profile):
     """
     normalized = _normalize_profile(profile)
     profile_name = AGENT_DIDS[normalized]
+    myenv = current_app.config["MYENV"]
+    if profile == "cheqd" and myenv == "local":
+        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+    elif profile == "cheqd":
+        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa" # aws
+        
     return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
 
@@ -340,7 +346,7 @@ def chat():
     data = request.get_json(force=True, silent=True) or {}
     user_message = data.get("message", "").strip()
     profile = _normalize_profile(request.args.get("profile"))
-
+        
     if not user_message:
         return jsonify({"error": "missing 'message' in JSON body"}), 400
 

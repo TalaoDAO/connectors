@@ -53,11 +53,53 @@ tools_guest = [
             },
             "required": ["owners_identity_provider", "owners_login"]
         }
+    },
+    {
+        "name": "help_wallet4agent",
+        "description": (
+            "Explain to a human developer how to install and use the Wallet4Agent MCP "
+            "server with their own agent. Describe at a high level:\n"
+            "- How to install and run the Wallet4Agent MCP server.\n"
+            "- How to configure and use the manifest.json so the agent can discover the MCP server.\n"
+            "- How to connect as a guest, and how to obtain a developer personal access token (PAT).\n"
+            "- How to create a new Agent identifier (DID) and an attached wallet for that Agent, "
+            "including how the DID document is published and where the wallet endpoint lives.\n"
+            "- How to configure the agent to use that DID and wallet (including storing the PAT safely).\n"
+            "- Basic security best practices for protecting keys, PATs, and the wallet endpoint.\n\n"
+            "Use this tool whenever a developer asks how to get started with Wallet4Agent, how to "
+            "create a DID or wallet for an Agent, or how to wire the Agent and wallet together."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
     }
 ]
 
 
 tools_dev = [
+    {
+        "name": "help_wallet4agent",
+        "description": (
+            "Explain to a human developer how to install and use the Wallet4Agent MCP "
+            "server with their own agent. Describe at a high level:\n"
+            "- How to install and run the Wallet4Agent MCP server.\n"
+            "- How to configure and use the manifest.json so the agent can discover the MCP server.\n"
+            "- How to connect as a guest, and how to obtain a developer personal access token (PAT).\n"
+            "- How to create a new Agent identifier (DID) and an attached wallet for that Agent, "
+            "including how the DID document is published and where the wallet endpoint lives.\n"
+            "- How to configure the agent to use that DID and wallet (including storing the PAT safely).\n"
+            "- Basic security best practices for protecting keys, PATs, and the wallet endpoint.\n\n"
+            "Use this tool whenever a developer asks how to get started with Wallet4Agent, how to "
+            "create a DID or wallet for an Agent, or how to wire the Agent and wallet together."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
     {
         "name": "get_configuration",
         "description": "Get the wallet configuration data and DID Document.",
@@ -192,6 +234,50 @@ tools_dev = [
             "properties": {},
             "required": []
         }
+    },
+    {
+        "name": "publish_attestation",
+        "description": (
+            "Publish one of this Agent's stored attestations as a Linked Verifiable "
+            "Presentation in the DID Document. The attestation itself is already "
+            "stored in the wallet; this tool only exposes it via a Linked VP "
+            "service. Supports both did:web and did:cheqd identifiers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_id": {
+                    "type": "integer",
+                    "description": (
+                        "The local Attestation ID (from get_attestations_of_this_wallet "
+                        "structuredContent.id) to publish."
+                    )
+                }
+            },
+            "required": ["attestation_id"]
+        }
+    },
+    {
+        "name": "unpublish_attestation",
+        "description": (
+            "Unpublish one of this Agent's previously published attestations: "
+            "it removes the Linked Verifiable Presentation from the DID Document "
+            "and from the wallet's linked_vp registry, but keeps the credential "
+            "stored locally. Supports both did:web and did:cheqd identifiers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_id": {
+                    "type": "integer",
+                    "description": (
+                        "The local Attestation ID (from get_attestations_of_this_wallet "
+                        "structuredContent.id) to unpublish."
+                    )
+                }
+            },
+            "required": ["attestation_id"]
+        }
     }
 ]
 
@@ -274,7 +360,7 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
         structured["did_document"] = json.loads(structured["did_document"])
     
     # remove useless info
-    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "dev_pat_jti"]}
+    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "dev_pat_jti", "linked_vp"]}
     
     return _ok_content(
         [{"type": "text", "text": "All data"}],

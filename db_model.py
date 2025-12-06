@@ -181,7 +181,7 @@ class Attestation(db.Model):
     published = db.Column(db.Boolean, default=False)
 
 
-def seed_wallet(mode, manager):
+def seed_wallet(mode, manager, myenv):
     config ={
         "MANAGER": manager,
         "MODE": mode
@@ -290,7 +290,11 @@ def seed_wallet(mode, manager):
         )
         db.session.add(wallet_5)
         
-        did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+        if myenv == "local":
+            did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+        else:
+            did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa"
+            
         vm = did + "#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
@@ -442,6 +446,9 @@ def create_did_document(did, jwk_1, url) -> str:
                 "publicKeyJwk": jwk_1
             }
         ],
+        "authentication":[
+            did + "#key-1"
+        ],  
         "assertionMethod" : [
             did + "#key-1",
         ],

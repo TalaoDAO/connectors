@@ -190,8 +190,12 @@ class UniversalRegistrarClient:
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did_doc = build_jwk_did_document(did, jwk, url, agent_card_url)
         
-        print("did document for cheqd ", did_doc)
-
+        # Ensure the key is also an authentication method
+        auth = did_doc.get("authentication", [])
+        if vm_id not in auth:
+            auth.append(vm_id)
+        did_doc["authentication"] = auth
+        
         # 1st call: ask driver to prepare signPayload
         initial_body = {
             "didDocument": did_doc,

@@ -626,8 +626,8 @@ def init_app(app):
             elif name == "describe_wallet4agent":
                 out = wallet_tools_for_agent.call_describe_wallet4agent()
             
-            elif name == "explain_how_to_install_wallet4agent":
-                out = wallet_tools_for_agent.call_explain_how_to_install_wallet4agent()
+            elif name == "help_wallet4agent":
+                out = wallet_tools_for_agent.call_help_wallet4agent()
             
             elif name == "delete_identity":
                 if role != "dev":
@@ -695,6 +695,24 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing credential_offer"}}
                 out = wallet_tools_for_agent.call_accept_credential_offer(arguments, agent_identifier, config())
+            
+            elif name == "publish_attestation":
+                if role not in ["agent", "dev"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("attestation_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: missing attestation_id"}}
+                out = wallet_tools_for_agent.call_publish_attestation(arguments, agent_identifier, config())
+            
+            elif name == "unpublish_attestation":
+                if role not in ["agent", "dev"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("attestation_id"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: missing attestation_id"}}
+                out = wallet_tools_for_agent.call_unpublish_attestation(arguments, agent_identifier, config())
             
             elif name == "resolve_agent_identifier":
                 if role not in ["agent"]:

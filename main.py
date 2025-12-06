@@ -131,7 +131,7 @@ def create_app() -> Flask:
     }
 
     # ---- App-wide config values (shared deps) ----
-    app.config["MYENV"] = "local"
+    app.config["MYENV"] = myenv
     app.config["MODE"] = mode
     app.config["SESSION_TYPE"] = "redis"
     app.config["SESSION_REDIS"] = red
@@ -139,14 +139,13 @@ def create_app() -> Flask:
     app.config["API_LIFE"] = int(os.getenv("API_LIFE", DEFAULT_API_LIFE))
     app.config["GRANT_LIFE"] = int(os.getenv("GRANT_LIFE", DEFAULT_GRANT_LIFE))
     app.config["ACCEPTANCE_TOKEN_LIFE"] = int(os.getenv("ACCEPTANCE_TOKEN_LIFE", DEFAULT_ACCEPTANCE_TOKEN_LIFE))
-    #app.config["ALLOWED_IMAGE_EXTENSIONS"] = ["jpeg", "jpg", "png", "gif"]
-    #app.config["AUDIT_LOG_DIR"] = "./log"  # or instance_path/audit-logs
     
    
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
         os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-        
+    
+ 
     # initialize KMS
     manager = key_manager.kms_init(myenv)
     app.config["MANAGER"] = manager
@@ -159,7 +158,12 @@ def create_app() -> Flask:
 
     # ---- DB bootstrap / seed (idempotent) ----
     agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
-    "did:web:wallet4agent.com:arf", "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"]
+    "did:web:wallet4agent.com:arf" ]
+    if myenv == "local":
+        agent_list.append("did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac")
+    else:
+        agent_list.append("did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa")
+        
     with app.app_context():
         db.create_all()
         # NOTE: seeding in production can be dangerous; guard by env flag
@@ -168,7 +172,7 @@ def create_app() -> Flask:
             seed_user()
             seed_credential()
             seed_signin_for_wallet_registration(mode)
-            seed_wallet(mode, manager)
+            seed_wallet(mode, manager, myenv)
             seed_key()
             for agent in agent_list:
                 create_oasf_vp(agent, manager, mode)
@@ -191,8 +195,6 @@ def create_app() -> Flask:
     crud_signin.init_app(app)
 
     user_profile.init_app(app)
-    #did_document.init_app(app)
-    #online_test.init_app(app)
 
     verifier.init_app(app)    # your verifier API
     oidc4vci.init_app(app)    # your verifier API
@@ -206,8 +208,6 @@ def create_app() -> Flask:
     register.init_app(app, db)
     menu.init_app(app)
 
-    #log.init_audit_logging(app)
-    
     statuslist.init_app(app)
     
     wallet.init_app(app)

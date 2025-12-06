@@ -158,12 +158,18 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
     
     # After local update, if this is a did:cheqd, also update on-ledger via Universal Registrar
     if wallet_did.startswith("did:cheqd:"):
+        registrar = UniversalRegistrarClient()
+        # extract network from did:cheqd:<network>:<id>
+        parts = wallet_did.split(":")
+        network = parts[2] if len(parts) > 3 else "testnet"
+            
+        vm_id = wallet_did + "#key-1"
+        auth = did_document.get("authentication", [])
+        if vm_id not in auth:
+            auth.append(vm_id)
+        did_document["authentication"] = auth
+        
         try:
-            registrar = UniversalRegistrarClient()
-            # extract network from did:cheqd:<network>:<id>
-            parts = wallet_did.split(":")
-            network = parts[2] if len(parts) > 3 else "testnet"
-
             registrar.update_did_cheqd(
                 did=wallet_did,
                 did_document=did_document,
@@ -173,7 +179,7 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
             )
             logging.info("Linked VP published on-ledger for %s", wallet_did)
         except Exception as e:
-            logging.exception("Failed to update cheqd DID document for %s: %s", wallet_did, str(e))
+            logging.error("Failed to update cheqd DID document for %s: %s", wallet_did, str(e))
             return None
 
     logging.info("Linked VP published for %s (format=%s)", service_id, vc_format)
@@ -216,3 +222,84 @@ def sign_and_add_kb(sd_jwt, wallet_did, manager):
     kb_token = manager.sign_jwt_with_key(key_id, header=header, payload=payload)
     return sd_jwt_presentation + "~" + kb_token  # compact JWS
     
+# linked_vp.py
+
+def unpublish_linked_vp(service_id: str, server: str, mode, manager):
+    """
+    Remove a Linked Verifiable Presentation (Linked VP) from:
+      - wallet.linked_vp map
+      - DID Document 'service' array
+
+    If the wallet DID is did:cheqd, also push the updated DID Document
+    on-ledger via Universal Registrar.
+
+    The underlying Attestation row is NOT deleted; the caller is
+    responsible for updating Attestation.published.
+    """
+    wallet_did = service_id.split("#")[0]
+    id = service_id.split("#")[1]
+
+    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    if this_wallet is None:
+        logging.error("Wallet not found for DID %s", wallet_did)
+        return None
+
+    # Load DID Document
+    try:
+        did_document = json.loads(this_wallet.did_document or "{}")
+    except Exception:
+        logging.exception("Invalid DID Document in wallet")
+        return None
+
+    # ---- Update wallet.linked_vp ----
+    try:
+        linked_vp_json = json.loads(this_wallet.linked_vp or "{}")
+    except Exception:
+        linked_vp_json = {}
+
+    if id in linked_vp_json:
+        del linked_vp_json[id]
+    this_wallet.linked_vp = json.dumps(linked_vp_json)
+
+    # ---- Update DID Document service entries ----
+    service_array = did_document.get("service", []) or []
+    endpoint = server + "service/" + wallet_did + "/" + id
+
+    new_services = []
+    for s in service_array:
+        # Remove the exact service_id
+        if s.get("id") == service_id:
+            continue
+        # Also remove any lingering LinkedVerifiablePresentation with same endpoint
+        if s.get("type") == "LinkedVerifiablePresentation" and s.get("serviceEndpoint") == endpoint:
+            continue
+        new_services.append(s)
+
+    did_document["service"] = new_services
+    this_wallet.did_document = json.dumps(did_document)
+    db.session.commit()
+
+    # ---- If did:cheqd, push update to ledger ----
+    if wallet_did.startswith("did:cheqd:"):
+        try:
+            registrar = UniversalRegistrarClient()
+            parts = wallet_did.split(":")
+            network = parts[2] if len(parts) > 3 else "testnet"
+
+            registrar.update_did_cheqd(
+                did=wallet_did,
+                did_document=did_document,
+                manager=manager,
+                mode=mode,
+                network=network,
+            )
+            logging.info("Linked VP unpublished on-ledger for %s", wallet_did)
+        except Exception as e:
+            logging.exception("Failed to update cheqd DID document for %s: %s", wallet_did, str(e))
+            return None
+
+    logging.info("Linked VP unpublished for %s", service_id)
+    return {
+        "service_id": service_id,
+        "removed": True,
+    }
