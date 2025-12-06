@@ -1,6 +1,6 @@
 import json
 from typing import List, Dict, Any
-
+import os
 from flask import Flask, request, jsonify, render_template, current_app
 from openai import OpenAI
 from utils import oidc4vc
@@ -21,6 +21,16 @@ def init_app(app):
     app.add_url_rule('/agent/<profile>', view_func=agent_page_profile, methods=['POST', 'GET'])
 
 
+def get_cheqd_did(myenv) -> str:
+    if myenv is None:
+        myenv = os.getenv("MYENV", "local")
+    # local vs aws cheqd DIDs
+    if myenv == "local":
+        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+    else:
+        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa"
+
+
 # Your MCP server endpoint (public HTTPS)
 MCP_SERVER_URL = "https://wallet4agent.com/mcp"
 
@@ -33,7 +43,9 @@ ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc", "cheqd"}
 AGENT_DIDS: Dict[str, str] = {
     profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
 }
-AGENT_DIDS["cheqd"] = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+AGENT_DIDS["cheqd"] = get_cheqd_did(os.getenv("MYENV", "local"))
+#AGENT_DIDS["cheqd"] = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+
 
 
 def ecosystem(wallet_profile):
