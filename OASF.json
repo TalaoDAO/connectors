@@ -271,7 +271,7 @@
           }
         },
         {
-          "name": "get_this_wallet_data",
+          "name": "get_this_agent_data",
           "role": "agent",
           "description": "Retrieve a high-level overview of this Agent's identity and attached wallet (DID, wallet endpoint, number of attestations, human-in-the-loop flag).",
           "input_schema": {
@@ -311,18 +311,7 @@
           }
         },
         {
-          "name": "describe_wallet4agent",
-          "role": "agent",
-          "description": "Self-description tool explaining what Wallet4Agent is, how the wallet works, and how it relates to AI agents and verifiable credentials.",
-          "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": false
-          }
-        },
-        {
-          "name": "explain_how_to_install_wallet4agent",
+          "name": "help_wallet4agent",
           "role": "agent",
           "description": "Explain to a human developer how to install and use Wallet4Agent MCP server, obtain a PAT, create an Agent DID and wallet, and wire everything together securely.",
           "input_schema": {
@@ -411,6 +400,34 @@
               "authentication_request_id"
             ],
             "additionalProperties": false
+          }
+        },
+        {
+          "name": "publish_attestation",
+          "description": "Publish one of this Agent's stored attestations as a Linked Verifiable. Presentation in the DID Document. The attestation itself is already stored in the wallet; this tool only exposes it via a Linked VP service. Supports both did:web and did:cheqd identifiers.",
+          "inputSchema": {
+              "type": "object",
+              "properties": {
+                  "attestation_id": {
+                      "type": "integer",
+                      "description": "The local Attestation ID (from get_attestations_of_this_wallet structuredContent.id) to publish."
+                  }
+              },
+              "required": ["attestation_id"]
+          }
+      },
+      {
+          "name": "unpublish_attestation",
+          "description": "Unpublish one of this Agent's previously published attestations: it removes the Linked Verifiable Presentation from the DID Document and from the wallet's linked_vp registry, but keeps the credential stored locally. Supports both did:web and did:cheqd identifiers.",
+          "inputSchema": {
+              "type": "object",
+              "properties": {
+                  "attestation_id": {
+                      "type": "integer",
+                      "description": "The local Attestation ID (from get_attestations_of_this_wallet structuredContent.id) to unpublish."
+                  }
+              },
+              "required": ["attestation_id"]
           }
         }
       ],

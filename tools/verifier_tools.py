@@ -14,7 +14,7 @@ RESOLVER_LIST = [
     'https://resolver.cheqd.net/1.0/identifiers/'
 ]
 
-tools_dev: List[Dict[str, Any]] = []
+tools_admin: List[Dict[str, Any]] = []
 tools_guest: List[Dict[str, Any]] = []
 
 tools_agent: List[Dict[str, Any]] = [

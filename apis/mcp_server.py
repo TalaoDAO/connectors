@@ -103,7 +103,7 @@ def init_app(app):
         # if pat check if token is still valid for this agent_identifier
         if type == "pat":
             try:
-                if jti == this_wallet.dev_pat_jti and role == "dev":
+                if jti == this_wallet.admin_pat_jti and role == "admin":
                     return role, agent_identifier
                 elif jti == this_wallet.agent_pat_jti and role == "agent":
                     return role, agent_identifier
@@ -167,8 +167,8 @@ def init_app(app):
             
     @app.get("/mcp/tools_list")
     def mcp_tools_list():
-        modules = ["tools.wallet_tools", "tools.verifier_tools"]
-        constants = ["tools_guest", "tools_dev", "tools_agent"]
+        modules = ["tools.wallet_tools", "tools.verifier_tools", "tools.wallet_tools_for_agent"]
+        constants = ["tools_guest", "tools_admin", "tools_agent"]
         tools_list = {"tools": []}
         for module_name in modules:
             module = importlib.import_module(module_name) 
@@ -200,16 +200,83 @@ def init_app(app):
         return resp
 
     # --------- Tool catalog ---------
+        # --------- Tool catalog ---------
     def _tools_list(role) -> Dict[str, Any]:
+        """
+        Return the list of tools available for the caller, taking into account:
+        - role: guest / admin / agent
+        - Wallet feature flags for agents:
+            - wallet.receive_credentials -> tools_agent_receive_credentials
+            - wallet.sign              -> tools_agent_sign
+            - wallet.publish_unpublish -> tools_agent_publish_unpublish
+        - tools_agent_others is ALWAYS available to agents
+        """
         logging.info("tools have been called")
-        modules = ["tools.wallet_tools", "tools.wallet_tools_for_agent", "tools.verifier_tools"]
-        constant = "tools_" + role
-        tools_list = {"tools": []}
-        for module_name in modules:
-            module = importlib.import_module(module_name) 
-            if hasattr(module, constant):
-                tools_list["tools"].extend(getattr(module, constant))
-        return tools_list
+
+        # ----- guest / admin: keep old behaviour -----
+        if role in ("guest", "admin"):
+            tools: List[Dict[str, Any]] = []
+            modules = ["tools.wallet_tools", "tools.wallet_tools_for_agent", "tools.verifier_tools"]
+            constant = "tools_" + role
+            for module_name in modules:
+                module = importlib.import_module(module_name)
+                if hasattr(module, constant):
+                    tools.extend(getattr(module, constant))
+            return {"tools": tools}
+
+        # ----- agent: feature-gated by Wallet flags -----
+        if role == "agent":
+            tools: List[Dict[str, Any]] = []
+
+            # 1) "Others" are always available to agents
+            #    (resolve_agent_identifier, get_this_agent_data, get_attestations_xxx,
+            #     describe_wallet4agent, help_wallet4agent, ...)
+            tools.extend(wallet_tools_for_agent.tools_agent_others)
+
+            # 2) Verifier tools for agents are always available as well
+            if hasattr(verifier_tools, "tools_agent"):
+                tools.extend(verifier_tools.tools_agent)
+
+            # 3) Feature-gated groups based on Wallet flags
+            encrypted_pat = _bearer_or_api_key()
+            agent_did: Optional[str] = None
+            this_wallet: Optional[Wallet] = None
+
+            if encrypted_pat:
+                try:
+                    access_token = json.loads(oidc4vc.decrypt_string(encrypted_pat))
+                    agent_did = access_token.get("sub")
+                except Exception as e:
+                    logging.warning("Cannot decrypt access token in _tools_list: %s", str(e))
+
+            if agent_did:
+                this_wallet = Wallet.query.filter_by(did=agent_did).one_or_none()
+
+            if not this_wallet:
+                # No wallet: only "others" + verifier tools
+                logging.warning("No wallet found for agent DID %s in _tools_list", agent_did)
+                return {"tools": tools}
+
+            # receive_credentials -> accept_credential_offer
+            if this_wallet.receive_credentials:
+                print("add credentials")
+                tools.extend(wallet_tools_for_agent.tools_agent_receive_credentials)
+
+            # sign -> sign_text_message, sign_json_payload
+            if this_wallet.sign:
+                print("add sign")
+                tools.extend(wallet_tools_for_agent.tools_agent_sign)
+
+            # publish_unpublish -> publish_attestation, unpublish_attestation
+            if this_wallet.publish_unpublish:
+                print("add publish")
+                tools.extend(wallet_tools_for_agent.tools_agent_publish_unpublish)
+
+            return {"tools": tools}
+
+        # Fallback: unknown role
+        return {"tools": []}
+
 
     # --------- Prompt catalog ---------
     def _prompts_list(role) -> Dict[str, Any]:
@@ -236,7 +303,7 @@ def init_app(app):
                 "name": "Wallet4Agent – Getting Started for Developers",
                 "description": (
                     "Markdown documentation that explains how to create an agent "
-                    "identity and wallet, use the dev personal access token, and "
+                    "identity and wallet, use the admin personal access token, and "
                     "configure authentication (PAT or OAuth 2.0)."
                 ),
                 "mimeType": "text/markdown",
@@ -262,7 +329,7 @@ def init_app(app):
                     "All attestations (verifiable credentials) currently held by this Agent. "
                     "The Agent is identified by its DID; the credentials are stored in its "
                     "attached wallet. Use this resource to see what has been issued about "
-                    "this Agent (or its human/organization owner)."
+                    "this Agent (or its human/organization admin)."
                 ),
                 "mimeType": "application/json",
             })
@@ -538,7 +605,13 @@ def init_app(app):
         # tools/call
         elif method == "tools/call":
             name = params.get("name")
-            arguments = params.get("arguments") or {}         
+            arguments = params.get("arguments") or {}  
+            
+            def _get_wallet_for_agent(agent_identifier: Optional[str]) -> Optional[Wallet]:
+                if not agent_identifier:
+                    return None
+                return Wallet.query.filter_by(did=agent_identifier).one_or_none()
+    
     
             if name == "start_user_verification":
                 if not arguments.get("user_email"):
@@ -585,13 +658,13 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 
-                if not arguments.get("owners_login") or not arguments.get("owners_identity_provider"):
+                if not arguments.get("admins_login") or not arguments.get("admins_identity_provider"):
                     return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: owner_login or owner_identity_provider missing "}}        
+                                "error":{"code":-32001,"message":"Unauthorized: admins_login or admin_identity_provider missing "}}        
                 out = wallet_tools.call_create_agent_identifier_and_wallet(arguments, config())
             
             elif name == "add_authentication_key":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if not arguments.get("public_key"):
@@ -600,19 +673,19 @@ def init_app(app):
                 out = wallet_tools.call_add_authentication_key(arguments, agent_identifier, config())
             
             elif name == "get_configuration":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_configuration(agent_identifier, config())
             
             elif name == "create_OASF":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_create_oasf(agent_identifier, config())
                 
             elif name == "update_configuration":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_update_configuration(arguments, agent_identifier, config())
@@ -630,7 +703,7 @@ def init_app(app):
                 out = wallet_tools_for_agent.call_help_wallet4agent()
             
             elif name == "delete_identity":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if agent_identifier != arguments.get("agent_identifier"):
@@ -639,7 +712,7 @@ def init_app(app):
                 out = wallet_tools.call_delete_identity(agent_identifier)
             
             elif name == "get_attestations_of_this_wallet":
-                if role not in ["dev", "agent"]:
+                if role not in ["admin", "agent"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools_for_agent.call_get_attestations_of_this_wallet(agent_identifier, config())
@@ -651,6 +724,11 @@ def init_app(app):
                 if not arguments.get("message"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: message missing "}}
+                this_wallet = _get_wallet_for_agent(agent_identifier)
+                if not this_wallet.sign:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: message signing"}}
+                
                 out = wallet_tools_for_agent.call_sign_text_message(arguments, agent_identifier, config())
             
             elif name == "sign_json_payload":
@@ -659,7 +737,13 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if not arguments.get("payload"):
                     return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: message missing "}}
+                                "error":{"code":-32001,"message":"Unauthorized: payload missing"}}
+                
+                this_wallet = _get_wallet_for_agent(agent_identifier)
+                if not this_wallet.sign:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: payload signing"}}
+                    
                 out = wallet_tools_for_agent.call_sign_json_payload(arguments, agent_identifier, config())
             
             elif name == "get_attestations_of_another_agent":
@@ -673,7 +757,7 @@ def init_app(app):
                 out = wallet_tools_for_agent.call_get_attestations_of_another_agent(target_agent_identifier)
                     
             elif name == "rotate_personal_access_token":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if agent_identifier != arguments.get("agent_identifier"):
@@ -682,7 +766,7 @@ def init_app(app):
                 out = wallet_tools.call_rotate_personal_access_token(arguments, agent_identifier)
             
             elif name == "describe_identity_document":
-                if role != "dev":
+                if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_describe_identity_document(agent_identifier)
@@ -694,24 +778,36 @@ def init_app(app):
                 if not arguments.get("credential_offer"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing credential_offer"}}
+                this_wallet = _get_wallet_for_agent(agent_identifier)
+                if not this_wallet.receive_attestation:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: receive attestation"}}
                 out = wallet_tools_for_agent.call_accept_credential_offer(arguments, agent_identifier, config())
             
             elif name == "publish_attestation":
-                if role not in ["agent", "dev"]:
+                if role not in ["agent", "admin"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if not arguments.get("attestation_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing attestation_id"}}
+                this_wallet = _get_wallet_for_agent(agent_identifier)
+                if not this_wallet.publish_unpublish:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: publish attestation"}}
                 out = wallet_tools_for_agent.call_publish_attestation(arguments, agent_identifier, config())
             
             elif name == "unpublish_attestation":
-                if role not in ["agent", "dev"]:
+                if role not in ["agent", "admin"]:
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if not arguments.get("attestation_id"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: missing attestation_id"}}
+                this_wallet = _get_wallet_for_agent(agent_identifier)
+                if not this_wallet.publish_unpublish:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unpublish attestation"}}
                 out = wallet_tools_for_agent.call_unpublish_attestation(arguments, agent_identifier, config())
             
             elif name == "resolve_agent_identifier":

@@ -5,10 +5,10 @@ import secrets
 import logging
 from utils import oidc4vc, message
 import hashlib
-from datetime import datetime
-import base64
 from universal_registrar import UniversalRegistrarClient
 import linked_vp
+import copy
+
 
 # do not provide this tool to an LLM
 tools_guest = [
@@ -34,24 +34,48 @@ tools_guest = [
                     "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF"],
                     "default": "DIIP V3"
                 },
+                "always_human_in_the_loop": {
+                    "type": "boolean",
+                    "description": "Always human in the loop",
+                    "default": True
+                },
+                "receive_credentials": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to receive credentials",
+                    "default": True
+                }, 
+                "publish_unpublish": {
+                    "type": "boolean",
+                    "description": "Authorized Agent to publish or unpublish attestations",
+                    "default": False
+                },
+                "sign": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to sign message and payload",
+                    "default": False
+                },
                 "mcp_client_authentication": {
                     "type": "string",
                     "description": "Authentication between MCP client and MCP server for agent. Dev and admin use PAT",
                     "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
                     "default": "Personal Access Token (PAT)"
                 },
-                "owners_identity_provider": {
+                "admins_identity_provider": {
                     "type": "string",
-                    "description": "Identity provider for owners",
+                    "description": "Identity provider for admins",
                     "enum": ["google", "github"],
                     "default": "google"
                 },
-                "owners_login": {
+                "admins_login": {
                     "type": "string",
                     "description": "One or more user login separated by a comma (Google email, Github login or personal email). This login will be needed to accept new attestations offer."
+                },
+                "notification_email": {
+                    "type": "string",
+                    "description": "This email is used to notify about Agent actions if human in the loop"
                 }
             },
-            "required": ["owners_identity_provider", "owners_login"]
+            "required": ["admins_identity_provider", "admins_login"]
         }
     },
     {
@@ -78,7 +102,7 @@ tools_guest = [
 ]
 
 
-tools_dev = [
+tools_admin = [
     {
         "name": "help_wallet4agent",
         "description": (
@@ -197,8 +221,8 @@ tools_dev = [
                 "role": {
                     "type": "string",
                     "description": "Choose the token to rotate",
-                    "enum": ["agent", "dev"],
-                    "default": "dev"
+                    "enum": ["agent", "admin"],
+                    "default": "admin"
                 },
                 "agent_identifier": {
                     "type": "string",
@@ -291,7 +315,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     return out
 
 
-# for dev
+# for admin
 def call_delete_identity(wallet_did) -> Dict[str, Any]:
     """
     Delete a wallet and its related data from the database.
@@ -342,7 +366,7 @@ def call_delete_identity(wallet_did) -> Dict[str, Any]:
     )
 
 
-# dev tool
+# admin tool
 def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
 
@@ -360,7 +384,7 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
         structured["did_document"] = json.loads(structured["did_document"])
     
     # remove useless info
-    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "dev_pat_jti", "linked_vp"]}
+    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "admin_pat_jti", "linked_vp"]}
     
     return _ok_content(
         [{"type": "text", "text": "All data"}],
@@ -374,11 +398,11 @@ def call_rotate_personal_access_token(arguments, agent_identifier) -> Dict[str, 
         "agent_identifier": agent_identifier,
         "wallet_url": this_wallet.url
     }
-    if arguments.get("role") == "dev":
-        dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_identifier, "dev", "pat")
-        this_wallet.dev_pat_jti = dev_pat_jti
-        structured["dev_personal_access_token"] = dev_pat
-        text = "New personal access token available for dev. Copy this access token which is not stored."
+    if arguments.get("role") == "admin":
+        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(agent_identifier, "admin", "pat")
+        this_wallet.admin_pat_jti = admin_pat_jti
+        structured["admin_personal_access_token"] = admin_pat
+        text = "New personal access token available for admin. Copy this access token which is not stored."
     else:
         agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_identifier, "agent", "pat", duration=90*25*60*60)
         this_wallet.agent_pat_jti = agent_pat_jti
@@ -476,12 +500,6 @@ def hash_client_secret(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-
-# guest tool
-
-from typing import Dict, Any
-
-
 def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: dict) -> Dict[str, Any]:
     mode = config["MODE"]
     manager = config["MANAGER"]
@@ -490,9 +508,10 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     raw_agent_name = arguments.get("agent_name", "") or ""
     agent_name = "-".join(raw_agent_name.split()) or None
 
-    owners_identity_provider = arguments.get("owners_identity_provider")
-    owners_login = (arguments.get("owners_login") or "").split(",")
+    admins_identity_provider = arguments.get("admins_identity_provider")
+    admins_login = (arguments.get("admins_login") or "").split(",")
     agent_card_url = arguments.get("agentcard_url")
+    
 
     # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
     client = UniversalRegistrarClient()
@@ -538,9 +557,9 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         )
 
     # ----------------------------------------------------------------------
-    # 4) Generate dev + agent PATs
+    # 4) Generate admin + agent PATs
     # ----------------------------------------------------------------------
-    dev_pat, dev_pat_jti = oidc4vc.generate_access_token(agent_did, "dev", "pat")
+    admin_pat, admin_pat_jti = oidc4vc.generate_access_token(agent_did, "admin", "pat")
     agent_pat, agent_pat_jti = oidc4vc.generate_access_token(
         agent_did, "agent", "pat", duration=90 * 24 * 60 * 60
     )
@@ -549,36 +568,41 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     client_secret = secrets.token_urlsafe(64)
 
     # ----------------------------------------------------------------------
-    # 5) Create / update owners and wallet in DB
+    # 5) Create / update admins and wallet in DB
     # ----------------------------------------------------------------------
 
     wallet = Wallet(
-        dev_pat_jti=dev_pat_jti,
+        admin_pat_jti=admin_pat_jti,
         agent_pat_jti=agent_pat_jti,
         mcp_authentication=mcp_authentication,
         client_secret_hash=oidc4vc.hash_client_secret(client_secret),
-        owners_identity_provider=owners_identity_provider,
-        owners_login=json.dumps(owners_login),
+        admins_identity_provider=admins_identity_provider,
+        admins_login=json.dumps(admins_login),
         agent_framework="None",
         did=agent_did,
         did_document=json.dumps(did_document),
         url=wallet_url,
+        always_human_in_the_loop=arguments.get("always_human_in_the_loop"),
+        publish_unpublish=arguments.get("publish_unpublish"),
+        sign=arguments.get("sign"),
+        notification_email=arguments.get("notification_email"),
+        receive_credentials=arguments.get("receive_credentials")
     )
     # If your Wallet model has a key_id column, you can also store:
     # wallet.key_id = key_id
 
-    for user_login in owners_login:
-        if owners_identity_provider == "google":
+    for user_login in admins_login:
+        if admins_identity_provider == "google":
             email = user_login
             login = email
-            owner = User.query.filter_by(email=email).first()
-        elif owners_identity_provider == "github":
-            owner = User.query.filter_by(email=user_login).first()
+            admin = User.query.filter_by(email=email).first()
+        elif admins_identity_provider == "github":
+            admin = User.query.filter_by(email=user_login).first()
             email = ""
             login = user_login
-        #elif owners_identity_provider == "wallet":
+        #elif admins_identity_provider == "wallet":
         #    login = user_login
-        #    owner = User.query.filter_by(login=user_login).first()
+        #    admin = User.query.filter_by(login=user_login).first()
         #    email = ""
         else:
             return _ok_content(
@@ -586,15 +610,15 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
                 is_error=True,
             )
 
-        if not owner:
-            owner = User(
+        if not admin:
+            admin = User(
                 email=email,
                 login=login,
                 registration="wallet_creation",
                 subscription="free",
                 profile_picture="default_picture.jpeg",
             )
-        db.session.add(owner)
+        db.session.add(admin)
 
     db.session.add(wallet)
     db.session.commit()
@@ -604,7 +628,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     # ----------------------------------------------------------------------
     structured = {
         "agent_identifier": agent_did,
-        "dev_personal_access_token": dev_pat,
+        "admin_personal_access_token": admin_pat,
         "wallet_url": wallet.url,
     }
 
@@ -617,7 +641,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             "New agent identifier and wallet created.\n"
             f"Agent DID: {agent_did}\n"
             f"Wallet URL: {wallet.url}\n"
-            "Copy your dev personal access token and OAuth client credentials from the secure console; "
+            "Copy your admin personal access token and OAuth client credentials from the secure console; "
             "they are not stored and will not be shown again."
         )
     else:
@@ -627,14 +651,14 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             "New agent identifier and wallet created.\n"
             f"Agent DID: {agent_did}\n"
             f"Wallet URL: {wallet.url}\n"
-            "Copy the agent personal access token and the dev personal access token from the secure console; "
+            "Copy the agent personal access token and the admin personal access token from the secure console; "
             "they are not stored and will not be shown again."
         )
 
     # ----------------------------------------------------------------------
     # 7) Notify admin / user
     # ----------------------------------------------------------------------
-    message_text = "Wallet created for " + " ".join(owners_login)
+    message_text = "Wallet created for " + " ".join(admins_login)
     message.message(
         "A new wallet for AI Agent has been created",
         "thierry.thevenet@talao.io",
@@ -645,7 +669,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 
 
-# dev
+# admin
 def call_update_configuration(
     arguments: Dict[str, Any],
     agent_identifier: str,
@@ -788,34 +812,142 @@ def call_update_configuration(
         structured=structured,
     )
 
+def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
+    """
+    Take the base OASF.json template and adapt it for a specific wallet:
+    - Set the OASF `id` to the Agent DID.
+    - Filter agent tools according to wallet flags (sign, receive_credentials, publish_unpublish).
+    - Expose capabilities under wallet4agent.capabilities.
+    """
+    oasf = copy.deepcopy(oasf_template)
+
+    agent_did = wallet.did
+    # Subject of the OASF: this Agent's DID
+    oasf["id"] = agent_did
+
+    # ---- Expose capabilities in wallet4agent section ----
+    w4a = oasf.get("wallet4agent") or {}
+    capabilities = w4a.get("capabilities") or {}
+
+    capabilities.update(
+        {
+            "sign": bool(wallet.sign),
+            "receive_credentials": bool(wallet.receive_credentials),
+            "publish_unpublish": bool(wallet.publish_unpublish),
+            "always_human_in_the_loop": bool(wallet.always_human_in_the_loop),
+        }
+    )
+
+    w4a["capabilities"] = capabilities
+    oasf["wallet4agent"] = w4a
+
+    # ---- Adapt tools inside the mcp_server module ----
+    modules = oasf.get("modules") or []
+    for module in modules:
+        if module.get("type") != "mcp_server":
+            continue
+
+        tools = module.get("tools") or []
+        filtered_tools = []
+
+        for tool in tools:
+            name = tool.get("name")
+            if not name:
+                filtered_tools.append(tool)
+                continue
+
+            # In the new OASF.json, tools use "role" (guest/agent/dev).
+            # Some tools (publish/unpublish) have no explicit role, so we default to "agent".
+            role = tool.get("role") or tool.get("audience") or "agent"
+
+            # Guests & dev tools are always present
+            if role in ("guest", "admin"):
+                filtered_tools.append(tool)
+                continue
+
+            if role != "agent":
+                # Any other audience: keep as-is
+                filtered_tools.append(tool)
+                continue
+
+            # ---- Agent tools: gate them by wallet flags ----
+
+            # Receiving credentials
+            if name == "accept_credential_offer" and not wallet.receive_credentials:
+                # Agent cannot receive credentials
+                continue
+
+            # Signing tools
+            if name in ("sign_text_message", "sign_json_payload") and not wallet.sign:
+                # Agent cannot sign
+                continue
+
+            # Publish / unpublish tools
+            if name in ("publish_attestation", "unpublish_attestation") and not wallet.publish_unpublish:
+                # Agent is not allowed to manage Linked VP publication
+                continue
+
+            # All remaining agent tools are always available
+            filtered_tools.append(tool)
+
+        module["tools"] = filtered_tools
+
+    return oasf
+
+
 # tool
 def call_create_oasf(agent_identifier, config):
     manager = config["MANAGER"]
     mode = config["MODE"]
+
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet:
+        text = f"No wallet found for Agent DID {agent_identifier}."
+        return _ok_content([{"type": "text", "text": text}], is_error=True)
+
+    # 1. Load OASF template from file
     with open("OASF.json", "r", encoding="utf-8") as f:
-        oasf_json = json.load(f)
-    oasf_json["id"] = agent_identifier
+        oasf_template = json.load(f)
+
+    # 2. Adapt template to this wallet (tools & capabilities)
+    oasf_json = _adapt_oasf_for_wallet(oasf_template, this_wallet)
+
+    # 3. Add envelope fields for the SD-JWT/DC attestation
+    #    (these are credential-level, not service-level)
     oasf_json["disclosure"] = ["all"]
     oasf_json["vct"] = "urn:ai-agent:oasf:0001"
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+
+    # 4. Select DIIP draft according to ecosystem profile
     profile = this_wallet.ecosystem_profile
     if profile == "DIIP V3":
         draft = 13
     else:
         draft = 15
-    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360*24*60*60)
-    success, message = linked_vp.store_and_publish(cred, agent_identifier, manager, mode, published=True, type="OASF")
+
+    # 5. Sign as DC+SD-JWT with the Agent key
+    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360 * 24 * 60 * 60)
+
+    # 6. Store & publish as Linked VP (#OASF service)
+    success, message = linked_vp.store_and_publish( cred, agent_identifier, manager, mode, published=True, type="OASF",)
+
     if success:
         structured = {
             "success": True,
-            "message": message
+            "message": message,
         }
         text = f"{message} for Agent {agent_identifier}"
-        return _ok_content([{"type": "text", "text": text}], structured=structured)
+        return _ok_content(
+            [{"type": "text", "text": text}],
+            structured=structured,
+        )
 
-    logging.warning("Failed to publish OASF record as LInked VP " + message)
-    text = f"Failed to publish OASF record"
-    return _ok_content([{"type": "text", "text": text}], is_error=True)
+    logging.warning("Failed to publish OASF record as Linked VP: %s", message)
+    text = "Failed to publish OASF record"
+    return _ok_content(
+        [{"type": "text", "text": text}],
+        is_error=True,
+    )
+
 
 
 def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:

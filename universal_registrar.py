@@ -1,4 +1,5 @@
 import base64
+import json
 import random
 import string
 import uuid
@@ -68,9 +69,11 @@ def build_jwk_did_document(
         "@context": [
             "https://www.w3.org/ns/did/v1",
             {
-                "@id": "https://w3id.org/security#publicKeyJwk",
-                "@type": "@json",
-            },
+                "publicKeyJwk": {
+                    "@id": "https://w3id.org/security#publicKeyJwk",
+                    "@type": "@json"
+                }
+            }
         ],
         "id": did,
         "controller": [did],
@@ -330,6 +333,7 @@ class UniversalRegistrarClient:
         #   didState.signingRequest = { "label0": { payload, verificationMethodId, ... }, ... }
         # We mirror this for update.
         signing_requests = did_state.get("signingRequest") or {}
+
         if not signing_requests:
             raise RuntimeError(f"cheqd DID update: missing signingRequest in didState: {did_state}")
 
@@ -344,11 +348,7 @@ class UniversalRegistrarClient:
             if not payload_b64:
                 raise RuntimeError(f"Missing payload for signingRequest {label}: {req}")
 
-            vm_id_req = (
-                req.get("verificationMethodId")
-                or req.get("kid")
-                or key_id
-            )
+            vm_id_req = key_id
 
             # For cheqd create, we used plain base64 (not urlsafe) from the driver.
             # We keep the same here for consistency.

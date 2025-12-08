@@ -63,13 +63,13 @@ def register():
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    if wallet.owners_identity_provider == "google":
+    if wallet.admins_identity_provider == "google":
         return redirect(url_for("login_with_google", session_id=session_id))
-    elif wallet.owners_identity_provider == "github":
+    elif wallet.admins_identity_provider == "github":
         return redirect(url_for("login_with_github", session_id=session_id))
-    elif wallet.owners_identity_provider == "wallet":
+    elif wallet.admins_identity_provider == "wallet":
         return redirect(url_for("login_with_wallet", session_id=session_id))
-    elif wallet.owners_identity_provider == "admin":
+    elif wallet.admins_identity_provider == "admin":
         return redirect(url_for("register_admin", session_id=session_id))
     
     logging.warning("wallet identity provider unknown")
@@ -84,7 +84,7 @@ def create_wallet():
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    identity_provider = wallet.owners_identity_provider
+    identity_provider = wallet.admins_identity_provider
     if identity_provider == "google":
         return redirect('/register/auth/google?wallet_did=' + wallet_did)
     elif identity_provider == "github":
@@ -128,10 +128,10 @@ def register_google_callback(db):
         return redirect("/")
         
     if user:
-        if userinfo.get("email") in session_config["owners_login"]:
+        if userinfo.get("email") in session_config["admins_login"]:
             logout_user()
             login_user(user)
-            logging.info("owner is now authenticated")
+            logging.info("admin is now authenticated")
             did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
             return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
         else:
@@ -170,10 +170,10 @@ def register_github_callback(db):
         logging.warning("session not found")
         return redirect("/")
     if user:
-        if userinfo.get("login") in session_config["owners_login"]:
+        if userinfo.get("login") in session_config["admins_login"]:
             logout_user()
             login_user(user)
-            logging.info("owner is now authenticated")
+            logging.info("admin is now authenticated")
             did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
             return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
         else:
@@ -258,10 +258,10 @@ def register_wallet_callback(db):
             logging.warning("session not found")
             return redirect("/")
         # check if user is authorized for this session
-        if sub in session_config["owners_login"]:
+        if sub in session_config["admins_login"]:
             logout_user()
             login_user(user)
-            logging.info("dev of the agent is now authenticated")
+            logging.info("admin of the agent is now authenticated")
             did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
             return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
         else:

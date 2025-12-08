@@ -11,6 +11,7 @@ from urllib.parse import unquote
 import time                       # <-- ADD
 from datetime import datetime      # <-- ADD
 import linked_vp
+from utils import message
 
 RESOLVER_LIST = [
     "https://unires:test@unires.talao.co/1.0/identifiers/",
@@ -19,8 +20,7 @@ RESOLVER_LIST = [
 ]
 
 
-
-tools_agent = [
+tools_agent_receive_credentials = [
     {
         "name": "accept_credential_offer",
         "description": (
@@ -42,29 +42,14 @@ tools_agent = [
             },
             "required": ["credential_offer"]
         }
-    },
-    {
-        "name": "resolve_agent_identifier",
-        "description": (
-            "Resolve an Agent identifier (DID) and summarize its DID Document. "
-            "Useful to understand another Agent's public keys, services and Linked VPs."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "agent_identifier": {
-                    "type": "string",
-                    "description": "The DID of the Agent to resolve (e.g. did:web:wallet4agent.com:xyz)."
-                }
-            },
-            "required": ["agent_identifier"]
-        }
-    },
+    }
+]
+tools_agent_sign = [
     {
         "name": "sign_text_message",
         "description": (
             "Sign a text message using this Agent's DID and private keys."
-            "Return the base64-encoded signature bytes. Use this tool to prove you are the owner of your DID and private keys."
+            "Return the base64-encoded signature bytes. Use this tool to prove you are the admin of your DID and private keys."
         ),
         "inputSchema": {
             "type": "object",
@@ -92,6 +77,27 @@ tools_agent = [
                 }
             },
             "required": ["payload"]
+        }
+    }
+]
+
+    
+tools_agent_others = [
+    {
+        "name": "resolve_agent_identifier",
+        "description": (
+            "Resolve an Agent identifier (DID) and summarize its DID Document. "
+            "Useful to understand another Agent's public keys, services and Linked VPs."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "The DID of the Agent to resolve (e.g. did:web:wallet4agent.com:xyz)."
+                }
+            },
+            "required": ["agent_identifier"]
         }
     },
     {
@@ -180,7 +186,10 @@ tools_agent = [
             "properties": {},
             "required": []
         }
-    },
+    }
+]
+
+tools_agent_publish_unpublish = [
     {
         "name": "publish_attestation",
         "description": (
@@ -227,6 +236,12 @@ tools_agent = [
     }
 ]
 
+tools_agent = (
+    tools_agent_receive_credentials
+    + tools_agent_sign
+    + tools_agent_publish_unpublish
+    + tools_agent_others
+)
 
 def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any]] = None, is_error: bool = False) -> Dict[str, Any]:
     out: Dict[str, Any] = {"content": blocks}
@@ -235,6 +250,14 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     if is_error:
         out["isError"] = True
     return out
+
+
+def admin_message(wallet, message_text, mode):
+    if wallet.always_human_in_the_loop and wallet.notification_email:
+        to = wallet.notification_email
+        subject = f"Agent: {wallet.did}"
+        message.message(subject, to, message_text, mode)
+        
 
 def _decode_sd_jwt_local(sd_jwt_token: str) -> Optional[Dict[str, Any]]:
     """
@@ -479,7 +502,7 @@ def _extract_vc_from_jwt_vp(jwt_vp: str) -> Optional[Dict[str, Any]]:
 
     return result
 
-# for dev and agent
+# for admin and agent
 def call_get_attestations_of_this_wallet(
     wallet_did: str,
     config: Dict[str, Any],
@@ -593,11 +616,8 @@ def _decode_jwt_payload_full(jwt_token: str) -> Optional[Dict[str, Any]]:
         logging.exception("Failed to decode JWT payload (full)")
         return None
 
-
+"""
 def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
-    """
-    Decode JWT payload (no signature verification).
-    """
     try:
         parts = jwt_token.split(".")
         if len(parts) < 2:
@@ -613,7 +633,7 @@ def _decode_jwt_payload(jwt_token: str) -> Optional[Dict[str, Any]]:
     except Exception:
         logging.exception("Failed to decode JWT payload")
         return None
-
+"""
 
 def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, Any]]:
     """
@@ -785,7 +805,7 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
             #"validity": "active",  # assumption; revocation could be checked in a registry
         }
 
-         # 2.a Fetch VP from serviceEndpoint (if HTTP(S))
+        # 2.a Fetch VP from serviceEndpoint (if HTTP(S))
         vp_json: Optional[Dict[str, Any]] = None
         vp_jwt: Optional[str] = None
 
@@ -929,6 +949,9 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
             "number_of_attestations": len(attestations_list),
             "number_of_published_attestations": nb_published_attestations,
             "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,
+            "sign": bool(this_wallet.sign) if this_wallet else False,
+            "publish_unpublish": bool(this_wallet.publish_unpublish) if this_wallet else False,
+            "receive_credentials": bool(this_wallet.receive_credentials) if this_wallet else False,
         },
     }
 
@@ -937,11 +960,14 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
             f"My DID is {agent_identifier}. "
             f"I have an attached wallet at {this_wallet.url} "
             f"with a total of {len(attestations_list)} attestations. "
-            f"Human in the loop: {'yes' if this_wallet.always_human_in_the_loop else 'no'}."
+            f"{'I need a human in the loop' if this_wallet.always_human_in_the_loop else 'I dont need a human'}."
+            f"{'I can sign payload' if this_wallet.sign else 'I cannot sign payload'}."
+            f"{'I can receive credentials' if this_wallet.receive_credentials else 'I cannot receive credentials'}."
+            f"{'I can publish and unpublish attestations'  if this_wallet.publish_unpublish else 'I cannot publish or unpublish attestations'}."
         )
     else:
         text = (
-            f"My DID is {agent_identifier}, but py wallet have not be found in the database."
+            f"My DID is {agent_identifier}, but py wallet has not be found in the database."
         )
 
     return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -971,7 +997,16 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             [{"type": "text", "text": "Human in the loop is needed."}],
             is_error=True,
         )
+    if not this_wallet.receive_credentials:
+        return _ok_content(
+            [{"type": "text", "text": "Agent cannot receive credentials"}],
+            is_error=True,
+        )
 
+    message_text = "Agent receives an attestation"
+    admin_message(this_wallet, message_text, config["MODE"])
+    
+    
     # Normalize input for wallet.wallet():
     # - dict -> keep as-is
     # - string:
@@ -1018,7 +1053,7 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             structured = {
                 "attestation": attestation
             }
-            text = "Thank you, I have received the attestation but I cannot store this attestation without the my owner consent."
+            text = "Thank you, I have received the attestation but I cannot store this attestation without the my admin consent."
             return _ok_content([{"type": "text", "text": text}], is_error=False, structured=structured)
         else:
             result, message = wallet.store_and_publish(attestation, session_config, mode, manager, published=True)
@@ -1136,7 +1171,16 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
     message = arguments.get("message", "")
     if not isinstance(message, str):
         message = str(message)
-
+    
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet.sign:
+        return _ok_content(
+            [{"type": "text", "text": "Agent cannot sign."}],
+            is_error=True,
+        )
+    message_text = f"Agent signs message: {message}"
+    admin_message(this_wallet, message_text, config["MODE"])
+        
     # Prefer injected manager
     manager = config.get("MANAGER")
     vm_id = agent_identifier + "#key-1"
@@ -1163,7 +1207,17 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
 
 def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
     payload = arguments.get("payload", "")
-    payload = json.loads(payload) 
+    payload = json.loads(payload)
+    
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet.sign:
+        return _ok_content(
+            [{"type": "text", "text": "Agent cannot sign."}],
+            is_error=True,
+        )
+        
+    message_text = "Agent signs payload"
+    admin_message(this_wallet, message_text, config["MODE"])
 
     # Prefer injected manager
     manager = config.get("MANAGER")
@@ -1267,6 +1321,7 @@ def call_resolve_agent_identifier(
         structured=structured,
     )
 
+
 def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
     """
     Agent tool: publish an existing Attestation as a LinkedVerifiablePresentation
@@ -1277,6 +1332,16 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
     - Updates DID Document (service entry)
     - For did:cheqd, also updates the DID on-ledger via Universal Registrar
     """
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet.publish_unpublish:
+        return _ok_content(
+            [{"type": "text", "text": "Agent cannot publish attestations."}],
+            is_error=True,
+        )
+        
+    message_text = "Agent publishes an attestation"
+    admin_message(this_wallet, message_text, config["MODE"])
+    
     attestation_id = arguments.get("attestation_id")
     if attestation_id is None:
         return _ok_content(
@@ -1343,6 +1408,16 @@ def call_unpublish_attestation(arguments: Dict[str, Any], agent_identifier: str,
     - For did:cheqd, also updates the DID on-ledger via Universal Registrar
     - Keeps the Attestation (VC) stored locally, but sets published=False
     """
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet.publish_unpublish:
+        return _ok_content(
+            [{"type": "text", "text": "Agent cannot unpublish attestations."}],
+            is_error=True,
+        )
+    
+    message_text = "Agent unpublishes an attestation"
+    admin_message(this_wallet, message_text, config["MODE"])
+    
     attestation_id = arguments.get("attestation_id")
     if attestation_id is None:
         return _ok_content(

@@ -26,7 +26,7 @@ def get_cheqd_did(myenv) -> str:
         myenv = os.getenv("MYENV", "local")
     # local vs aws cheqd DIDs
     if myenv == "local":
-        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
     else:
         return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa"
 
@@ -44,7 +44,6 @@ AGENT_DIDS: Dict[str, str] = {
     profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
 }
 AGENT_DIDS["cheqd"] = get_cheqd_did(os.getenv("MYENV", "local"))
-#AGENT_DIDS["cheqd"] = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
 
 
 
@@ -89,13 +88,13 @@ MCP_DEV_PATS: Dict[str, str] = {}
 for profile, did in AGENT_DIDS.items():
     pat, _jti = oidc4vc.generate_access_token(
         did,
-        "dev",
+        "admin",
         "pat",
         jti=profile,
         duration=360 * 24 * 60 * 60,
     )
     MCP_DEV_PATS[profile] = pat
-    print("dev PAT for " + profile + " -> ", pat)
+    print("admin PAT for " + profile + " -> ", pat)
 
 
 
@@ -177,7 +176,7 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
 
         "AVAILABLE MCP TOOLS (agent role):\n"
         "- 'describe_wallet4agent': explain what the Wallet4Agent server and its wallet do.\n"
-        "- 'explain_how_to_install_wallet4agent': explain how to install Wallet4Agent, create a DID, "
+        "- 'help_wallet4agent': explain how to install Wallet4Agent, create a DID, "
         "  and attach a wallet to an Agent.\n"
         "- 'get_this_wallet_data': inspect your own agent_identifier (DID), wallet URL, and wallet metadata.\n"
         "- 'get_attestations_of_this_wallet': list all attestations (verifiable credentials) in your wallet.\n"
@@ -185,13 +184,15 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- 'accept_credential_offer': accept an OIDC4VCI credential offer for this Agent.\n"
         "- 'sign_text_message': sign a text message using your DID keys.\n"
         "- 'sign_json_payload': sign a json payload using your DID keys.\n"
+        "- 'publish_attestation': publish any attestation in the DID Document. \n"
+        "- 'unpublish_attestation': unpublish any attestation of the DID Document. \n"
         "- 'start_user_verification': send a verification email to a human user.\n"
         "- 'poll_user_verification': check the current result of the most recent user verification.\n"
         "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
         "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
     )
     
-    cheqd = (
+    cheqd_context = (
         "ECOSYSTEM DESCRIPTION: \n" 
         "- cheqd is a decentralized identity network built on Cosmos SDK and Tendermint."
         "- It provides infrastructure for self-sovereign identity (SSI) and verifiable credentials."
@@ -205,7 +206,7 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- cheqd provides documentation, SDKs, and tooling for building decentralized identity apps. \n\n")
     
     if ecosystem == "CHEQD":
-        content += cheqd
+        content += cheqd_context
     
     return {"role": "system", "content": content}
 
@@ -262,14 +263,15 @@ def call_agent(prompt: str, history: List[Dict[str, str]], profile: str) -> str:
         "server_url": MCP_SERVER_URL,
         "allowed_tools": [
             # Agent-level wallet tools
-            "describe_wallet4agent",
-            "explain_how_to_install_wallet4agent",
+            "help_wallet4agent",
             "get_this_agent_data",
             "get_attestations_of_this_wallet",
             "get_attestations_of_another_agent",
             "accept_credential_offer",
             "sign_text_message",
             "sign_json_payload",
+            "publish_attestation",
+            "unpublish_attestation",
             # Agent-level verifier tools (to check human users and agents)
             "start_user_verification",
             "poll_user_verification",
@@ -327,7 +329,7 @@ def agent_page_profile(profile):
     profile_name = AGENT_DIDS[normalized]
     myenv = current_app.config["MYENV"]
     if profile == "cheqd" and myenv == "local":
-        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac"
+        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
     elif profile == "cheqd":
         profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa" # aws
         

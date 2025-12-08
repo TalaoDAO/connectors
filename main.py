@@ -14,6 +14,7 @@ from db_model import Wallet
 import key_manager
 import linked_vp
 from utils import oidc4vc
+import copy
 
 
 # Your modules
@@ -46,28 +47,119 @@ DEFAULT_API_LIFE = 5000
 DEFAULT_GRANT_LIFE = 5000
 DEFAULT_ACCEPTANCE_TOKEN_LIFE = 28 * 24 * 60 * 60
 
+def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
+    """
+    Take the base OASF.json template and adapt it for a specific wallet:
+    - Set the OASF `id` to the Agent DID.
+    - Filter agent tools according to wallet flags (sign, receive_credentials, publish_unpublish).
+    - Expose capabilities under wallet4agent.capabilities.
+    """
+    oasf = copy.deepcopy(oasf_template)
+
+    agent_did = wallet.did
+    # Subject of the OASF: this Agent's DID
+    oasf["id"] = agent_did
+
+    # ---- Expose capabilities in wallet4agent section ----
+    w4a = oasf.get("wallet4agent") or {}
+    capabilities = w4a.get("capabilities") or {}
+
+    capabilities.update(
+        {
+            "sign": bool(wallet.sign),
+            "receive_credentials": bool(wallet.receive_credentials),
+            "publish_unpublish": bool(wallet.publish_unpublish),
+            "always_human_in_the_loop": bool(wallet.always_human_in_the_loop),
+        }
+    )
+
+    w4a["capabilities"] = capabilities
+    oasf["wallet4agent"] = w4a
+
+    # ---- Adapt tools inside the mcp_server module ----
+    modules = oasf.get("modules") or []
+    for module in modules:
+        if module.get("type") != "mcp_server":
+            continue
+
+        tools = module.get("tools") or []
+        filtered_tools = []
+
+        for tool in tools:
+            name = tool.get("name")
+            if not name:
+                filtered_tools.append(tool)
+                continue
+
+            # In the new OASF.json, tools use "role" (guest/agent/dev).
+            # Some tools (publish/unpublish) have no explicit role, so we default to "agent".
+            role = tool.get("role") or tool.get("audience") or "agent"
+
+            # Guests & dev tools are always present
+            if role in ("guest", "admin"):
+                filtered_tools.append(tool)
+                continue
+
+            if role != "agent":
+                # Any other audience: keep as-is
+                filtered_tools.append(tool)
+                continue
+
+            # ---- Agent tools: gate them by wallet flags ----
+
+            # Receiving credentials
+            if name == "accept_credential_offer" and not wallet.receive_credentials:
+                # Agent cannot receive credentials
+                continue
+
+            # Signing tools
+            if name in ("sign_text_message", "sign_json_payload") and not wallet.sign:
+                # Agent cannot sign
+                continue
+
+            # Publish / unpublish tools
+            if name in ("publish_attestation", "unpublish_attestation") and not wallet.publish_unpublish:
+                # Agent is not allowed to manage Linked VP publication
+                continue
+
+            # All remaining agent tools are always available
+            filtered_tools.append(tool)
+
+        module["tools"] = filtered_tools
+
+    return oasf
+
 
 def create_oasf_vp(agent_identifier, manager, mode):
-        with open("OASF.json", "r", encoding="utf-8") as f:
-            oasf_json = json.load(f)
-        oasf_json["id"] = agent_identifier
-        oasf_json["disclosure"] = ["all"]
-        oasf_json["vct"] = "urn:ai-agent:oasf:0001"
-        this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-        if not this_wallet:
-            return None
-        profile = this_wallet.ecosystem_profile
-        if profile == "DIIP V3":
-            draft = 13
-        else:
-            draft = 15
-        cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360*24*60*60)
-        success, message = linked_vp.store_and_publish(cred, agent_identifier, manager, mode, published=True, type="OASF")
-        if success:
-            return True
-        logging.warning("Failed to publish OASF record as Linked VP " + message)
-        return False
-    
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet:
+        return None
+
+    with open("OASF.json", "r", encoding="utf-8") as f:
+        oasf_template = json.load(f)
+
+    # local copy of the same helper logic, or import from wallet_tools if you prefer
+    oasf_json = _adapt_oasf_for_wallet(oasf_template, this_wallet)
+
+    oasf_json["disclosure"] = ["all"]
+    oasf_json["vct"] = "urn:ai-agent:oasf:0001"
+
+    profile = this_wallet.ecosystem_profile
+    if profile == "DIIP V3":
+        draft = 13
+    else:
+        draft = 15
+
+    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager,draft=draft, duration=360 * 24 * 60 * 60,)
+
+    success, message = linked_vp.store_and_publish( cred, agent_identifier, manager, mode, published=True,
+        type="OASF")
+    if success:
+        return True
+
+    logging.warning("Failed to publish OASF record as Linked VP %s", message)
+    return False
+ 
     
 def create_app() -> Flask:
     """Application factory: configure, wire dependencies, register routes/APIs."""
@@ -281,11 +373,19 @@ def create_app() -> Flask:
         this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
         headers = {
             "Content-Type": "application/did+ld+json",
-            "Cache-Control": "no-cache"
+            "Cache-Control": "no-cache",
+            "Access-Control-Allow-Origin": "*"
         }
+        
         if not this_wallet:
             resp = {"error": "notFound"}
-            return Response(json.dumps(resp), headers=headers)
+            headers_error = {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache",
+                "Access-Control-Allow-Origin": "*",
+            }
+            return Response(json.dumps(resp), headers=headers_error, status=404)
+        
         did_doc = this_wallet.did_document
         return Response(did_doc, headers=headers)
     
