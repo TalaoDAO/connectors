@@ -294,7 +294,7 @@ def seed_wallet(mode, manager, myenv):
             did_document=create_did_document(did, jwk, url)
         )
         db.session.add(wallet_5)
-        
+        """
         if myenv == "local":
             did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
         else:
@@ -320,7 +320,7 @@ def seed_wallet(mode, manager, myenv):
             did_document=create_did_document(did, jwk, url)
         )
         db.session.add(wallet_6)
-        
+        """
         db.session.commit()
 
 

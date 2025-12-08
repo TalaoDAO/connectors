@@ -25,10 +25,10 @@ def get_cheqd_did(myenv) -> str:
     if myenv is None:
         myenv = os.getenv("MYENV", "local")
     # local vs aws cheqd DIDs
-    if myenv == "local":
-        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
-    else:
-        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd200"
+    #if myenv == "local":
+    #    return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
+    #else:
+    #    return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd200"
 
 
 # Your MCP server endpoint (public HTTPS)
@@ -43,7 +43,7 @@ ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc", "cheqd"}
 AGENT_DIDS: Dict[str, str] = {
     profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
 }
-AGENT_DIDS["cheqd"] = get_cheqd_did(os.getenv("MYENV", "local"))
+#AGENT_DIDS["cheqd"] = get_cheqd_did(os.getenv("MYENV", "local"))
 
 
 
@@ -328,10 +328,10 @@ def agent_page_profile(profile):
     normalized = _normalize_profile(profile)
     profile_name = AGENT_DIDS[normalized]
     myenv = current_app.config["MYENV"]
-    if profile == "cheqd" and myenv == "local":
-        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
-    elif profile == "cheqd":
-        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd200" # aws
+    #if profile == "cheqd" and myenv == "local":
+    #    profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
+    #elif profile == "cheqd":
+    #    profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd200" # aws
         
     return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
