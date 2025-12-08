@@ -298,7 +298,7 @@ def seed_wallet(mode, manager, myenv):
         if myenv == "local":
             did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
         else:
-            did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa"
+            did = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd111"
             
         vm = did + "#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)

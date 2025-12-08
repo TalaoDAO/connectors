@@ -28,7 +28,7 @@ def get_cheqd_did(myenv) -> str:
     if myenv == "local":
         return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
     else:
-        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa"
+        return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd111"
 
 
 # Your MCP server endpoint (public HTTPS)
@@ -331,7 +331,7 @@ def agent_page_profile(profile):
     if profile == "cheqd" and myenv == "local":
         profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
     elif profile == "cheqd":
-        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa" # aws
+        profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd111" # aws
         
     return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
