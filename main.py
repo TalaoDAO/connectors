@@ -11,7 +11,7 @@ import env
 import json
 from db_model import Wallet
 import key_manager
-import linked_vp
+import linked_vp, mcp_server
 from utils import oidc4vc
 import copy
 
@@ -20,17 +20,11 @@ import copy
 from utils import message
 from database import db
 from db_model import load_user, seed_user, seed_wallet
-
 from kms_model import seed_key
 
 # Routes / APIs (kept as they are, just registered here)
 from routes import home, register, wallet, authorization_server,agent_chat
-
-
 from routes import verifier  
-from routes.status_list import statuslist
-from apis import mcp_server
-
 
 # ---- default constants (overridable via env) ----
 DEFAULT_API_LIFE = 5000
@@ -139,16 +133,15 @@ def create_oasf_vp(agent_identifier, manager, mode):
     else:
         draft = 15
 
-    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager,draft=draft, duration=360 * 24 * 60 * 60,)
+    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360 * 24 * 60 * 60,)
 
-    success, message = linked_vp.store_and_publish( cred, agent_identifier, manager, mode, published=True,
-        type="OASF")
+    success, message = linked_vp.store_and_publish( cred, agent_identifier, manager, mode, published=True, type="OASF")
     if success:
         return True
 
     logging.warning("Failed to publish OASF record as Linked VP %s", message)
     return False
- 
+
     
 def create_app() -> Flask:
     """Application factory: configure, wire dependencies, register routes/APIs."""
@@ -221,12 +214,10 @@ def create_app() -> Flask:
     app.config["GRANT_LIFE"] = int(os.getenv("GRANT_LIFE", DEFAULT_GRANT_LIFE))
     app.config["ACCEPTANCE_TOKEN_LIFE"] = int(os.getenv("ACCEPTANCE_TOKEN_LIFE", DEFAULT_ACCEPTANCE_TOKEN_LIFE))
     
-   
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
         os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
     
- 
     # initialize KMS
     manager = key_manager.kms_init(myenv)
     app.config["MANAGER"] = manager
@@ -239,11 +230,7 @@ def create_app() -> Flask:
     # ---- DB bootstrap / seed (idempotent) ----
     agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
     "did:web:wallet4agent.com:arf" ]
-    if myenv == "local":
-        agent_list.append("did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1ac")
-    else:
-        agent_list.append("did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd1aa")
-        
+
     with app.app_context():
         db.create_all()
         # NOTE: seeding in production can be dangerous; guard by env flag
@@ -268,13 +255,10 @@ def create_app() -> Flask:
     
     home.init_app(app)
     register.init_app(app, db)
-
-    statuslist.init_app(app)
     
     wallet.init_app(app)
     authorization_server.init_app(app)
     agent_chat.init_app(app)
-    
     
     # ---- Error handlers ----
     @app.errorhandler(403)
