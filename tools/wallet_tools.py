@@ -46,7 +46,7 @@ tools_guest = [
                 }, 
                 "publish_unpublish": {
                     "type": "boolean",
-                    "description": "Authorized Agent to publish or unpublish attestations",
+                    "description": "Authorize Agent to publish or unpublish attestations",
                     "default": False
                 },
                 "sign": {
@@ -169,6 +169,21 @@ tools_admin = [
                 "always_human_in_the_loop": {
                     "type": "boolean",
                     "description": "Always human in the loop",
+                    "default": True
+                },
+                "sign": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to sign",
+                    "default": True
+                },
+                "publish_unpublish": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to publish or unpublish attestations",
+                    "default": True
+                },
+                "receive_credentials": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to receive credentials",
                     "default": True
                 },
                 "ecosystem": {
@@ -706,6 +721,24 @@ def call_update_configuration(
         eco = arguments["ecosystem"]
         this_wallet.ecosystem_profile = eco
         updated["ecosystem_profile"] = eco
+    
+    # publish or unpublish
+    print(arguments)
+    if "publish_unpublish" in arguments and arguments.get("publish_unpublish"):
+        pub = arguments["publish_unpublish"]
+        this_wallet.publish_unpublish = pub
+        updated["publish_unpublish"] = pub
+    print("pub = ", this_wallet.publish_unpublish)
+        
+    if "sign" in arguments and arguments.get("sign"):
+        sign = arguments["sign"]
+        this_wallet.sign = sign
+        updated["sign"] = sign
+        
+    if "receive_credentials" in arguments and arguments.get("receive_credentials"):
+        rc = arguments["receive_credentials"]
+        this_wallet.receive_credentials = rc
+        updated["receive_credentials"] = rc
 
     # 3. agent framework
     if "agent_framework" in arguments and arguments.get("agent_framework"):
@@ -795,6 +828,9 @@ def call_update_configuration(
         "agent_identifier": this_wallet.did,
         "wallet_url": this_wallet.url,
         "ecosystem_profile": this_wallet.ecosystem_profile,
+        "publish_unpublish": this_wallet.publish_unpublish,
+        "sign": this_wallet.sign,
+        "receive_credentials": this_wallet.receive_credentials,
         "agent_framework": this_wallet.agent_framework,
         "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
         "client_public_key": client_pk,

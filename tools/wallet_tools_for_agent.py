@@ -1468,6 +1468,6 @@ def call_unpublish_attestation(arguments: Dict[str, Any], agent_identifier: str,
     }
     text = (
         f"Attestation #{att.id} has been unpublished and is no longer exposed "
-        f"as a Linked Verifiable Presentation in the DID Document."
+        f"as a Linked Verifiable Presentation in the DID Document. Nobody can access to this attestation anymore."
     )
     return _ok_content([{"type": "text", "text": text}], structured=structured)
