@@ -9,22 +9,15 @@ import redis
 import markdown
 import env
 import json
-from db_model import Wallet
-import key_manager
-import linked_vp, mcp_server
-from utils import oidc4vc
 import copy
 
-
-# Your modules
-from utils import message
+import key_manager
+import linked_vp
+from utils import oidc4vc, message
 from database import db
-from db_model import load_user, seed_user, seed_wallet
+from db_model import load_user, seed_user, seed_wallet, Wallet
 from kms_model import seed_key
-
-# Routes / APIs (kept as they are, just registered here)
-from routes import home, register, wallet, authorization_server,agent_chat
-from routes import verifier  
+from routes import home, register, wallet, authorization_server, agent_chat, verifier, mcp_server
 
 # ---- default constants (overridable via env) ----
 DEFAULT_API_LIFE = 5000

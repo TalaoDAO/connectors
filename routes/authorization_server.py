@@ -2,14 +2,11 @@ from flask import Flask, request, jsonify, current_app, redirect
 import base64
 import datetime
 import uuid
-import os
-import hashlib
 import logging
 import json
 import time
-from utils import oidc4vc
 
-from db_model import Wallet, Attestation, db
+from db_model import Wallet
 from utils import oidc4vc
 
 from jwcrypto import jwk, jws  # <-- use jwcrypto, not pyjwt

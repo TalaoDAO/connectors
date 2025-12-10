@@ -10,8 +10,6 @@ from db_model import Wallet, Attestation, db
 from utils import oidc4vc
 import secrets
 import json
-import base64
-import hashlib
 from linked_vp import publish_linked_vp
 
 logging.basicConfig(level=logging.INFO)

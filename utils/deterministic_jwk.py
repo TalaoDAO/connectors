@@ -3,7 +3,6 @@ import base64
 import json
 import hmac
 import hashlib
-from typing import Optional, Dict, Any
 
 from jwcrypto import jwk
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
