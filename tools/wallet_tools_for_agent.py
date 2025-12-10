@@ -1389,12 +1389,11 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
         "attestation_id": att.id,
         "wallet_did": att.wallet_did,
         "service_id": service_id,
-        "published": True,
-        "linked_vp": result,
+        "published": True
     }
     text = (
         f"Attestation #{att.id} has been published as a Linked Verifiable "
-        f"Presentation with service id {service_id}."
+        f"Presentation with service id {service_id}. Anyone can now access and read this attestation"
     )
     return _ok_content([{"type": "text", "text": text}], structured=structured)
 

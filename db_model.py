@@ -6,7 +6,6 @@ import logging
 from database import db
 
 
-
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150))
@@ -14,17 +13,12 @@ class User(UserMixin, db.Model):
     given_name = db.Column(db.String(256))
     family_name = db.Column(db.String(256))
     login = db.Column(db.String(256),  unique=True)
-    name = db.Column(db.String(256),  unique=True)
     subscription = db.Column(db.String(256)) # free/....
     created_at = db.Column(db.DateTime, default=datetime.now)
     last_login = db.Column(db.DateTime)
     usage_quota = db.Column(db.Integer, default=1000)
     organization = db.Column(db.String(256))
-    billing_id = db.Column(db.String(128))
-    country = db.Column(db.String(64))
-    role = db.Column(db.String(64), default="user")
-    profile_picture = db.Column(db.String(256), default ="default_picture.jpeg")  # stores filename or URL
-   
+    role = db.Column(db.String(64), default="admin")
 
 
 # Flask-Login user loader
@@ -46,7 +40,7 @@ class Wallet(db.Model):
     url = db.Column(db.Text, unique=True)
     linked_vp = db.Column(db.Text, default="{}")
     did = db.Column(db.Text, unique=True)
-    did_document = db.Column(db.Text)
+    did_document = db.Column(db.Text, default="{}")
     status = db.Column(db.String(256), default="pending")
     sign = db.Column(db.Boolean, default=True)
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
@@ -185,16 +179,12 @@ def seed_user():
             email="thierry.thevenet@talao.io",
             created_at=datetime.now(timezone.utc),
             registration="initialisation",
-            name="Thierry Thevenet",
             role="admin",
             organization="Web3 Digital Wallet",
-            country="FR",
             subscription="paid",
-            profile_picture="default_picture.jpeg",
         )
         db.session.add(default_user)        
         db.session.commit()
-
 
 
 

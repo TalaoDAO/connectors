@@ -615,10 +615,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             admin = User.query.filter_by(email=user_login).first()
             email = ""
             login = user_login
-        #elif admins_identity_provider == "wallet":
-        #    login = user_login
-        #    admin = User.query.filter_by(login=user_login).first()
-        #    email = ""
         else:
             return _ok_content(
                 [{"type": "text", "text": "Identity provider not supported"}],
@@ -631,7 +627,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
                 login=login,
                 registration="wallet_creation",
                 subscription="free",
-                profile_picture="default_picture.jpeg",
             )
         db.session.add(admin)
 
