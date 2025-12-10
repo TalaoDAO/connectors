@@ -5,14 +5,12 @@ import json
 from datetime import datetime, timezone
 import logging
 import hashlib
-from utils import x509_attestation
 import copy
 import base64
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519, padding
 from cryptography.x509.oid import ExtensionOID
-from utils import signer
 import secrets
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import os
@@ -25,8 +23,6 @@ DIDS method https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/E
 supported signature: https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/E-signing+and+e-sealing+Verifiable+Credentials+and+Verifiable+Presentations
 
 """
-
-KEY = json.load(open("keys.json", "r"))["credentials"][0]
 
 
 
@@ -87,14 +83,11 @@ def alg(key):
         raise Exception("Key type not supported")
 
 
-
-KEY_FILE = "keys.json"
-
 def load_local_key():
     """
     Loads a base64-encoded AES key from keys.json.
     """
-    with open(KEY_FILE, "r") as f:
+    with open("keys.json", "r") as f:
         data = json.load(f)
     key_b64 = data.get("encryption_key")
     if not key_b64:
@@ -205,11 +198,6 @@ def pub_key(key):
     key = json.loads(key) if isinstance(key, str) else key
     Key = jwk.JWK(**key) 
     return Key.export_public(as_dict=True)
-
-"""
-def salt():
-    return base64.urlsafe_b64encode(randbytes(16)).decode().replace("=", "")
-"""
 
 def salt():
     return base64.urlsafe_b64encode(secrets.token_bytes(16)).decode().replace("=", "")
@@ -322,66 +310,8 @@ def sign_sdjwt_by_agent(unsecured, agent_identifier, manager, draft=13, duration
     else:
         header['typ'] = "vc+sd-jwt"
     # sign with signer
+    
     sd_token = manager.sign_jwt_with_key(key_id, header, payload)
-    sd_token += _disclosure + "~"
-    return sd_token
-   
-
-def sign_sd_jwt(unsecured, credential_row, account, iss, wallet_jwk, wallet_did, draft, wallet_identifier="jwk", duration=365*24*60*60, x5c=False):
-    """
-    wallet_identifier : jwk | did
-    subject_key = wallet pub key
-    
-    """
-    header = {'alg': alg(credential_row.public_key)}
-    
-    if credential_row.credential_type == "sandbox" and x5c:
-        iss = "talao.co"   
-        
-    public_key = credential_row.public_key or {}  
-    public_key = json.loads(public_key) if isinstance(public_key, str) else public_key
-    
-    wallet_jwk = json.loads(wallet_jwk) if isinstance(wallet_jwk, str) else wallet_jwk
-    # clean wallet jwk
-    wallet_jwk.pop('use', None)
-    wallet_jwk.pop('alg', None)
-    payload = {
-        'iss': iss,
-        'iat': int(datetime.timestamp(datetime.now())),
-        'exp': int(datetime.timestamp(datetime.now())) + duration,
-        "_sd_alg": "sha-256",
-    }
-    if wallet_identifier == "jwk":
-        payload['cnf'] = {"jwk": wallet_jwk}
-    else:
-        payload['cnf'] = {"kid": wallet_did}
-    
-    # Calculate selective disclosure 
-    _payload, _disclosure = sd(unsecured)
-    
-    # update payload with selective disclosure
-    payload.update(_payload)
-    if not payload.get("_sd"):
-        logging.info("no _sd present")
-        payload.pop("_sd_alg", None)
-    logging.info("sd-jwt payload = %s", json.dumps(payload, indent=4))
-        
-    # build header
-    if int(draft) >= 15:
-        header['typ'] = "dc+sd-jwt"
-    else:
-        header['typ'] = "vc+sd-jwt"
-    if x5c:
-        logging.info("x509 certificates are added")
-        header['x5c'] = x509_attestation.build_x509_san_dns()
-    else:
-        header['kid'] = public_key.get("kid") or thumbprint(public_key)
-    
-    if unsecured.get('status'): 
-        payload['status'] = unsecured['status']
-        
-    # sign with signer
-    sd_token = signer.sign_jwt(account, credential_row, header, payload)
     sd_token += _disclosure + "~"
     return sd_token
 
@@ -593,29 +523,6 @@ def verification_method(did, key):  # = kid
     signer_key = jwk.JWK(**key)
     thumb_print = signer_key.thumbprint()
     return did + '#' + thumb_print
-
-
-
-def did_resolve_lp(did):
-    """
-    for legal person  did:ebsi and did:web
-    API v3   Get DID document with EBSI API
-    https://api-pilot.ebsi.eu/docs/apis/did-registry/latest#/operations/get-did-registry-v3-identifier
-    """
-    url = 'https://unires:test@unires.talao.co/1.0/identifiers/' + did
-    try:
-        r = requests.get(url, timeout=10)
-        logging.info('Access to Talao Universal Resolver')
-    except Exception:
-        logging.error('cannot access to Talao Universal Resolver API')
-        url = 'https://dev.uniresolver.io/1.0/identifiers/' + did
-        try:
-            r = requests.get(url, timeout=5)
-            logging.info('Access to Public Universal Resolver')
-        except Exception:
-            logging.warning('fails to access to both universal resolver')
-            return "{'error': 'cannot access to Universal Resolver'}"
-    return r.json().get('didDocument')
 
 
 def load_cert_from_b64(b64_der):

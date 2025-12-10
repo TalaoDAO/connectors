@@ -1,8 +1,7 @@
 import os
 import logging
 from datetime import timedelta
-from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify, render_template
-#from flask_mobility import Mobility
+from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify
 from flask_session import Session
 from flask_qrcode import QRcode
 from flask_login import LoginManager
@@ -20,26 +19,17 @@ import copy
 # Your modules
 from utils import message
 from database import db
-from db_model import (
-    load_user, 
-    seed_credential, seed_signin_for_wallet_registration,
-    seed_user, seed_wallet
-)
+from db_model import load_user, seed_user, seed_wallet
+
 from kms_model import seed_key
 
 # Routes / APIs (kept as they are, just registered here)
-from routes import (
-    home, register, menu, user_profile,
-    wallet, authorization_server,agent_chat
-)
+from routes import home, register, wallet, authorization_server,agent_chat
 
 
 from routes import verifier  
-from routes.issuer import oidc4vci, select_issuer, crud_issuer
-from routes.signin import bridge, select_signin, crud_signin
-from routes.credential import crud_credential, select_credential
 from routes.status_list import statuslist
-from apis import issuer_api,  signin_api,  mcp_server
+from apis import mcp_server
 
 
 # ---- default constants (overridable via env) ----
@@ -92,7 +82,6 @@ def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
                 continue
 
             # In the new OASF.json, tools use "role" (guest/agent/dev).
-            # Some tools (publish/unpublish) have no explicit role, so we default to "agent".
             role = tool.get("role") or tool.get("audience") or "agent"
 
             # Guests & dev tools are always present
@@ -246,7 +235,6 @@ def create_app() -> Flask:
     db.init_app(app)
     Session(app)
     QRcode(app)
-    #Mobility(app)
 
     # ---- DB bootstrap / seed (idempotent) ----
     agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
@@ -262,9 +250,7 @@ def create_app() -> Flask:
         if os.getenv("SEED_DATA", "1") == "1":
             logging.info("Run seed DB")
             seed_user()
-            seed_credential()
-            seed_signin_for_wallet_registration(mode)
-            seed_wallet(mode, manager, myenv)
+            seed_wallet(mode, manager)
             seed_key()
             for agent in agent_list:
                 create_oasf_vp(agent, manager, mode)
@@ -276,29 +262,12 @@ def create_app() -> Flask:
     login_manager.user_loader(load_user)
 
     # ---- Register routes / APIs ----
-    # Prefer using app.config within routes instead of passing red/mode as defaults
-    crud_credential.init_app(app)             # reads current_app.config as needed
-    select_credential.init_app(app)
-    
-    select_issuer.init_app(app)
-    crud_issuer.init_app(app)
-    
-    select_signin.init_app(app)
-    crud_signin.init_app(app)
-
-    user_profile.init_app(app)
-
     verifier.init_app(app)    # your verifier API
-    oidc4vci.init_app(app)    # your verifier API
-    bridge.init_app(app)
     
-    issuer_api.init_app(app)     # your issuer API (Swagger/RESTX)
     mcp_server.init_app(app)
-    signin_api.init_app(app)
     
     home.init_app(app)
     register.init_app(app, db)
-    menu.init_app(app)
 
     statuslist.init_app(app)
     

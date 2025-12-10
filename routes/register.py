@@ -3,9 +3,8 @@ from oauthlib.oauth2 import WebApplicationClient
 import requests
 import json
 from flask_login import login_user, logout_user
-from db_model import User, db, Signin, Wallet
+from db_model import User, Wallet
 import logging
-from kms_model import decrypt_json
 import urllib
 import sys
 
@@ -44,8 +43,8 @@ def init_app(app, db):
     app.add_url_rule('/register/auth/github',  view_func=login_with_github, methods=['GET', 'POST'])
     app.add_url_rule('/register/auth/github/callback',  view_func=register_github_callback, methods=['GET', 'POST'], defaults={'db': db})
     
-    app.add_url_rule('/register/auth/wallet',  view_func=login_with_wallet, methods=['GET', 'POST'])
-    app.add_url_rule('/register/auth/wallet/callback',  view_func=register_wallet_callback, methods=['GET', 'POST'], defaults={'db': db})
+    #app.add_url_rule('/register/auth/wallet',  view_func=login_with_wallet, methods=['GET', 'POST'])
+    #app.add_url_rule('/register/auth/wallet/callback',  view_func=register_wallet_callback, methods=['GET', 'POST'], defaults={'db': db})
     
     app.add_url_rule('/register/admin',  view_func=register_admin, methods=['GET', 'POST'])
     return
@@ -183,7 +182,7 @@ def register_github_callback(db):
     logging.warning("user is not found in DB")
     return redirect("/")
     
-
+"""
 def login_with_wallet():
     state = request.args.get("session_id")
     mode = current_app.config["MODE"]
@@ -269,7 +268,7 @@ def register_wallet_callback(db):
             return redirect("/")
     logging.warning("user is not found")
     return redirect("/")
-
+"""
 
 def register_admin():
     session_id = request.args.get("session_id", "")

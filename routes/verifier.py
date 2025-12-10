@@ -5,9 +5,9 @@ import json, base64
 import uuid
 from datetime import datetime, timedelta
 from jwcrypto import jwk, jwt
-from utils import oidc4vc, signer
+from utils import oidc4vc
 import didkit
-from db_model import Credential, Wallet
+from db_model import Wallet
 from urllib.parse import  urlencode
 import logging
 
@@ -43,25 +43,30 @@ def _json_compact(obj) -> bytes:
     return json.dumps(obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
 def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> str:
-    credential = Credential.query.filter(Credential.credential_id == credential_id).first()
+    #credential = Credential.query.filter(Credential.credential_id == credential_id).first()
+    with open("keys.json", "r") as f:
+        credential = json.loads(f.read())["credentials"][0]
+    
+    private_key = credential.get("key")
+    
     if not credential:
         return None
 
     header = {"typ": "oauth-authz-req+jwt"}  # RFC 9101 / OpenID specs
     if client_id_scheme == "x509_san_dns":
-        header["x5c"] = json.loads(credential.x5c)
-        public_key = json.loads(credential.public_key)
+        header["x5c"] = credential.get("x5c")
+        public_key = credential.get("public_key")
         header["alg"] = oidc4vc.alg(public_key)
     elif client_id_scheme == "verifier_attestation":
-        header["jwt"] = credential.verifier_attestation
-        public_key = json.loads(credential.public_key)
+        header["jwt"] = credential.get("verifier_attestation")
+        public_key = credential.get("public_key")
         header["alg"] = oidc4vc.alg(public_key)
     elif client_id_scheme == "redirect_uri":
         header["alg"] = "none"
     else:  # DID by default
-        public_key = json.loads(credential.public_key)
+        public_key = credential.get("public_key")
         header["alg"] = oidc4vc.alg(public_key)
-        header["kid"] = credential.verification_method
+        header["kid"] = credential.get("verification_method")
 
     payload = {
         "aud": "https://self-issued.me/v2",
@@ -76,7 +81,10 @@ def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> 
         return f"{h}.{p}."
     else:
         # Your existing signer for JWS
-        return signer.sign_jwt(account, credential, header, payload)
+        priv = jwk.JWK(**private_key)
+        tok = jwt.JWT(header=header, claims=payload)
+        tok.make_signed_token(priv)
+        return tok.serialize()
 
 # build the authorization request for user                                   
 def user_verification(agent_identifier, mcp_scope, red, mode, manager):

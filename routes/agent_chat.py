@@ -37,7 +37,7 @@ MCP_SERVER_URL = "https://wallet4agent.com/mcp"
 # --------- PROFILES / DIDs / PATs ---------
 
 # Allowed profiles
-ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc", "cheqd"}
+ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc"}
 
 # Map profile -> DID
 AGENT_DIDS: Dict[str, str] = {
@@ -50,8 +50,6 @@ AGENT_DIDS: Dict[str, str] = {
 def ecosystem(wallet_profile):
     if wallet_profile in ["demo", "demo2"]:
         return "DIIP V3"
-    elif wallet_profile == "cheqd":
-        return "CHEQD"
     elif wallet_profile == "diipv4":
         return "DIIP V4"
     else:
