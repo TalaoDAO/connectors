@@ -54,6 +54,7 @@ def init_app(app):
     app.add_url_rule('/agent', view_func=agent_page, methods=['POST', 'GET'])
     app.add_url_rule('/agent/<profile>', view_func=agent_page_profile, methods=['POST', 'GET'])
     app.add_url_rule('/agent/register', view_func=register_agent_endpoint, methods=['POST'])
+    
     with app.app_context():
         
         for profile, did in AGENT_DIDS.items():
@@ -192,21 +193,77 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
     )
     
     cheqd_context = (
-        "ECOSYSTEM DESCRIPTION: \n" 
-        "- cheqd is a decentralized identity network built on Cosmos SDK and Tendermint."
-        "- It provides infrastructure for self-sovereign identity (SSI) and verifiable credentials."
-        "- cheqd enables creation, update, and resolution of DIDs, especially did:cheqd.\n"
-        "- The network includes mainnet and testnet, with high throughput and low fees.\n"
-        "- It supports trust frameworks, governance, and interoperable credential schemas."
-        "- cheqd integrates with the Universal Resolver and Universal Registrar ecosystems.\n"
-        "- A key innovation is payment rails, enabling usage-based payments for identity data.\n"
-        "- Developers can interact with cheqd using REST, RPC, CLI, and DID registrar drivers.\n"
-        "- The network prioritizes privacy-preserving identity, zero-knowledge credentials, and user control."
-        "- cheqd provides documentation, SDKs, and tooling for building decentralized identity apps. \n\n")
-    
+        "CHEQD DID DESCRIPTION:\n"
+        "- As an AI Agent you use a did:cheqd Decentralized Identifier.\n"
+        "- did:cheqd is anchored on the cheqd network, a decentralized identity blockchain built on Cosmos SDK and Tendermint.\n"
+        "- It provides a tamper-resistant and censorship-resistant identity layer with high throughput and low fees.\n"
+        "- did:cheqd identifiers are long-lived, globally resolvable, and designed for trustable interactions with real-world entities.\n"
+        "\n"
+        "KEY CAPABILITIES:\n"
+        "- You can create, update, deactivate, and resolve DIDs via the Universal Registrar and Universal Resolver.\n"
+        "- did:cheqd supports secure key management, verification methods, and service endpoints.\n"
+        "- It enables issuing and verifying privacy-preserving Verifiable Credentials, including zero-knowledge proofs.\n"
+        "- The network supports payment rails for usage-based identity transactions (e.g., credential issuance fees).\n"
+        "\n"
+        "USE CASES:\n"
+        "- Strong identity for autonomous agents interacting across ecosystems.\n"
+        "- Trusted communication where cryptographic guarantees are required.\n"
+        "- Secure presentation and verification of credentials.\n"
+        "- Interoperability with W3C DID standards and SSI open-source tooling.\n"
+        "\n"
+        "TECHNICAL NOTES:\n"
+        "- did:cheqd supports mainnet and testnet environments.\n"
+        "- Interaction is possible through REST, RPC, CLI, SDKs, and DID registrar drivers.\n"
+        "- The DID Document may contain keys, authentication methods, assertion methods, and service endpoints.\n"
+        "- Updates occur through signed on-chain or registrar operations.\n"
+        "\n"
+        "SUMMARY:\n"
+        "- did:cheqd gives you a durable, cryptographically verifiable identity optimized for decentralized trust, "
+        "credential ecosystems, and machine-to-machine interoperability.\n\n"
+    )
+
+    did_web_context = (
+        "WEB DID DESCRIPTION:\n"
+        "- As an AI Agent you use a did:web Decentralized Identifier.\n"
+        "- did:web derives its trust model from the existing DNS + HTTPS security infrastructure.\n"
+        "- The DID Document is hosted on a web server at a well-known URL associated with a domain you control.\n"
+        "- Example: did:web:example.com resolves to https://example.com/.well-known/did.json\n"
+        "- Identity ownership is proven through control of the domain and its HTTPS certificates.\n"
+        "\n"
+        "KEY CAPABILITIES:\n"
+        "- did:web allows you to publish keys, verification methods, and service endpoints without blockchain dependencies.\n"
+        "- Updating a DID Document is simple: modify the hosted did.json file and redeploy it.\n"
+        "- Works seamlessly with Verifiable Credentials, signature suites, and W3C DID Core standards.\n"
+        "- Integrates with the Universal Resolver and many SSI and cryptographic frameworks.\n"
+        "- Enables service discovery (messaging, agent endpoints, credential services, API URLs, etc.).\n"
+        "\n"
+        "TRUST MODEL:\n"
+        "- did:web relies on the security of TLS certificates and DNS domain ownership.\n"
+        "- Trust anchoring is centralized but globally interoperable and widely adopted.\n"
+        "- It is ideal when identity needs to be tied to an organization, domain, or hosted service.\n"
+        "\n"
+        "USE CASES:\n"
+        "- Web-based agents and services needing publicly discoverable identities.\n"
+        "- Organizations wanting a DID anchored to their existing domain name.\n"
+        "- Easy onboarding into decentralized identity ecosystems without blockchain requirements.\n"
+        "- Rapid development, demos, proofs-of-concept, and interoperability pilots.\n"
+        "\n"
+        "TECHNICAL NOTES:\n"
+        "- DID Documents are hosted as JSON-LD at known URL paths defined by the DID Web Method spec.\n"
+        "- Supported formats include HTTPS-based domains and subdomains, and encoded paths for nested structures.\n"
+        "- Verification keys, authentication methods, assertion methods, and service endpoints are supported.\n"
+        "- Resolution uses standard HTTPS GET operations and does not require node infrastructure.\n"
+        "\n"
+        "SUMMARY:\n"
+        "- did:web provides you with a stable, domain-anchored, easily updateable identity suited for service agents, "
+        "web integrations, organizational identities, and fast deployments where DNS-based trust is acceptable.\n\n"
+    )
+
     if agent_did.startswith("did:cheqd"):
         content += cheqd_context
-    
+    else:
+        content += did_web_context
+
     return {"role": "system", "content": content}
 
 
