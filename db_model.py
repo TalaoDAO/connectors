@@ -39,6 +39,8 @@ class Wallet(db.Model):
     agent_framework = db.Column(db.String(64), default="None")
     url = db.Column(db.Text, unique=True)
     linked_vp = db.Column(db.Text, default="{}")
+    chat_profile = db.Column(db.String(80), nullable=True)
+    is_chat_agent = db.Column(db.Boolean, default=False)
     did = db.Column(db.Text, unique=True)
     did_document = db.Column(db.Text, default="{}")
     status = db.Column(db.String(256), default="pending")

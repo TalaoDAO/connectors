@@ -60,12 +60,20 @@ def init_app(app):
         ).all()
 
         for w in wallets:
-            # Profil = dernière partie du DID (did:web:wallet4agent.com:<profile>)
             profile = w.did.split(":")[-1]
             if profile not in AGENT_DIDS:
                 wallet_profile = getattr(w, "ecosystem_profile", None) or ecosystem(profile)
                 register_agent_profile(profile, w.did, wallet_profile)
                 logging.info(f"Registered chat agent profile '{profile}' for DID {w.did}")
+        
+        extra_agents = Wallet.query.filter(Wallet.is_chat_agent == True).all()        
+        for w in extra_agents:
+            profile = w.chat_profile or w.did.split(":")[-1]
+            profile = profile.lower()
+            if profile not in AGENT_DIDS:
+                wallet_profile = getattr(w, "ecosystem_profile", None) or ecosystem(profile)
+                register_agent_profile(profile, w.did, wallet_profile)
+                logging.info(f"Re-registered chat agent profile '{profile}' for DID {w.did} from DB")
 
 
 def ecosystem(wallet_profile):

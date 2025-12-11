@@ -1063,16 +1063,19 @@ def call_register_wallet_as_chat_agent(arguments, agent_identifier, config) -> D
             [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
             is_error=True,
         )
-    mode = config["MODE"]
     profile = arguments.get("my-chat")
     if not profile:
         # ex : did:web:wallet4agent.com:myagent  -> "myagent"
         #      did:cheqd:testnet:xxx-yyy-zzz    -> dernière partie
         profile = agent_identifier.split(":")[-1]
     profile = profile.lower()
+    
+    this_wallet.chat_profile = profile
+    this_wallet.is_chat_agent = True
+    db.session.commit()
 
+    mode = config["MODE"]
     wallet_profile = this_wallet.ecosystem_profile
-
     agent_chat.register_agent_profile(profile, agent_identifier, wallet_profile)
 
     text = (
