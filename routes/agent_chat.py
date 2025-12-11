@@ -55,10 +55,14 @@ def init_app(app):
     app.add_url_rule('/agent/<profile>', view_func=agent_page_profile, methods=['POST', 'GET'])
     app.add_url_rule('/agent/register', view_func=register_agent_endpoint, methods=['POST'])
     with app.app_context():
-        wallets = Wallet.query.filter(
-            Wallet.did.like("did:web:wallet4agent.com:%")
-        ).all()
-
+        
+        for profile, did in AGENT_DIDS.items():
+            if profile not in conversation_histories:
+                wallet_profile = ecosystem(profile)
+                register_agent_profile(profile, did, wallet_profile)
+                logging.info(f"Initialized built-in chat agent profile '{profile}' with DID {did}")
+        
+        wallets = Wallet.query.filter(Wallet.did.like("did:web:wallet4agent.com:%")).all()
         for w in wallets:
             profile = w.did.split(":")[-1]
             if profile not in AGENT_DIDS:
