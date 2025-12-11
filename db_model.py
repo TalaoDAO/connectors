@@ -64,7 +64,7 @@ class Attestation(db.Model):
     published = db.Column(db.Boolean, default=False)
 
 
-def seed_wallet(mode, manager):
+def seed_wallet(mode, manager, myenv):
     if not Wallet.query.first():
         vm = "did:web:wallet4agent.com:demo#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)

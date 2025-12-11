@@ -308,7 +308,7 @@ def init_app(app):
                 ),
                 "mimeType": "text/markdown",
             })
-        elif role == "agent":
+        if role == "agent":
             # 1) This agent's wallet overview
             resources.append({
                 "uri": "wallet4agent/this_agent",
@@ -513,13 +513,13 @@ def init_app(app):
                 return result
 
 
-            # 1) This agent's wallet
+            # 1) This agent's data
             if uri == "wallet4agent/this_agent":
                 if not agent_identifier:
                     return jsonify(
                         _error(-32001, "Missing agent identifier for this_wallet") | {"id": req_id}
                     )
-                tool_out = wallet_tools_for_agent.call_get_this_wallet_data(agent_identifier)
+                tool_out = wallet_tools_for_agent.call_get_this_agent_data(agent_identifier)
                 return jsonify({
                     "jsonrpc": "2.0",
                     "result": _resource_result_from_tool_output(tool_out, uri),
@@ -626,6 +626,12 @@ def init_app(app):
                     return jsonify({"jsonrpc":"2.0","id":req_id,
                                         "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
                 out = verifier_tools.call_start_user_verification(arguments, agent_identifier, config())
+            
+            elif name == "register_wallet_as_chat_agent":
+                if role != "admin":
+                    return {"jsonrpc": "2.0", "id": req_id,
+                            "error": {"code": -32001, "message": "Unauthorized: unauthorized token "}}
+                out = wallet_tools.call_register_wallet_as_chat_agent(arguments, agent_identifier, config())
             
             elif name == "start_agent_authentication":
                 if role != "agent":

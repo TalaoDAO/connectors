@@ -8,13 +8,13 @@ import hashlib
 from universal_registrar import UniversalRegistrarClient
 import linked_vp
 import copy
-
+from routes import agent_chat
 
 # do not provide this tool to an LLM
 tools_guest = [
     {
         "name": "create_agent_identifier_and_wallet",
-        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent digital credentials as verifiable credentials.",
+        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent attestations as verifiable credentials.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -24,7 +24,7 @@ tools_guest = [
                 },
                 "did_method": {
                     "type": "string",
-                    "description": "Optionl DID Method, did:web by default",
+                    "description": "Optional DID Method, did:web by default",
                     "enum": ["did:web", "did:cheqd"],
                     "default": "did:web"
                 },
@@ -41,7 +41,7 @@ tools_guest = [
                 },
                 "receive_credentials": {
                     "type": "boolean",
-                    "description": "Authorize Agent to receive credentials",
+                    "description": "Authorize Agent to receive attestations as verifiable credentials",
                     "default": True
                 }, 
                 "publish_unpublish": {
@@ -56,7 +56,7 @@ tools_guest = [
                 },
                 "mcp_client_authentication": {
                     "type": "string",
-                    "description": "Authentication between MCP client and MCP server for agent. Dev and admin use PAT",
+                    "description": "Authentication between MCP client and MCP server for agent. Admins use PAT",
                     "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
                     "default": "Personal Access Token (PAT)"
                 },
@@ -68,7 +68,7 @@ tools_guest = [
                 },
                 "admins_login": {
                     "type": "string",
-                    "description": "One or more user login separated by a comma (Google email, Github login or personal email). This login will be needed to accept new attestations offer."
+                    "description": "One or more admin login separated by a comma (Google email, Github login ). This login will be needed to accept new attestations offer."
                 },
                 "notification_email": {
                     "type": "string",
@@ -121,6 +121,26 @@ tools_admin = [
         "inputSchema": {
             "type": "object",
             "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "register_wallet_as_chat_agent",
+        "description": (
+            "Attach this wallet and DID to a Chat AI agent for demo or testing. "
+            "You will be able to access to the Chat through the URL https://wallet4agent.com/agent/<my-chat>."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "my-chat": {
+                    "type": "string",
+                    "description": (
+                        "Short profile name for the chat agent."
+                        " If omitted, a name will be derived from the DID."
+                    )
+                }
+            },
             "required": []
         }
     },
@@ -392,7 +412,7 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
     }
     attestations = Attestation.query.filter(Attestation.wallet_did == agent_identifier).all()
     structured["nb_attestations"] = len(attestations)
-    structured["nb attestations_published"] = len(json.loads(this_wallet.linked_vp))
+    structured["nb_attestations_published"] = len(json.loads(this_wallet.linked_vp))
     if structured.get("created_at"):
         structured["created_at"] = structured.get("created_at").isoformat()
     if structured.get("did_document"):
@@ -1034,3 +1054,32 @@ def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
         [{"type": "text", "text": text}],
         structured=structured,
     )
+
+
+def call_register_wallet_as_chat_agent(arguments, agent_identifier, config) -> Dict[str, Any]:
+    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    if not this_wallet:
+        return _ok_content(
+            [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
+            is_error=True,
+        )
+    mode = config["MODE"]
+    profile = arguments.get("my-chat")
+    if not profile:
+        # ex : did:web:wallet4agent.com:myagent  -> "myagent"
+        #      did:cheqd:testnet:xxx-yyy-zzz    -> dernière partie
+        profile = agent_identifier.split(":")[-1]
+    profile = profile.lower()
+
+    wallet_profile = this_wallet.ecosystem_profile
+
+    agent_chat.register_agent_profile(profile, agent_identifier, wallet_profile)
+
+    text = (
+        f"Chat agent profile '{profile}' registered for DID {agent_identifier} ."
+    )
+    structured = {
+        "chat_url": mode.server + "agent/" + profile,
+        "agent_identifier": agent_identifier
+    }
+    return _ok_content([{"type": "text", "text": text}], structured=structured)

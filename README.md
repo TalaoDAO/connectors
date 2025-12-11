@@ -1,77 +1,358 @@
-# cheqd-node: Ledger code cheqd network
+# 🏗️ Wallet4Agent — Technical Stack Overview  
+### **For developers building trusted AI Agents able to interact with persons, companies, services, and other agents**  
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/cheqd/cheqd-node?color=green&label=stable%20release&style=flat-square)](https://github.com/cheqd/cheqd-node/releases/latest) ![GitHub Release Date](https://img.shields.io/github/release-date/cheqd/cheqd-node?color=green&style=flat-square) [![GitHub license](https://img.shields.io/github/license/cheqd/cheqd-node?color=blue&style=flat-square)](https://github.com/cheqd/cheqd-node/blob/main/LICENSE)
+Wallet4Agent provides the **trust layer** that AI Agents need to operate safely in the real world.  
+This document explains the technical components, standards, and identity mechanisms behind the platform.
 
-[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/cheqd/cheqd-node?include_prereleases&label=dev%20release&style=flat-square)](https://github.com/cheqd/cheqd-node/releases/) ![GitHub commits since latest release (by date)](https://img.shields.io/github/commits-since/cheqd/cheqd-node/latest?style=flat-square) [![GitHub contributors](https://img.shields.io/github/contributors/cheqd/cheqd-node?label=contributors%20%E2%9D%A4%EF%B8%8F&style=flat-square)](https://github.com/cheqd/cheqd-node/graphs/contributors)
+---
 
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cheqd/cheqd-node/dispatch.yml?label=workflows&style=flat-square)](https://github.com/cheqd/cheqd-node/actions/workflows/dispatch.yml) [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cheqd/cheqd-node/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/cheqd/cheqd-node/actions/workflows/codeql.yml) ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/cheqd/cheqd-node?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/cheqd/cheqd-node?style=flat-square)
+# 1. 🎯 Purpose of Wallet4Agent
 
-## ℹ️ Overview
+AI Agents increasingly take actions, access data, and collaborate.  
+To do this safely, they must be able to:
 
-[**cheqd**](https://www.cheqd.io) is a public self-sovereign identity (SSI) network for building secure 🔐 and private 🤫 self-sovereign identity systems on [Cosmos](https://cosmos.network) 💫. Our core vision is to add viable commercial models to decentralised digital 🆔
+- 🆔 Prove **who they are**
+- 👤 Prove **who owns or controls them**
+- 📄 Hold **verifiable credentials**
+- 🔐 Sign actions and data securely
+- 🔗 Trust **users**, **companies**, and **other agents**
+- 🪪 Authenticate to external systems without fragile API keys
 
-`cheqd-node` is the ledger/node component of the cheqd network tech stack, built using [Cosmos SDK](https://github.com/cosmos/cosmos-sdk) and [CometBFT](https://cometbft.com/).
+Wallet4Agent provides AI Agents with:
 
-## ▶️ Quick start for joining cheqd networks
+- **A DID-based identity**
+- **A secure wallet for credentials**
+- **Cloud KMS-backed signing keys**
+- **Interoperability with OIDC4VCI, OIDC4VP, SD‑JWT, JSON-LD, OAuth2**
+- **An MCP server interface for agents**
 
-Join our [**Discord server**](http://cheqd.link/discord-github) for help, questions, and support if you are looking to join our [mainnet](https://explorer.cheqd.io) or [testnet](https://testnet-explorer.cheqd.io).
+Everything is standards‑based and interoperable.
 
-Either the cheqd team, or one of your fellow node operators will be happy to offer some guidance.
+---
 
-### ✅ Mainnet
+# 2. 🧱 Architecture Overview
 
-Getting started as a node operator on the cheqd network [mainnet](https://explorer.cheqd.io) is as simple as...
+Wallet4Agent is built with three coordinated layers:
 
-1. Install [the latest stable release](https://github.com/cheqd/cheqd-node/releases/latest) of `cheqd-node` software (currently `v3.x.x`) on a hosting platform of your choice by [following the setup guide](https://docs.cheqd.io/node/getting-started/setup-and-configure).
-2. Once you have acquired CHEQ tokens, [promote your node to a validator](https://docs.cheqd.io/node/validator-guides/validator-guide)
+## 2.1 🖥️ MCP Server (Model Context Protocol)
+- Single endpoint:  
+  `POST https://wallet4agent.com/mcp`
+- Exposes all operations as **tools**:
+  - Identity creation
+  - Credential issuance
+  - Verification flows
+  - Signing operations
+  - Configuration
 
-If successfully configured, your node would become the latest validator on the cheqd mainnet. Welcome to the new digital ID revolution!
+## 2.2 👛 Identity Wallet
+Manages:
 
-### 🚧 Testnet
+- The Agent’s DID & DID Document  
+- Stored credentials (SD‑JWT VC, VC JSON‑LD)  
+- Linked Verifiable Presentations  
+- Wallet metadata & service endpoints  
 
-Our [testnet](https://testnet-explorer.cheqd.io) is the easiest place for developers and node operators to get started if you're not *quite* ready yet to dive into building apps on our mainnet. To get started...
+## 2.3 🔐 Authorization & Verification Layer
+Supports:
 
-1. Install [the latest stable release](https://github.com/cheqd/cheqd-node/releases/latest) of `cheqd-node` software (currently `v3.x.x`) on a hosting platform of your choice by [following the setup guide](https://docs.cheqd.io/node/getting-started/setup-and-configure).
-2. Acquire testnet CHEQ tokens through [our testnet faucet](https://testnet-faucet.cheqd.io).
-3. Once you have acquired CHEQ tokens, [promote your node to a validator](https://docs.cheqd.io/node/validator-guides/validator-guide)
+- OAuth2 access tokens
+- OIDC4VCI (credential issuance)
+- OIDC4VP (presentation)
+- User verification flows
+- Agent‑to‑Agent authentication
 
-## 🧑‍💻 Using cheqd
+All complex cryptographic and identity logic stays in Wallet4Agent.  
+Your agent simply calls MCP tools.
 
-Once installed, `cheqd-node` can be controlled using the [cheqd Cosmos CLI guide](https://docs.cheqd.io/node/getting-started/cheqd-cli).
+---
 
-### 📌 Currently supported functionality
+# 3. 🆔 Identity Layer (DID & DID Documents)
 
-* Basic token functionality for holding and transferring tokens to other accounts on the same network
-* Creating, managing, and configuring accounts and keys on a cheqd node
-* Staking and participating in public-permissionless governance
-* Governance framework for public-permissionless self-sovereign identity networks
-* Creating [`did:cheqd` method DIDs](https://docs.cheqd.io/identity/architecture/adr-list/adr-001-cheqd-did-method), DID Documents ("DIDDocs")
-* Querying DIDs/DIDDocs using our [Universal Resolver driver](https://docs.cheqd.io/identity/advanced/did-resolver)
-* Creating and managing Verifiable Credentials anchored to DIDs on cheqd mainnet
-* Creating [on-ledger DID-Linked "resources" (e.g., schemas, visual representations of credentials, etc)](https://docs.cheqd.io/identity/guides/did-linked-resources) that can be used in DIDDocs and Verifiable Credentials. This is used to support [AnonCreds on cheqd](https://docs.cheqd.io/identity/guides/anoncreds)
-* Custom [pricing for DID and Resources](https://cheqd.io/developers/) with burn to manage inflation.
-* EIP-1559 style feemarkets pricing for dynamic fees.
+Each AI Agent receives a **Decentralized Identifier (DID)** compliant with the W3C DID Core specification.
 
-## 🛠 Developing & contributing to cheqd
+Wallet4Agent supports **two DID methods**:
 
-`cheqd-node` is written in Go and built using Cosmos SDK. The [Cosmos SDK Developer Guide](https://docs.cosmos.network/main) explains a lot of the [basic concepts](https://docs.cosmos.network/main/basics/app-anatomy) of how the cheqd network functions.
+---
 
-If you want to build a node from source or contribute to the code, please read our guide to [building and testing](https://docs.cheqd.io/node/developing-on-cheqd/build-and-networks).
+## **3.1 🌐 did:web (DNS-based identity)**  
+A DID anchored on a domain.
 
-### Creating a local network
+```
+did:web:wallet4agent.com:<agent-id>
+```
 
-If you are building from source, or otherwise interested in running a local network, we have [instructions on how to set up a new network](https://docs.cheqd.io/node/developing-on-cheqd/build-and-networks) for development purposes.
+⭐ Characteristics:
 
-## 🐞 Bug reports & 🤔 feature requests
+- Easy to resolve using HTTPS  
+- DID Document lives at:  
+  `https://wallet4agent.com/did/<agent-id>`  
+- Perfect for SaaS agents  
+- Human-readable, infrastructure-friendly  
+- Works well for corporate or platform-linked AI agents  
 
-If you notice anything not behaving how you expected, or would like to make a suggestion / request for a new feature, please create a [**new issue**](https://github.com/cheqd/cheqd-node/issues/new/choose) and let us know.
+🔗 DID:web specification:  
+https://www.w3.org/TR/did-spec-registries/#did-method-web
 
-## 💬 Community
+---
 
-Our [**Discord server**](http://cheqd.link/discord-github) is our primary chat channel for the open-source community, software developers, and node operators.
+## **3.2 ⛓️ did:cheqd (ledger-based identity)**  
+A DID anchored on the **Cheqd decentralized ledger**.
 
-Please reach out to us there for discussions, help, and feedback on the project.
+```
+did:cheqd:<network>:<identifier>
+```
 
-## 🙋 Find us elsewhere
+⭐ Characteristics:
 
-[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/cheqd) [![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](http://cheqd.link/discord-github) [![Twitter](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/intent/follow?screen_name=cheqd_io) [![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](http://cheqd.link/linkedin) [![Medium](https://img.shields.io/badge/Medium-12100E?style=for-the-badge&logo=medium&logoColor=white)](https://blog.cheqd.io) [![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/channel/UCBUGvvH6t3BAYo5u41hJPzw/)
+- Tamper-resistant DID Document stored on-ledger  
+- Supports **ledger-anchored keys**, rotations, service endpoints  
+- Ideal for:
+  - High-assurance identity
+  - Regulated environments
+  - Trust registries
+  - Decentralized compliance ecosystems  
+
+🔗 DID:cheqd specification:  
+https://docs.cheqd.io/identity/
+
+---
+
+# 4. 📄 DID Documents
+
+Regardless of DID method, the DID Document exposes:
+
+- 🔑 Public keys  
+- 🔐 Authentication methods  
+- 📌 Service endpoints  
+- 🧾 Linked Verifiable Presentations  
+- 🧬 Key types (JWK, Ed25519, etc.)  
+
+DID Documents are **automatically updated** when:
+
+- Keys rotate  
+- New developer or agent keys are registered  
+- Credentials are published as Linked VPs  
+- Authentication methods change  
+
+External agents and services use the DID Document to verify signatures, credentials, and linked proofs.
+
+---
+
+# 5. 🔗 Linked Verifiable Presentations (Linked VP)
+
+Linked VP allows Wallet4Agent to **publish verifiable credentials inside the DID Document** as references.
+
+Why this matters:
+
+- Public credentials become discoverable  
+- Third parties can verify agent capabilities  
+- Useful for:
+  - Corporate mandates
+  - Agent capabilities
+  - Service trust signals
+  - Compliance proofs  
+
+Supported formats:
+
+- 🟦 SD‑JWT VC  
+- 🟩 JWT‑VC / JWT‑VP  
+- 🟪 JSON‑LD VC / VP  
+
+Specification:  
+https://identity.foundation/linked-vp/spec/v1.0.0/
+
+---
+
+# 6. 🔐 Cryptography & Key Management
+
+## 6.1 🗝️ Cloud KMS–backed keys (non-exportable)
+Each agent has a dedicated **cloud KMS key**.
+
+Used for:
+
+- Signing Verifiable Presentations  
+- Proofs of key ownership in OIDC4VCI  
+- JWTs for OAuth2 client authentication  
+- Internal signature operations  
+
+Benefits:
+
+- Private key **never leaves KMS**  
+- Agent identity is tied to a secure execution environment  
+- High‑assurance signatures
+
+## 6.2 🔑 Developer-supplied keys
+Developers may register additional public JWKs:
+
+- For OAuth `private_key_jwt`  
+- For agent frameworks managing their own keys  
+- For corporate signing keys  
+
+Wallet4Agent stores the public keys; developers retain the private keys.
+
+---
+
+# 7. 🔑 Authentication Methods
+
+Wallet4Agent supports **three** agent authentication flows:
+
+## 7.1 🔹 Agent Personal Access Token (PAT)
+
+```
+Authorization: Bearer <agent_pat>
+```
+
+Simple and effective for development or local agents.
+
+## 7.2 🔹 OAuth2 Client Credentials  
+
+Agent receives:
+
+- `client_id` = Agent DID  
+- `client_secret`  
+
+Then exchanges using:
+
+```
+grant_type=client_credentials
+```
+
+Ideal for most production requests.
+
+## 7.3 🔹 OAuth2 private_key_jwt  
+
+Strongest method:
+
+- Developer registers a public JWK  
+- Agent signs a JWT with its private key  
+- Wallet4Agent validates it using the registered public JWK  
+
+Useful for hardware-backed keys and enterprise infrastructures.
+
+---
+
+# 8. 🧾 Credential Issuance (OIDC4VCI)
+
+Wallet4Agent handles complete credential issuance flows:
+
+- Fetch issuer metadata  
+- Obtain OAuth tokens  
+- Create **proof of key ownership** signed by the agent's KMS key  
+- Request credentials  
+- Store as attestations  
+
+Supported formats:
+
+- 🟦 SD‑JWT VC  
+- 🟩 VC JSON‑LD  
+
+Agents only call MCP tools — Wallet4Agent does all protocol-level work.
+
+---
+
+# 9. 🧪 Verification (OIDC4VP)
+
+Wallet4Agent supports verification of:
+
+- Natural persons  
+- Other agents  
+- Credential-based access  
+
+Agents can:
+
+- Start user verification  
+- Poll status  
+- Receive verified attributes safely  
+- Authenticate peer agents  
+
+The agent never sees sensitive tokens; only derived, safe claims are returned.
+
+---
+
+# 10. 📦 Credential Storage & Retrieval
+
+Wallet4Agent stores credentials as **attestations**, including:
+
+- Format  
+- Issuer  
+- VCT/VC type  
+- Expiry  
+- Encrypted payload  
+- Publication status (for Linked VP)  
+
+Agents can:
+
+- List their credentials  
+- Accept new ones  
+- Access credentials of other agents (if published)
+
+---
+
+# 11. 🌐 OAuth Protected Resource Metadata
+
+Published under:
+
+```
+/.well-known/oauth-protected-resource/mcp
+```
+
+Includes:
+
+- Supported authentication methods  
+- Resource identifiers  
+- Trusted authorization servers  
+
+Enables automatic configuration by OAuth2 clients and gateways.
+
+---
+
+# 12. 🛡️ Responsible AI Features
+
+Wallet4Agent supports human-in-the-loop requirements:
+
+```json
+{
+  "always_human_in_the_loop": true
+}
+```
+
+Used for:
+
+- High-risk operations  
+- Sensitive credential acceptance  
+- Escalation to human review  
+
+---
+
+
+## 🧩 13. Summary for Developers
+
+If you are an Agent developer, Wallet4Agent gives you:
+
+| Feature | What you get |
+|--------|--------------|
+| 🆔 Agent identity | DID + DID Document |
+| 🔑 Authentication | Dev PAT, Agent PAT, OAuth2 Client Credentials, `private_key_jwt` |
+| 🔐 Cryptographic keys | Cloud KMS signatures, non‑exportable |
+| 📜 Credential issuance | Full OIDC4VCI support (SD‑JWT VC & VC JSON‑LD) |
+| ✅ Credential verification | OIDC4VP with simple MCP tools and safe derived claims |
+| 👤 Human interaction | QR code → wallet → verified attributes |
+| 🤝 Inter‑agent trust | Ability to inspect credentials of other agents (when authorized) |
+| ⚙️ Configuration | Auth mode, keys, policies all manageable via MCP |
+| 🛡️ Security | KMS, OAuth2, DID rotation & key updates, role‑separated tokens |
+
+Your AI Agent becomes a **verifiable digital entity**, capable of participating in decentralized and regulated digital identity ecosystems while preserving security and accountability.
+
+---
+
+**Maintainer:** Wallet4Agent (Web3 Digital Wallet / Talao )  
+For feedback or additional documentation, use the contact channels on the Wallet4Agent website.
+
+| Standard                            | Purpose                                | Link                                                                                                                                                   |
+| ----------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **DID Core**                        | Core DID specification                 | [https://www.w3.org/TR/did-core/](https://www.w3.org/TR/did-core/)                                                                                     |
+| **Linked Verifiable Presentations** | Public VCs in DID Documents            | [https://identity.foundation/linked-vp/spec/v1.0.0/](https://identity.foundation/linked-vp/spec/v1.0.0/)                                               |
+| **OIDC4VCI**                        | Credential issuance                    | [https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html) |
+| **OIDC4VP**             | Credential presentation                | [https://openid.net/specs/openid-4-verifiable-presentations-1_0.html](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)             |
+| **W3C Verifiable Credentials**      | VC Data Model                          | [https://www.w3.org/TR/vc-data-model-2.0/](https://www.w3.org/TR/vc-data-model-2.0/)                                                                   |
+| **SD-JWT VC (IETF)**                | Selective disclosure credential format | [https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-12.html](https://www.ietf.org/archive/id/draft-ietf-oauth-sd-jwt-vc-12.html)               |

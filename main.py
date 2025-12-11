@@ -230,8 +230,8 @@ def create_app() -> Flask:
         if os.getenv("SEED_DATA", "1") == "1":
             logging.info("Run seed DB")
             seed_user()
-            seed_wallet(mode, manager)
-            seed_key()
+            seed_wallet(mode, manager, myenv)
+            seed_key(myenv)
             for agent in agent_list:
                 create_oasf_vp(agent, manager, mode)
 

@@ -5,9 +5,43 @@ from flask import Flask, request, jsonify, render_template, current_app
 from openai import OpenAI
 from utils import oidc4vc
 import logging
+from db_model import Wallet
 
 
-# --------- OpenAI + MCP CONFIG ---------
+
+# Short acknowledgement words that should be treated as confirmations
+ACK_WORDS = {"yes", "ok", "okay", "done", "yep", "yeah", "sure", "alright", "go ahead"}
+
+# Patterns that indicate the assistant is asking for explicit confirmation
+CONFIRMATION_PATTERNS = (
+    "may i ",
+    "do you want me to",
+    "should i ",
+    "shall i ",
+    "do you want me to start",
+    "do you want me to send",
+    "may i send",
+    "may i start",
+    "if you'd like,"
+)
+
+
+# Your MCP server endpoint (public HTTPS)
+MCP_SERVER_URL = "https://wallet4agent.com/mcp"
+
+# --------- PROFILES / DIDs / PATs ---------
+ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc"}
+
+# Map profile -> DID
+AGENT_DIDS: Dict[str, str] = {
+    profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
+}
+
+MCP_AGENT_PATS: Dict[str, str] = {}
+MCP_DEV_PATS: Dict[str, str] = {}
+conversation_histories: Dict[str, List[Dict[str, str]]] = {}
+pending_confirmations: Dict[str, str | None] = {}
+
 
 # Load OpenAI API key from keys.json
 _keys = json.load(open("keys.json", "r"))
@@ -19,36 +53,23 @@ def init_app(app):
     app.add_url_rule('/chat', view_func=chat, methods=['GET', 'POST'])
     app.add_url_rule('/agent', view_func=agent_page, methods=['POST', 'GET'])
     app.add_url_rule('/agent/<profile>', view_func=agent_page_profile, methods=['POST', 'GET'])
+    app.add_url_rule('/agent/register', view_func=register_agent_endpoint, methods=['POST'])
+    with app.app_context():
+        wallets = Wallet.query.filter(
+            Wallet.did.like("did:web:wallet4agent.com:%")
+        ).all()
 
-
-def get_cheqd_did(myenv) -> str:
-    if myenv is None:
-        myenv = os.getenv("MYENV", "local")
-    # local vs aws cheqd DIDs
-    #if myenv == "local":
-    #    return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
-    #else:
-    #    return "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd200"
-
-
-# Your MCP server endpoint (public HTTPS)
-MCP_SERVER_URL = "https://wallet4agent.com/mcp"
-
-# --------- PROFILES / DIDs / PATs ---------
-
-# Allowed profiles
-ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc"}
-
-# Map profile -> DID
-AGENT_DIDS: Dict[str, str] = {
-    profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
-}
-#AGENT_DIDS["cheqd"] = get_cheqd_did(os.getenv("MYENV", "local"))
-
+        for w in wallets:
+            # Profil = dernière partie du DID (did:web:wallet4agent.com:<profile>)
+            profile = w.did.split(":")[-1]
+            if profile not in AGENT_DIDS:
+                wallet_profile = getattr(w, "ecosystem_profile", None) or ecosystem(profile)
+                register_agent_profile(profile, w.did, wallet_profile)
+                logging.info(f"Registered chat agent profile '{profile}' for DID {w.did}")
 
 
 def ecosystem(wallet_profile):
-    if wallet_profile in ["demo", "demo2"]:
+    if wallet_profile in ["demo", "demo2", "cheqd"]:
         return "DIIP V3"
     elif wallet_profile == "diipv4":
         return "DIIP V4"
@@ -66,38 +87,6 @@ def _normalize_profile(profile) -> str:
     profile = profile.lower()
     return profile if profile in ALLOWED_PROFILES else "demo"
 
-
-# Generate an Agent PAT per profile once at startup
-MCP_AGENT_PATS: Dict[str, str] = {}
-for profile, did in AGENT_DIDS.items():
-    pat, _jti = oidc4vc.generate_access_token(
-        did,
-        "agent",
-        "pat",
-        jti=profile,
-        duration=360 * 24 * 60 * 60,
-    )
-    MCP_AGENT_PATS[profile] = pat
-    print("agent PAT for "+ profile + " -> ", pat)
-
-
-# Generate an Dev PAT per profile once at startup
-MCP_DEV_PATS: Dict[str, str] = {}
-for profile, did in AGENT_DIDS.items():
-    pat, _jti = oidc4vc.generate_access_token(
-        did,
-        "admin",
-        "pat",
-        jti=profile,
-        duration=360 * 24 * 60 * 60,
-    )
-    MCP_DEV_PATS[profile] = pat
-    print("admin PAT for " + profile + " -> ", pat)
-
-
-
-
-# --------- HELPER: SYSTEM MESSAGE PER PROFILE ---------
 
 def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
     """
@@ -176,7 +165,7 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- 'describe_wallet4agent': explain what the Wallet4Agent server and its wallet do.\n"
         "- 'help_wallet4agent': explain how to install Wallet4Agent, create a DID, "
         "  and attach a wallet to an Agent.\n"
-        "- 'get_this_wallet_data': inspect your own agent_identifier (DID), wallet URL, and wallet metadata.\n"
+        "- 'get_this_agent_data': inspect your own agent_identifier (DID), wallet URL, and wallet metadata.\n"
         "- 'get_attestations_of_this_wallet': list all attestations (verifiable credentials) in your wallet.\n"
         "- 'get_attestations_of_another_agent': Fetch published attestations of another Agent with its DID.\n"
         "- 'accept_credential_offer': accept an OIDC4VCI credential offer for this Agent.\n"
@@ -203,45 +192,62 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- The network prioritizes privacy-preserving identity, zero-knowledge credentials, and user control."
         "- cheqd provides documentation, SDKs, and tooling for building decentralized identity apps. \n\n")
     
-    if ecosystem == "CHEQD":
+    if agent_did.startswith("did:cheqd"):
         content += cheqd_context
     
     return {"role": "system", "content": content}
 
 
-# --------- FLASK APP ---------
+def register_agent_profile(profile: str, did: str, wallet_profile: str | None = None) -> None:
+    """
+    Enregistre dynamiquement un agent de chat :
+    - profile : identifiant court (demo, demo2, diipv4, arf, ewc, cheqd, etc.)
+    - did : DID complet (did:web:..., did:cheqd:..., etc.)
+    - wallet_profile : ex. 'DIIP V3', 'DIIP V4', 'EUDIW-ARF'
+    """
+    profile = profile.lower()
+    ALLOWED_PROFILES.add(profile)
+    AGENT_DIDS[profile] = did
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
+    # Essayez de récupérer le wallet pour ce DID pour réutiliser les JTI existants
+    wallet = Wallet.query.filter(Wallet.did == did).one_or_none()
+    if wallet:
+        jti_agent = wallet.agent_pat_jti or profile
+        jti_admin = wallet.admin_pat_jti or profile
+    else:
+        # fallback : ancien comportement
+        jti_agent = profile
+        jti_admin = profile
 
+    # PAT Agent
+    pat_agent, _ = oidc4vc.generate_access_token(
+        did,
+        "agent",
+        "pat",
+        jti=jti_agent,
+        duration=360 * 24 * 60 * 60,
+    )
+    MCP_AGENT_PATS[profile] = pat_agent
 
-# --------- GLOBAL STATE: PER PROFILE ---------
+    # PAT Admin / dev
+    pat_admin, _ = oidc4vc.generate_access_token(
+        did,
+        "admin",
+        "pat",
+        jti=jti_admin,
+        duration=360 * 24 * 60 * 60,
+    )
+    MCP_DEV_PATS[profile] = pat_admin
 
-# Map profile -> conversation history list
-conversation_histories: Dict[str, List[Dict[str, str]]] = {
-    profile: [_build_system_message(AGENT_DIDS[profile], ecosystem(profile))]
-    for profile in ALLOWED_PROFILES
-}
+    # Historique de conversation avec message système
+    eco = wallet_profile or ecosystem(profile)
+    conversation_histories[profile] = [
+        _build_system_message(did, eco)
+    ]
 
-# Short acknowledgement words that should be treated as confirmations
-ACK_WORDS = {"yes", "ok", "okay", "done", "yep", "yeah", "sure", "alright", "go ahead"}
+    # Pas de flow de confirmation en cours au départ
+    pending_confirmations[profile] = None
 
-# Patterns that indicate the assistant is asking for explicit confirmation
-CONFIRMATION_PATTERNS = (
-    "may i ",
-    "do you want me to",
-    "should i ",
-    "shall i ",
-    "do you want me to start",
-    "do you want me to send",
-    "may i send",
-    "may i start",
-    "if you'd like,"
-)
-
-# Map profile -> last assistant message that actually asked for confirmation
-pending_confirmations = {
-    profile: None for profile in ALLOWED_PROFILES
-}
 
 
 # --------- CORE CALL TO GPT + MCP ---------
@@ -325,12 +331,7 @@ def agent_page_profile(profile):
     """
     normalized = _normalize_profile(profile)
     profile_name = AGENT_DIDS[normalized]
-    myenv = current_app.config["MYENV"]
-    #if profile == "cheqd" and myenv == "local":
-    #    profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd100"
-    #elif profile == "cheqd":
-    #    profile_name = "did:cheqd:testnet:209779d5-708b-430d-bb16-fba6407cd200" # aws
-        
+    
     return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
 
@@ -347,13 +348,13 @@ def chat():
     JSON endpoint used by the web UI.
 
     Request JSON:
-      { "message": "What can your wallet do?" }
+    { "message": "What can your wallet do?" }
 
     Optional query parameter:
-      ?profile=demo2   (defaults to 'demo' if omitted or unknown)
+    ?profile=demo2   (defaults to 'demo' if omitted or unknown)
 
     Response JSON:
-      { "reply": "...assistant text..." }
+    { "reply": "...assistant text..." }
     """
     data = request.get_json(force=True, silent=True) or {}
     user_message = data.get("message", "").strip()
@@ -399,3 +400,25 @@ def chat():
 
     reply = call_agent(user_message, history, profile)
     return jsonify({"reply": reply})
+
+
+def register_agent_endpoint():
+    """
+    Endpoint appelé par le client MCP après création d'un DID.
+    Body JSON attendu :
+    {
+      "profile": "cheqd-demo",
+      "did": "did:cheqd:testnet:xxxx-....",
+      "ecosystem": "DIIP V3"   # optionnel
+    }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    profile = data.get("profile")
+    did = data.get("did")
+    ecosystem_profile = data.get("ecosystem")
+
+    if not profile or not did:
+        return jsonify({"error": "profile and did are required"}), 400
+
+    register_agent_profile(profile, did, ecosystem_profile)
+    return jsonify({"status": "ok", "profile": profile, "did": did})

@@ -13,9 +13,9 @@ A typical flow:
 
 1. A **Guest** (no auth) creates a new **Agent Identifier (DID)** and its associated **wallet**.  
 2. The Guest receives:  
-   - a **Developer Personal Access Token (dev_pat)**  
+   - a **Admin Personal Access Token (admin_pat)**  
    - an **Agent Personal Access Token (agent_pat)** *or* OAuth2 client credentials  
-3. Using the **Developer token**, the developer configures the agent (update configuration, rotate tokens, register authentication keys).  
+3. Using the **Admin token**, the developer configures the agent (update configuration, rotate tokens, register authentication keys).  
 4. Using the **Agent token**, the agent collects credentials, presents proofs, authenticates to others, and manages attestations.
 
 All interactions happen through:
@@ -35,13 +35,13 @@ A Guest can:
 - Create its wallet  
 - Retrieve initial Developer and Agent credentials  
 
-## **2.2 Developer**  
+## **2.2 Admin**  
 Authenticated using:  
 ```
 Authorization: Bearer <dev_personal_access_token>
 ```
 
-A developer can:
+An admin can:
 
 - Manage configuration  
 - Register OAuth client keys  
@@ -102,12 +102,12 @@ Returns:
 
 ---
 
-# 4. 🛠 Developer Tools
+# 4. 🛠 Admin Tools
 
 Authenticated with:
 
 ```
-Authorization: Bearer <dev_pat>
+Authorization: Bearer <admin_pat>
 ```
 
 ## **4.1 get_configuration**
@@ -125,7 +125,7 @@ Used to:
 
 ## **4.3 rotate_personal_access_token**
 
-Rotates developer or agent PAT.
+Rotates admin or agent PAT.
 
 ## **4.4 add_authentication_key**
 
@@ -249,7 +249,7 @@ Creates or updates the agent's OASF metadata.
 - create_agent_identifier_and_wallet  
 - describe_wallet4agent  
 
-## Developer Tools
+## Admin Tools
 - get_configuration  
 - update_configuration  
 - rotate_personal_access_token  
@@ -269,8 +269,9 @@ Creates or updates the agent's OASF metadata.
 - poll_user_verification  
 - start_agent_authentication  
 - poll_agent_authentication  
-- describe_wallet4agent  
-- explain_how_to_install_wallet4agent  
+- help_wallet4agent
+- publish_attestations
+- unpublish_attestations
 
 ---
 

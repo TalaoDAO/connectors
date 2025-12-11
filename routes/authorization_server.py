@@ -188,7 +188,7 @@ def token():
             401,
         )
 
-    # issue token
+    # issue access token which are encrypted and not signed
     access_token, jti = oidc4vc.generate_access_token(client_id, "agent", "oauth", duration=30*60)
     
     return jsonify({
