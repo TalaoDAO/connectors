@@ -204,10 +204,12 @@ def create_app() -> Flask:
     app.config["API_LIFE"] = DEFAULT_API_LIFE
     app.config["GRANT_LIFE"] = DEFAULT_GRANT_LIFE
     app.config["ACCEPTANCE_TOKEN_LIFE"] = DEFAULT_ACCEPTANCE_TOKEN_LIFE
+    
     app.config["AGNTCY_API_KEY"] = mode.agntcy
     app.config["AGNTCY_API_URL"] = "https://api.agent-identity.outshift.com"
     with open("AGNTCY_SERVER_BADGES_JSON.json", "r") as f:
         app.config["AGNTCY_SERVER_BADGES_JSON"] = json.load(f)
+    
     app.config["SECRET_KEY"] = mode.secret_key
 
     
