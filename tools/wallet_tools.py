@@ -11,7 +11,7 @@ import linked_vp
 import copy
 from routes import agent_chat
 from identityservice.sdk import IdentityServiceSdk as AgntcySdk
-
+import os
 
 # do not provide this tool to an LLM
 tools_guest = [
