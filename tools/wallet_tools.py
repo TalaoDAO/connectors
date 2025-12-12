@@ -357,13 +357,10 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
-def issue_agent_badge(agent_manifest_url: str) -> str | None:
-    api_key = current_app.config.get("AGNTCY_AGENTIC_SERVICE_API_KEY")
-    if not api_key:
-        return None
-    os.environ.setdefault("IDENTITY_SERVICE_GRPC_SERVER_URL", "api.grpc.agent-identity.outshift.com:443")
-    logging.info("agent manifests url = %s", agent_manifest_url)
-    sdk = AgntcySdk(api_key=api_key)
+
+def issue_agent_badge(agent_manifest_url: str) -> str:
+    os.environ["IDENTITY_SERVICE_GRPC_SERVER_URL"] = "api.grpc.agent-identity.outshift.com:443"
+    sdk = AgntcySdk(api_key=current_app.config["AGNTCY_AGENTIC_SERVICE_API_KEY"])
     return sdk.issue_badge(agent_manifest_url)
 
 
