@@ -41,7 +41,8 @@ class currentMode:
             sys.exit(1)
 
         self.smtp_password = keys.get('smtp_password')
-        self.agntcy = keys.get("agntcy")
+        self.agntcy_org_api_key = keys.get("agntcy_org_api_key")
+        self.agntcy_service_api_key = keys.get("agntcy_service_api_key")
         self.secret_key = keys.get("secret_key")
 
         # Define runtime behavior depending on environment

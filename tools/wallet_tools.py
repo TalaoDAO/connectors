@@ -9,6 +9,8 @@ from universal_registrar import UniversalRegistrarClient
 import linked_vp
 import copy
 from routes import agent_chat
+from agntcy_issuer import issue_agent_badge
+
 
 # do not provide this tool to an LLM
 tools_guest = [
@@ -21,6 +23,12 @@ tools_guest = [
                 "agent_name": {
                     "type": "string",
                     "description": "Optional agent name. If it exists this name will be used to create the DID of the Agent."                    
+                },
+                "agent_framework": {
+                    "type": "string",
+                    "description": "Agent framework as Agntcy",
+                    "enum": ["None", "Agntcy"],
+                    "default": "None"
                 },
                 "did_method": {
                     "type": "string",
@@ -546,6 +554,8 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     admins_identity_provider = arguments.get("admins_identity_provider")
     admins_login = (arguments.get("admins_login") or "").split(",")
     agent_card_url = arguments.get("agentcard_url")
+    agent_framework = arguments.get("agent_framework", "None")
+
     
 
     # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
@@ -613,7 +623,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         client_secret_hash=oidc4vc.hash_client_secret(client_secret),
         admins_identity_provider=admins_identity_provider,
         admins_login=json.dumps(admins_login),
-        agent_framework="None",
+        agent_framework=agent_framework,
         did=agent_did,
         did_document=json.dumps(did_document),
         url=wallet_url,
@@ -652,6 +662,21 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
 
     db.session.add(wallet)
     db.session.commit()
+    
+    # After wallet is created, auto-issue AGNTCY badge if requested
+    agntcy_badge = None
+    agntcy_manifest_url = None
+
+    if agent_framework == "Agntcy":
+        # IMPORTANT: this is the URL AGNTCY will "badge" (your agent manifest)
+        agntcy_manifest_url = mode.server.rstrip("/") + f"/agents/{agent_did}/manifest.json"
+        agntcy_badge = issue_agent_badge(agntcy_manifest_url)
+
+        # Store in DB (badge is the compact JWS string)
+        wallet.agntcy_agent_badge = agntcy_badge
+        wallet.agntcy_manifest_url = agntcy_manifest_url
+        db.session.commit()
+
 
     # ----------------------------------------------------------------------
     # 6) Build structured response
@@ -659,8 +684,14 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     structured = {
         "agent_identifier": agent_did,
         "admin_personal_access_token": admin_pat,
-        "wallet_url": wallet.url,
+        "wallet_url": wallet.url
     }
+    
+    if agent_framework == "Agntcy":
+        structured["agent_framework"] = agent_framework
+        structured["agntcy_manifest_url"] = agntcy_manifest_url
+        structured["agntcy_agent_badge"] = agntcy_badge
+
 
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
         structured["agent_client_id"] = agent_did

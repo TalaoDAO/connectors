@@ -58,15 +58,14 @@ def init_app(app):
     
     #Agentcy
     def _agntcy_enabled() -> bool:
-        return bool(current_app.config.get("AGNTCY_API_KEY")) and bool(current_app.config.get("AGNTCY_API_URL"))
+        return bool(current_app.config.get("AGNTCY_ORG_API_KEY")) and bool(current_app.config.get("AGNTCY_API_URL"))
 
     @lru_cache(maxsize=1)
     def _agntcy_sdk():
         if not AgntcySdk:
             return None
-        api_key = current_app.config.get("AGNTCY_API_KEY")
+        api_key = current_app.config.get("AGNTCY_ORG_API_KEY")
         api_url = current_app.config.get("AGNTCY_API_URL")
-        # If the SDK constructor differs, adjust accordingly
         return AgntcySdk(api_key=api_key, base_url=api_url)
 
     def _verify_agntcy_badge(jose_badge: str) -> Optional[dict]:
@@ -296,6 +295,42 @@ def init_app(app):
                     tools_list["tools"].extend(getattr(module, const))
         return jsonify(tools_list)
 
+
+    def _agent_manifest(did: str) -> dict:
+        base = current_app.config["MODE"].server.rstrip("/")
+        # Minimal manifest: identity + where to find badge + where MCP is
+        return {
+            "name": "wallet4agent-agent",
+            "version": "1.0.0",
+            "subject": {
+                "did": did,
+                "type": "Agent"
+            },
+            "authentication": {
+                "badge_endpoint": f"{base}/agents/{did}/.well-known/vcs.json",
+                "authorization_header": "Authorization: Bearer <AGNTCY_BADGE_JWT>"
+            },
+            "mcp": {
+                "server": f"{base}/mcp"
+            }
+        }
+    
+    @app.get("/agents/<agent_did>/manifest.json")
+    def agent_manifest(agent_did: str):
+        # only return for wallets you actually manage
+        wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
+        if not wallet:
+            return jsonify({"error": "unknown_did"}), 404
+        return jsonify(_agent_manifest(agent_did))
+
+    @app.get("/agents/<agent_did>/.well-known/vcs.json")
+    def agent_well_known_vcs(agent_did: str):
+        wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
+        if not wallet or not getattr(wallet, "agntcy_agent_badge", None):
+            return jsonify({"vcs": []}), 200
+        # publish as "vcs": ["<compact-jws>"] (common pattern)
+        return jsonify({"vcs": [wallet.agntcy_agent_badge]})
+    
     # --------- CORS for /mcp ---------  
     def _add_cors(resp):
         origin = request.headers.get("Origin")

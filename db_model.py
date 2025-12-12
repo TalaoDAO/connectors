@@ -48,6 +48,7 @@ class Wallet(db.Model):
     always_human_in_the_loop = db.Column(db.Boolean, default=True)
     receive_credentials = db.Column(db.Boolean, default=True)
     publish_unpublish = db.Column(db.Boolean, default=True)
+    agntcy_agent_badge = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
     
     
