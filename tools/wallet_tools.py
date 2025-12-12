@@ -358,13 +358,14 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
-def issue_agent_badge(agent_manifest_url: str) -> str:
-    api_url = current_app.config.get("AGNTCY_API_URL")
+def issue_agent_badge(agent_manifest_url: str) -> str | None:
     api_key = current_app.config.get("AGNTCY_AGENTIC_SERVICE_API_KEY")
-    if not api_url or not api_key:
+    if not api_key:
         return None
+    os.environ.setdefault("IDENTITY_SERVICE_GRPC_ENDPOINT", "api.grpc.agent-identity.outshift.com:443")
     sdk = AgntcySdk(api_key=api_key)
     return sdk.issue_badge(agent_manifest_url)
+
 
 # for admin
 def call_delete_identity(wallet_did) -> Dict[str, Any]:
