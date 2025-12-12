@@ -363,6 +363,8 @@ def issue_agent_badge(agent_manifest_url: str) -> str | None:
     if not api_key:
         return None
     os.environ.setdefault("IDENTITY_SERVICE_GRPC_ENDPOINT", "api.grpc.agent-identity.outshift.com:443")
+    print("api key = ", api_key)
+    print("agent manifests url = ", agent_manifest_url)
     sdk = AgntcySdk(api_key=api_key)
     return sdk.issue_badge(agent_manifest_url)
 
