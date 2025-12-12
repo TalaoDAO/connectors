@@ -2,6 +2,7 @@ import json
 from typing import Any, Dict, List, Optional
 from db_model import Wallet, db, User, Attestation
 import secrets
+from flask import current_app
 import logging
 from utils import oidc4vc, message
 import hashlib
@@ -9,7 +10,7 @@ from universal_registrar import UniversalRegistrarClient
 import linked_vp
 import copy
 from routes import agent_chat
-from agntcy_issuer import issue_agent_badge
+from identityservice.sdk import IdentityServiceSdk as AgntcySdk
 
 
 # do not provide this tool to an LLM
@@ -357,6 +358,13 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
+def issue_agent_badge(agent_manifest_url: str) -> str:
+    api_url = current_app.config.get("AGNTCY_API_URL")
+    api_key = current_app.config.get("AGNTCY_AGENTIC_SERVICE_API_KEY")
+    if not api_url or not api_key:
+        return None
+    sdk = AgntcySdk(api_key=api_key, base_url=api_url)
+    return sdk.issue_badge(agent_manifest_url)
 
 # for admin
 def call_delete_identity(wallet_did) -> Dict[str, Any]:
