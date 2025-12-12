@@ -12,7 +12,6 @@ import copy
 from routes import agent_chat
 from identityservice.sdk import IdentityServiceSdk as AgntcySdk
 import os
-
 # do not provide this tool to an LLM
 tools_guest = [
     {
@@ -363,9 +362,10 @@ def issue_agent_badge(agent_manifest_url: str) -> str | None:
     if not api_key:
         return None
     os.environ.setdefault("IDENTITY_SERVICE_GRPC_ENDPOINT", "api.grpc.agent-identity.outshift.com:443")
-    print("api key = ", api_key)
-    print("agent manifests url = ", agent_manifest_url)
+    logging.info("agent manifests url = %s", agent_manifest_url)
     sdk = AgntcySdk(api_key=api_key)
+    os.environ["GRPC_VERBOSITY"] = "DEBUG"
+    os.environ["GRPC_TRACE"] = "client_channel,handshaker,transport_security"
     return sdk.issue_badge(agent_manifest_url)
 
 
