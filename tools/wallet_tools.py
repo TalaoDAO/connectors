@@ -363,7 +363,7 @@ def issue_agent_badge(agent_manifest_url: str) -> str:
     api_key = current_app.config.get("AGNTCY_AGENTIC_SERVICE_API_KEY")
     if not api_url or not api_key:
         return None
-    sdk = AgntcySdk(api_key=api_key, api_url=api_url)
+    sdk = AgntcySdk(api_key=api_key)
     return sdk.issue_badge(agent_manifest_url)
 
 # for admin

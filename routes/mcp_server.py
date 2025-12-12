@@ -64,8 +64,7 @@ def init_app(app):
         if not AgntcySdk:
             return None
         return AgntcySdk(
-            api_key=current_app.config["AGNTCY_ORG_API_KEY"],
-            base_url=current_app.config["AGNTCY_API_URL"],
+            api_key=current_app.config["AGNTCY_ORG_API_KEY"]
         )
 
     def _verify_agntcy_badge(jose_badge: str) -> Optional[dict]:
