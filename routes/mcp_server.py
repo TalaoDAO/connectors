@@ -9,6 +9,11 @@ import importlib
 from datetime import datetime
 from prompts import wallet_prompts, verifier_prompts, wallet_prompts_for_guest
 import uuid
+import os
+from functools import lru_cache
+from identityservice.sdk import IdentityServiceSdk as AgntcySdk
+
+
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "MCP server for data wallet"
@@ -48,11 +53,48 @@ def init_app(app):
         }
         return config
     
+    #Agentcy
+    def _agntcy_enabled() -> bool:
+        return bool(current_app.config.get("AGNTCY_API_KEY")) and bool(current_app.config.get("AGNTCY_API_URL"))
+
+    @lru_cache(maxsize=1)
+    def _agntcy_sdk():
+        if not AgntcySdk:
+            return None
+        api_key = current_app.config.get("AGNTCY_API_KEY")
+        api_url = current_app.config.get("AGNTCY_API_URL")
+        # If the SDK constructor differs, adjust accordingly
+        return AgntcySdk(api_key=api_key, base_url=api_url)
+
+    def _verify_agntcy_badge(jose_badge: str) -> Optional[dict]:
+        """
+        Returns a dict containing at least a 'sub' (subject DID) if verified,
+        otherwise None.
+        """
+        if not jose_badge or not _agntcy_enabled():
+            return None
+        sdk = _agntcy_sdk()
+        if not sdk:
+            return None
+        try:
+            # Expected to return something like { "verified": true, "sub": "...", ... }
+            result = sdk.verify_badge(jose_badge)
+            if not result:
+                return None
+            # Normalize possible response shapes
+            verified = result.get("verified", True) if isinstance(result, dict) else True
+            if not verified:
+                return None
+            return result if isinstance(result, dict) else {"raw": result}
+        except Exception as e:
+            logging.warning("AGNTCY badge verification failed: %s", str(e))
+            return None
+
     def _bearer_or_api_key():
         auth = request.headers.get("Authorization", "")
         if auth.lower().startswith("bearer "):
             return auth.split(" ", 1)[1].strip()
-        return request.headers.get("X-API-KEY")
+        return request.headers.get("X-AGNTCY-BADGE") or request.headers.get("X-API-KEY")
 
     def expired_token_response():
         body = {
@@ -71,7 +113,75 @@ def init_app(app):
                 )
             },
         )
-        
+    
+    def get_role_and_agent_id():
+        token = _bearer_or_api_key()
+        if not token:
+            logging.warning("no access token")
+            return "guest", None
+
+        # --- 1) Existing Wallet4Agent PAT/OAuth decrypt path ---
+        try:
+            access_token = json.loads(oidc4vc.decrypt_string(token))
+            role = access_token.get("role")
+            agent_identifier = access_token.get("sub")
+            jti = access_token.get("jti")
+            exp = access_token.get("exp")
+            typ = access_token.get("type")
+            logging.info("agent=%s role=%s auth=%s", agent_identifier, role, typ)
+
+            # expiration check (existing)
+            now = int(datetime.timestamp(datetime.now()))
+            if exp and exp < now:
+                logging.warning("access token expired")
+                return "expired", None
+
+            if not role:
+                return "guest", None
+
+            this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+
+            if typ == "pat":
+                try:
+                    if jti == this_wallet.admin_pat_jti and role == "admin":
+                        return role, agent_identifier
+                    elif jti == this_wallet.agent_pat_jti and role == "agent":
+                        return role, agent_identifier
+                    else:
+                        return "guest", None
+                except Exception as e:
+                    logging.warning(str(e))
+                    return "guest", None
+            else:
+                # oauth path (existing)
+                return role, agent_identifier
+
+        except Exception as e:
+            logging.info("Not a Wallet4Agent token (decrypt failed): %s", str(e))
+
+        # --- 2) NEW: AGNTCY badge verification path ---
+        badge = _verify_agntcy_badge(token)
+        if not badge:
+            return "guest", None
+
+        # You want the verified subject DID here:
+        # depending on SDK response, it could be badge["sub"] or badge["subject"] etc.
+        subject_did = badge.get("sub") or badge.get("subject") or badge.get("did")
+        if not subject_did:
+            logging.warning("AGNTCY badge verified but missing subject DID")
+            return "guest", None
+
+        # Map verified DID -> your wallet DB row
+        this_wallet = Wallet.query.filter(Wallet.did == subject_did).one_or_none()
+        if not this_wallet:
+            logging.warning("AGNTCY subject DID has no wallet in Wallet4Agent DB: %s", subject_did)
+            return "guest", None
+
+        # Decide role mapping:
+        # simplest: any verified badge => agent role for that DID
+        return "agent", subject_did
+    
+    """
     def get_role_and_agent_id() -> str:
         encrypted_pat = _bearer_or_api_key()
         if not encrypted_pat:
@@ -115,7 +225,7 @@ def init_app(app):
                 return "guest", None
         else:
             return role, agent_identifier
-    
+    """ 
     
     def _error(code: int, message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         e = {"code": code, "message": message}
@@ -157,6 +267,30 @@ def init_app(app):
             }
         })
 
+    @app.get("/.well-known/vcs.json")
+    def well_known_vcs():
+        """
+        Publish Verifiable Credentials (badges) for this service.
+        Store the badge JSON (or list) in config or a file.
+        """
+        # Option 1: store in env/config as a JSON string
+        raw = current_app.config.get("AGNTCY_SERVER_BADGES_JSON")
+        if raw:
+            try:
+                return jsonify(json.loads(raw))
+            except Exception:
+                pass
+
+        # Option 2: load from a file you deploy with the app
+        # e.g. /app/agntcy_server_badges.json
+        path = current_app.config.get("AGNTCY_SERVER_BADGES_PATH")
+        if path:
+            try:
+                return jsonify(json.load(open(path, "r")))
+            except Exception:
+                pass
+
+        return jsonify({"vcs": []})
 
     @app.get("/manifest.json")
     def manifest():

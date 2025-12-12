@@ -192,7 +192,7 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
     )
     
-    cheqd_context = (
+    did_cheqd_context = (
         "CHEQD DID DESCRIPTION:\n"
         "- As an AI Agent you use a did:cheqd Decentralized Identifier.\n"
         "- did:cheqd is anchored on the cheqd network, a decentralized identity blockchain built on Cosmos SDK and Tendermint.\n"
@@ -260,7 +260,7 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
     )
 
     if agent_did.startswith("did:cheqd"):
-        content += cheqd_context
+        content += did_cheqd_context
     else:
         content += did_web_context
 

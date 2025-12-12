@@ -203,9 +203,14 @@ def create_app() -> Flask:
     app.config["SESSION_TYPE"] = "redis"
     app.config["SESSION_REDIS"] = red
     app.config["REDIS"] = red
-    app.config["API_LIFE"] = int(os.getenv("API_LIFE", DEFAULT_API_LIFE))
-    app.config["GRANT_LIFE"] = int(os.getenv("GRANT_LIFE", DEFAULT_GRANT_LIFE))
-    app.config["ACCEPTANCE_TOKEN_LIFE"] = int(os.getenv("ACCEPTANCE_TOKEN_LIFE", DEFAULT_ACCEPTANCE_TOKEN_LIFE))
+    app.config["API_LIFE"] = DEFAULT_API_LIFE
+    app.config["GRANT_LIFE"] = DEFAULT_GRANT_LIFE
+    app.config["ACCEPTANCE_TOKEN_LIFE"] = DEFAULT_ACCEPTANCE_TOKEN_LIFE
+    app.config["AGNTCY_API_KEY"] = os.getenv("AGNTCY_API_KEY")
+    app.config["AGNTCY_API_URL"] = os.getenv("AGNTCY_API_URL")  # e.g. https://<identity-service>/api
+    app.config["AGNTCY_SERVER_BADGES_JSON"] = os.getenv("AGNTCY_SERVER_BADGES_JSON") # TODO
+    app.config["AGNTCY_SERVER_BADGES_PATH"] = os.getenv("AGNTCY_SERVER_BADGES_PATH")
+
     
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
