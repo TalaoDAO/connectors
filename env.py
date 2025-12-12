@@ -37,12 +37,12 @@ class currentMode:
             with open('keys.json') as f:
                 keys = json.load(f)
         except Exception:
-            logging.error('Unable to load keys.json — file missing or corrupted.')
+            logging.error('keys.json file missing or corrupted.')
             sys.exit(1)
 
-        #self.talao_verifier = keys.get('talao_verifier') # did:web:talao.co#key-6)
         self.smtp_password = keys.get('smtp_password')
-        self.QTSP = keys.get('QTSP')
+        self.agntcy = keys.get("agntcy")
+        self.secret_key = keys.get("secret_key")
 
         # Define runtime behavior depending on environment
         if self.myenv == 'aws':

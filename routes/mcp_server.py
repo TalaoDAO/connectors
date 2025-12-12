@@ -11,7 +11,10 @@ from prompts import wallet_prompts, verifier_prompts, wallet_prompts_for_guest
 import uuid
 import os
 from functools import lru_cache
-from identityservice.sdk import IdentityServiceSdk as AgntcySdk
+try:
+    from identityservice.sdk import IdentityServiceSdk as AgntcySdk
+except Exception:
+    AgntcySdk = None
 
 
 
@@ -82,9 +85,10 @@ def init_app(app):
             if not result:
                 return None
             # Normalize possible response shapes
-            verified = result.get("verified", True) if isinstance(result, dict) else True
+            verified = bool(result.get("verified")) if isinstance(result, dict) else False
             if not verified:
                 return None
+            
             return result if isinstance(result, dict) else {"raw": result}
         except Exception as e:
             logging.warning("AGNTCY badge verification failed: %s", str(e))
@@ -170,6 +174,7 @@ def init_app(app):
         if not subject_did:
             logging.warning("AGNTCY badge verified but missing subject DID")
             return "guest", None
+        logging.info("AGNTCY badge authenticated for DID %s", subject_did)
 
         # Map verified DID -> your wallet DB row
         this_wallet = Wallet.query.filter(Wallet.did == subject_did).one_or_none()
@@ -269,28 +274,8 @@ def init_app(app):
 
     @app.get("/.well-known/vcs.json")
     def well_known_vcs():
-        """
-        Publish Verifiable Credentials (badges) for this service.
-        Store the badge JSON (or list) in config or a file.
-        """
-        # Option 1: store in env/config as a JSON string
-        raw = current_app.config.get("AGNTCY_SERVER_BADGES_JSON")
-        if raw:
-            try:
-                return jsonify(json.loads(raw))
-            except Exception:
-                pass
-
-        # Option 2: load from a file you deploy with the app
-        # e.g. /app/agntcy_server_badges.json
-        path = current_app.config.get("AGNTCY_SERVER_BADGES_PATH")
-        if path:
-            try:
-                return jsonify(json.load(open(path, "r")))
-            except Exception:
-                pass
-
-        return jsonify({"vcs": []})
+        badges = current_app.config.get("AGNTCY_SERVER_BADGES_JSON", {})
+        return jsonify(badges)
 
     @app.get("/manifest.json")
     def manifest():
@@ -323,7 +308,7 @@ def init_app(app):
                 resp.headers["Access-Control-Allow-Origin"] = origin
                 resp.headers["Vary"] = "Origin"
         resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-KEY, Authorization"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-KEY, Authorization, X-AGNTCY-BADGE"
         resp.headers["Access-Control-Max-Age"] = "600"
         return resp
 
@@ -335,7 +320,7 @@ def init_app(app):
 
     # --------- Tool catalog ---------
         # --------- Tool catalog ---------
-    def _tools_list(role) -> Dict[str, Any]:
+    def _tools_list(role, agent_identifier=None) -> Dict[str, Any]:
         """
         Return the list of tools available for the caller, taking into account:
         - role: guest / admin / agent
@@ -372,23 +357,10 @@ def init_app(app):
                 tools.extend(verifier_tools.tools_agent)
 
             # 3) Feature-gated groups based on Wallet flags
-            encrypted_pat = _bearer_or_api_key()
-            agent_did: Optional[str] = None
-            this_wallet: Optional[Wallet] = None
-
-            if encrypted_pat:
-                try:
-                    access_token = json.loads(oidc4vc.decrypt_string(encrypted_pat))
-                    agent_did = access_token.get("sub")
-                except Exception as e:
-                    logging.warning("Cannot decrypt access token in _tools_list: %s", str(e))
-
-            if agent_did:
-                this_wallet = Wallet.query.filter_by(did=agent_did).one_or_none()
-
+            this_wallet = Wallet.query.filter_by(did=agent_identifier).one_or_none() if agent_identifier else None
             if not this_wallet:
                 # No wallet: only "others" + verifier tools
-                logging.warning("No wallet found for agent DID %s in _tools_list", agent_did)
+                logging.warning("No wallet found for agent DID %s in _tools_list", agent_identifier)
                 return {"tools": tools}
 
             # receive_credentials -> accept_credential_offer
@@ -542,7 +514,7 @@ def init_app(app):
 
         # tools/list
         elif method == "tools/list":
-            return jsonify({"jsonrpc": "2.0", "result": _tools_list(role), "id": req_id})
+            return jsonify({"jsonrpc": "2.0", "result": _tools_list(role, agent_identifier), "id": req_id})
         
         # prompts/list
         elif method == "prompts/list":

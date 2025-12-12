@@ -159,9 +159,7 @@ def create_app() -> Flask:
     red = redis.Redis(host='localhost', port=6379, db=0)
 
     # ---- Security / secrets ----
-    # NEVER hardcode secrets; load from env or secret manager
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me-in-prod")
-
+    
     # ---- Sessions (server-side via Redis) ----
     app.config.update(
         SESSION_PERMANENT=True,
@@ -206,11 +204,13 @@ def create_app() -> Flask:
     app.config["API_LIFE"] = DEFAULT_API_LIFE
     app.config["GRANT_LIFE"] = DEFAULT_GRANT_LIFE
     app.config["ACCEPTANCE_TOKEN_LIFE"] = DEFAULT_ACCEPTANCE_TOKEN_LIFE
-    app.config["AGNTCY_API_KEY"] = os.getenv("AGNTCY_API_KEY")
-    app.config["AGNTCY_API_URL"] = os.getenv("AGNTCY_API_URL")  # e.g. https://<identity-service>/api
-    app.config["AGNTCY_SERVER_BADGES_JSON"] = os.getenv("AGNTCY_SERVER_BADGES_JSON") # TODO
-    app.config["AGNTCY_SERVER_BADGES_PATH"] = os.getenv("AGNTCY_SERVER_BADGES_PATH")
+    app.config["AGNTCY_API_KEY"] = mode.agntcy
+    app.config["AGNTCY_API_URL"] = "https://api.agent-identity.outshift.com"
+    with open("AGNTCY_SERVER_BADGES_JSON.json", "r") as f:
+        app.config["AGNTCY_SERVER_BADGES_JSON"] = json.load(f)
+    app.config["SECRET_KEY"] = mode.secret_key
 
+    
     
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
@@ -276,7 +276,6 @@ def create_app() -> Flask:
     def page_not_found(e):
         return jsonify("Page not found")
 
-
     # ---- Helpers attached to app context ----
     def front_publish(stream_id: str, error: str, error_description: str) -> None:
         """Publish an event on Redis pub/sub for the front channel."""
@@ -316,7 +315,6 @@ def create_app() -> Flask:
         html = markdown.markdown(content, extensions=["fenced_code"])
         return render_template_string(html)
 
-
     # .well-known DID API to serve DID Document as did:web
     @app.get('/<optional_path>/did.json')
     def well_known_did(optional_path):
@@ -339,7 +337,6 @@ def create_app() -> Flask:
         
         did_doc = this_wallet.did_document
         return Response(did_doc, headers=headers)
-    
     
     @app.get('/service/<wallet_did>/<id>')
     def service(wallet_did, id):
