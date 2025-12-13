@@ -105,7 +105,7 @@ def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
 
     return oasf
 
-
+""""
 def create_oasf_vp(agent_identifier, manager, mode):
     this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
     if not this_wallet:
@@ -134,7 +134,7 @@ def create_oasf_vp(agent_identifier, manager, mode):
 
     logging.warning("Failed to publish OASF record as Linked VP %s", message)
     return False
-
+"""
     
 def create_app() -> Flask:
     """Application factory: configure, wire dependencies, register routes/APIs."""
@@ -153,7 +153,6 @@ def create_app() -> Flask:
     # Environment variables are set in gunicornconf.py and used via utils.environment
     myenv = os.getenv("MYENV", "local")
     mode = env.currentMode(myenv)  # object with .server, .port, .flaskserver, etc.
-    mode.debug_on()
     
     # Redis init red = redis.StrictRedis()
     red = redis.Redis(host='localhost', port=6379, db=0)
@@ -204,16 +203,13 @@ def create_app() -> Flask:
     app.config["API_LIFE"] = DEFAULT_API_LIFE
     app.config["GRANT_LIFE"] = DEFAULT_GRANT_LIFE
     app.config["ACCEPTANCE_TOKEN_LIFE"] = DEFAULT_ACCEPTANCE_TOKEN_LIFE
-    
+    app.config["SECRET_KEY"] = mode.secret_key
+    # Agntcy 
     app.config["AGNTCY_ORG_API_KEY"] = mode.agntcy_org_api_key
     app.config["AGNTCY_AGENTIC_SERVICE_API_KEY"] = mode.agntcy_service_api_key
-    app.config["AGNTCY_API_URL"] = "api.grpc.agent-identity.outshift.com"
     with open("AGNTCY_SERVER_BADGES_JSON.json", "r") as f:
         app.config["AGNTCY_SERVER_BADGES_JSON"] = json.load(f)
-    
-    app.config["SECRET_KEY"] = mode.secret_key
-
-    
+    app.config["AGNTCY_IDENTITY_REST_BASE_URL"] =  "https://api.agent-identity.outshift.com"
     
     # OAUTHLIB_INSECURE_TRANSPORT is only for local/dev; do not enable in prod
     if myenv == "local":
@@ -229,8 +225,8 @@ def create_app() -> Flask:
     QRcode(app)
 
     # ---- DB bootstrap / seed (idempotent) ----
-    agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
-    "did:web:wallet4agent.com:arf" ]
+    #agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
+    #"did:web:wallet4agent.com:arf" ]
 
     with app.app_context():
         db.create_all()
@@ -240,8 +236,8 @@ def create_app() -> Flask:
             seed_user()
             seed_wallet(mode, manager, myenv)
             seed_key(myenv)
-            for agent in agent_list:
-                create_oasf_vp(agent, manager, mode)
+            #for agent in agent_list:
+            #    create_oasf_vp(agent, manager, mode)
 
     # ---- Flask-Login ----
     login_manager = LoginManager()
@@ -341,6 +337,7 @@ def create_app() -> Flask:
         did_doc = this_wallet.did_document
         return Response(did_doc, headers=headers)
     
+    # service endpoint for linked vp
     @app.get('/service/<wallet_did>/<id>')
     def service(wallet_did, id):
         this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()

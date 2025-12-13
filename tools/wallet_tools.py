@@ -10,8 +10,9 @@ from universal_registrar import UniversalRegistrarClient
 import linked_vp
 import copy
 from routes import agent_chat
-from identityservice.sdk import IdentityServiceSdk as AgntcySdk
-import os
+from agntcy import agntcy_create_agent_and_badge_rest
+
+
 # do not provide this tool to an LLM
 tools_guest = [
     {
@@ -23,6 +24,10 @@ tools_guest = [
                 "agent_name": {
                     "type": "string",
                     "description": "Optional agent name. If it exists this name will be used to create the DID of the Agent."                    
+                },
+                "agent_description": {
+                    "type": "string",
+                    "description": "Optional agent description."                    
                 },
                 "agent_framework": {
                     "type": "string",
@@ -168,15 +173,6 @@ tools_admin = [
             "(verification methods, authentication methods, services, Linked VPs). "
             "Use this to understand how the Agent appears to the outside world."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
-    },
-    {
-        "name": "create_OASF",
-        "description": "Add an OASF record to the DID Document as a Linked VP. The Open Agent Schema Framework (OASF) is a standardized schema system for defining and managing AI agents and MCP server.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -357,11 +353,25 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
+def issue_agent_badge(agent_identifier: str, agent_name, agent_description, mode) -> dict:
+    """
+    Creates AGNTCY agent + badge via REST and returns result dict:
+      { app_id, app, badge }
+    """
+    # Use the service key to create the agent app & issue badge
+    api_key = current_app.config["AGNTCY_ORG_API_KEY"]
 
-def issue_agent_badge(agent_manifest_url: str) -> str:
-    os.environ["IDENTITY_SERVICE_GRPC_SERVER_URL"] = "api.grpc.agent-identity.outshift.com"
-    sdk = AgntcySdk(api_key=current_app.config["AGNTCY_AGENTIC_SERVICE_API_KEY"])
-    return sdk.issue_badge(agent_manifest_url)
+    # IMPORTANT: this should be a stable per-agent URL you serve
+    # (A2A well-known URL for that agent)
+    well_known_url = mode.server.rstrip("/") + f"/agents/{agent_identifier}/.well-known/a2a.json"
+
+    return agntcy_create_agent_and_badge_rest(
+        api_key=api_key,
+        agent_name=agent_name or agent_identifier,      # or a nicer display name
+        well_known_url=well_known_url,
+        agent_description=agent_description or "wallet4agent provisioned agent",
+        config=current_app.config,
+    )
 
 
 # for admin
@@ -556,13 +566,12 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     # Normalise agent_name → "my-agent" instead of "my agent"
     raw_agent_name = arguments.get("agent_name", "") or ""
     agent_name = "-".join(raw_agent_name.split()) or None
+    agent_description = arguments.get("agent_description")
 
     admins_identity_provider = arguments.get("admins_identity_provider")
     admins_login = (arguments.get("admins_login") or "").split(",")
     agent_card_url = arguments.get("agentcard_url")
     agent_framework = arguments.get("agent_framework", "None")
-
-    
 
     # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
     client = UniversalRegistrarClient()
@@ -572,7 +581,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     # Build service endpoints dynamically from your mode.server
     # e.g. https://wallet4agent.com/agents/<did> or similar
     # Here we keep it simple: OIDC4VP and A2A entrypoints under your base server URL.
-    a2a_endpoint = agent_card_url or (mode.server.rstrip("/") + "/a2a-card")
+    a2a_endpoint = agent_card_url
 
     # ----------------------------------------------------------------------
     # 2) Create DID + DID Document using the Universal Registrar
@@ -670,19 +679,11 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     db.session.commit()
     
     # After wallet is created, auto-issue AGNTCY badge if requested
-    agntcy_badge = None
-    agntcy_manifest_url = None
-
     if agent_framework == "Agntcy":
-        # IMPORTANT: this is the URL AGNTCY will "badge" (your agent manifest)
-        agntcy_manifest_url = mode.server.rstrip("/") + f"/agents/{agent_did}/manifest.json"
-        agntcy_badge = issue_agent_badge(agntcy_manifest_url)
-
-        # Store in DB (badge is the compact JWS string)
-        wallet.agntcy_agent_badge = agntcy_badge
-        wallet.agntcy_manifest_url = agntcy_manifest_url
+        res = issue_agent_badge(agent_did, agent_name, agent_description, mode)
+        wallet.agntcy_app_id = res["app_id"]
+        wallet.agntcy_agent_badge = json.dumps(res["badge"])  # if you want to store the whole badge object
         db.session.commit()
-
 
     # ----------------------------------------------------------------------
     # 6) Build structured response
@@ -695,9 +696,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     
     if agent_framework == "Agntcy":
         structured["agent_framework"] = agent_framework
-        structured["agntcy_manifest_url"] = agntcy_manifest_url
-        structured["agntcy_agent_badge"] = agntcy_badge
-
+        structured["agntcy_app_id"] = res["app_id"]
 
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
         structured["agent_client_id"] = agent_did
@@ -775,12 +774,10 @@ def call_update_configuration(
         updated["ecosystem_profile"] = eco
     
     # publish or unpublish
-    print(arguments)
     if "publish_unpublish" in arguments and arguments.get("publish_unpublish"):
         pub = arguments["publish_unpublish"]
         this_wallet.publish_unpublish = pub
         updated["publish_unpublish"] = pub
-    print("pub = ", this_wallet.publish_unpublish)
         
     if "sign" in arguments and arguments.get("sign"):
         sign = arguments["sign"]
@@ -900,6 +897,7 @@ def call_update_configuration(
         structured=structured,
     )
 
+
 def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
     """
     Take the base OASF.json template and adapt it for a specific wallet:
@@ -984,6 +982,7 @@ def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
 
 
 # tool
+"""
 def call_create_oasf(agent_identifier, config):
     manager = config["MANAGER"]
     mode = config["MODE"]
@@ -1035,7 +1034,7 @@ def call_create_oasf(agent_identifier, config):
         [{"type": "text", "text": text}],
         is_error=True,
     )
-
+"""
 
 
 def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:

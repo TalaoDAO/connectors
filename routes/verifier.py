@@ -27,8 +27,8 @@ public_rsa_key = rsa_key.export(private_key=False, as_dict=True)
 
 def init_app(app):
     # endpoints for wallet
-    app.add_url_rule('/<wallet_did>/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
-    app.add_url_rule('/<wallet_did>/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
+    app.add_url_rule('/<path:wallet_did>/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
+    app.add_url_rule('/<path:wallet_did>/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
 
     # to manage the verification through a link sent
     app.add_url_rule('/verification_email/<url_id>',  view_func=verification_email, methods=['GET'])

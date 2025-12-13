@@ -23,22 +23,22 @@ def init_app(app):
     
     # OIDC4VCI wallet endpoint (oauth2 client)
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
-    app.add_url_rule('/<wallet_did>/credential_offer', view_func=credential_offer, methods=['GET', 'POST'])
-    app.add_url_rule('/<wallet_did>/callback', view_func=callback, methods=['GET'])
+    app.add_url_rule('/<path:wallet_did>/credential_offer', view_func=credential_offer, methods=['GET', 'POST'])
+    app.add_url_rule('/<path:wallet_did>/callback', view_func=callback, methods=['GET'])
     
     # OIDC4VP wallet endpoint (Oauth2 authorization server)
-    app.add_url_rule('/<wallet_did>/authorize', view_func=authorize, methods=['GET', 'POST'])
+    app.add_url_rule('/<path:wallet_did>/authorize', view_func=authorize, methods=['GET', 'POST'])
     
     # openid configuration endpoint of the web wallet
-    app.add_url_rule('/<wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
+    app.add_url_rule('/<path:wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
     app.add_url_rule('/.well-known/openid-configuration/<wallet_did>', view_func=web_wallet_openid_configuration, methods=['GET'])
     
     # wallet landing page
-    app.add_url_rule('/<wallet_did>', view_func=wallet_landing_page, methods=['GET'])
+    app.add_url_rule('/<path:wallet_did>', view_func=wallet_landing_page, methods=['GET'])
     
     # user consent for credential offer / transaction_code
-    app.add_url_rule('/<wallet_did>/user/consent', view_func=user_consent, methods=['POST'])
-    app.add_url_rule('/<wallet_did>/user/tx_code', view_func=user_tx_code, methods=['POST'])
+    app.add_url_rule('/<path:wallet_did>/user/consent', view_func=user_consent, methods=['POST'])
+    app.add_url_rule('/<path:wallet_did>/user/tx_code', view_func=user_tx_code, methods=['POST'])
     
     return
 

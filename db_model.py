@@ -49,6 +49,7 @@ class Wallet(db.Model):
     receive_credentials = db.Column(db.Boolean, default=True)
     publish_unpublish = db.Column(db.Boolean, default=True)
     agntcy_agent_badge = db.Column(db.Text, nullable=True)
+    agntcy_app_id = db.Column(db.String(256))
     created_at = db.Column(db.DateTime, default=datetime.now)
     
     

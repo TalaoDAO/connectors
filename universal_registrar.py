@@ -188,7 +188,7 @@ class UniversalRegistrarClient:
 
         # Key = verificationMethod
         key_id = manager.create_or_get_key_for_verification_method(vm_id, key_spec)
-
+        
         # Build DID Document from the KMS key's JWK
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         did_doc = build_jwk_did_document(did, jwk, url, agent_card_url)

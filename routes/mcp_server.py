@@ -11,10 +11,7 @@ from prompts import wallet_prompts, verifier_prompts, wallet_prompts_for_guest
 import uuid
 import os
 from functools import lru_cache
-try:
-    from identityservice.sdk import IdentityServiceSdk as AgntcySdk
-except Exception:
-    AgntcySdk = None
+from agntcy import agntcy_verify_badge_rest
 
 
 
@@ -57,40 +54,58 @@ def init_app(app):
         return config
     
     def _agntcy_enabled() -> bool:
-        return bool(current_app.config.get("AGNTCY_ORG_API_KEY")) and bool(current_app.config.get("AGNTCY_API_URL"))
-
-    @lru_cache(maxsize=1)
-    def _agntcy_sdk():
-        if not AgntcySdk:
-            return None
-        return AgntcySdk(
-            api_key=current_app.config["AGNTCY_ORG_API_KEY"]
+        return bool(current_app.config.get("AGNTCY_ORG_API_KEY")) and bool(
+            current_app.config.get("AGNTCY_IDENTITY_REST_BASE_URL")
         )
+        
+    def _extract_subject_did(verification_result: dict) -> Optional[str]:
+        # try common flat fields
+        for k in ("sub", "subject", "did"):
+            v = verification_result.get(k)
+            if isinstance(v, str) and v:
+                return v
+
+        # try nested VC structures
+        vc = verification_result.get("verifiableCredential") or verification_result.get("vc")
+        if isinstance(vc, dict):
+            subj = vc.get("credentialSubject") or {}
+            if isinstance(subj, dict):
+                did = subj.get("id") or subj.get("did")
+                if isinstance(did, str) and did:
+                    return did
+        return None
+
 
     def _verify_agntcy_badge(jose_badge: str) -> Optional[dict]:
         """
-        Returns a dict containing at least a 'sub' (subject DID) if verified,
-        otherwise None.
+        Verify an AGNTCY badge (JOSE string) using REST.
+        Returns the verification response dict if valid, else None.
         """
         if not jose_badge or not _agntcy_enabled():
             return None
-        sdk = _agntcy_sdk()
-        if not sdk:
-            return None
+
         try:
-            # Expected to return something like { "verified": true, "sub": "...", ... }
-            result = sdk.verify_badge(jose_badge)
-            if not result:
-                return None
-            # Normalize possible response shapes
-            verified = bool(result.get("verified")) if isinstance(result, dict) else False
+            result = agntcy_verify_badge_rest(
+                org_api_key=current_app.config["AGNTCY_ORG_API_KEY"],
+                badge_jose=jose_badge,
+                config=current_app.config,
+            )
+
+            # VerificationResult shape depends on API, but you should treat a boolean "status"
+            # or "verified" as success.
+            verified = False
+            if isinstance(result, dict):
+                verified = bool(result.get("verified")) or bool(result.get("status"))
+
             if not verified:
                 return None
-            
-            return result if isinstance(result, dict) else {"raw": result}
+
+            return result
+
         except Exception as e:
-            logging.warning("AGNTCY badge verification failed: %s", str(e))
+            logging.warning("AGNTCY REST badge verification failed: %s", str(e))
             return None
+
 
     def _bearer_or_api_key():
         auth = request.headers.get("Authorization", "")
@@ -166,9 +181,8 @@ def init_app(app):
         if not badge:
             return "guest", None
 
-        # You want the verified subject DID here:
-        # depending on SDK response, it could be badge["sub"] or badge["subject"] etc.
-        subject_did = badge.get("sub") or badge.get("subject") or badge.get("did")
+        subject_did = _extract_subject_did(badge)
+
         if not subject_did:
             logging.warning("AGNTCY badge verified but missing subject DID")
             return "guest", None
@@ -184,51 +198,6 @@ def init_app(app):
         # simplest: any verified badge => agent role for that DID
         return "agent", subject_did
     
-    """
-    def get_role_and_agent_id() -> str:
-        encrypted_pat = _bearer_or_api_key()
-        if not encrypted_pat:
-            logging.warning("no access token")
-            return "guest", None 
-        try:
-            access_token = json.loads(oidc4vc.decrypt_string(encrypted_pat))
-        except Exception as e:
-            logging.warning("cannot decrypt access token %s", str(e))
-            return "guest", None
-        role = access_token.get("role")
-        agent_identifier = access_token.get("sub")
-        jti = access_token.get("jti")
-        exp = access_token.get("exp")
-        type = access_token.get("type")
-        logging.info("agent = %s,  role is %s and authentication is %s",agent_identifier, role, type)
-        
-        # check expiration date
-        now = int(datetime.timestamp(datetime.now()))
-        if exp and exp < now:
-            logging.warning("access token expired")
-            return "expired", None
-        
-        # check role
-        if not role:
-            return "guest", None
-        
-        this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-        # if pat check if token is still valid for this agent_identifier
-        if type == "pat":
-            try:
-                if jti == this_wallet.admin_pat_jti and role == "admin":
-                    return role, agent_identifier
-                elif jti == this_wallet.agent_pat_jti and role == "agent":
-                    return role, agent_identifier
-                else:
-                    print("Exit B")
-                    return "guest", None
-            except Exception as e:
-                logging.warning(str(e))
-                return "guest", None
-        else:
-            return role, agent_identifier
-    """ 
     
     def _error(code: int, message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         e = {"code": code, "message": message}
@@ -269,7 +238,7 @@ def init_app(app):
                 )
             }
         })
-
+    # Agntcy endpoint for the platform
     @app.get("/.well-known/vcs.json")
     def well_known_vcs():
         badges = current_app.config.get("AGNTCY_SERVER_BADGES_JSON", {})
@@ -294,7 +263,6 @@ def init_app(app):
                     tools_list["tools"].extend(getattr(module, const))
         return jsonify(tools_list)
 
-
     def _agent_manifest(did: str) -> dict:
         base = current_app.config["MODE"].server.rstrip("/")
         # Minimal manifest: identity + where to find badge + where MCP is
@@ -314,7 +282,7 @@ def init_app(app):
             }
         }
     
-    @app.get("/agents/<agent_did>/manifest.json")
+    @app.get("/agents/<path:agent_did>/manifest.json")
     def agent_manifest(agent_did: str):
         # only return for wallets you actually manage
         wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
@@ -322,13 +290,35 @@ def init_app(app):
             return jsonify({"error": "unknown_did"}), 404
         return jsonify(_agent_manifest(agent_did))
 
-    @app.get("/agents/<agent_did>/.well-known/vcs.json")
+    @app.get("/agents/<path:agent_did>/.well-known/vcs.json")
     def agent_well_known_vcs(agent_did: str):
         wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
         if not wallet or not getattr(wallet, "agntcy_agent_badge", None):
             return jsonify({"vcs": []}), 200
         # publish as "vcs": ["<compact-jws>"] (common pattern)
         return jsonify({"vcs": [wallet.agntcy_agent_badge]})
+    
+    # A2A endpoint for each agent
+    @app.get("/agents/<path:agent_did>/.well-known/a2a.json")
+    def agent_well_known_a2a(agent_did: str):
+        wallet = Wallet.query.filter(Wallet.did == agent_did).one_or_none()
+        if not wallet:
+            return jsonify({"error": "unknown_did"}), 404
+
+        base = current_app.config["MODE"].server.rstrip("/")
+        # Minimal “Agent Card”-style payload
+        return jsonify({
+            "id": agent_did,
+            "name": wallet.name or agent_did,
+            "service": {
+                "mcp": f"{base}/mcp",
+                "wallet": f"{base}/agents/{agent_did}",
+            },
+            "wellKnown": {
+                "vcs": f"{base}/agents/{agent_did}/.well-known/vcs.json",
+            }
+        })
+
     
     # --------- CORS for /mcp ---------  
     def _add_cors(resp):
@@ -823,13 +813,7 @@ def init_app(app):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 out = wallet_tools.call_get_configuration(agent_identifier, config())
-            
-            elif name == "create_OASF":
-                if role != "admin":
-                    return {"jsonrpc":"2.0","id":req_id,
-                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                out = wallet_tools.call_create_oasf(agent_identifier, config())
-                
+
             elif name == "update_configuration":
                 if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,

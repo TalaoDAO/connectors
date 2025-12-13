@@ -59,9 +59,4 @@ class currentMode:
         else:
             logging.error('Invalid environment setting. Choose either "aws" or "local".')
             sys.exit(1)
-            
-    def debug_on(self):
-        self.debug = True
-        
-    def debug_off(self):
-        self.debug = False
+    
