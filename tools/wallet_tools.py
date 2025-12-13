@@ -640,6 +640,8 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         admins_login=json.dumps(admins_login),
         agent_framework=agent_framework,
         did=agent_did,
+        agent_name=agent_name,
+        agent_description=agent_description,
         did_document=json.dumps(did_document),
         url=wallet_url,
         always_human_in_the_loop=arguments.get("always_human_in_the_loop"),
@@ -680,7 +682,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     
     # After wallet is created, auto-issue AGNTCY badge if requested
     if agent_framework == "Agntcy":
-        res = issue_agent_badge(agent_did, agent_name, agent_description, mode)
+        res = issue_agent_badge(agent_did, raw_agent_name, agent_description, mode)
         wallet.agntcy_app_id = res["app_id"]
         wallet.agntcy_agent_badge = json.dumps(res["badge"])  # if you want to store the whole badge object
         db.session.commit()

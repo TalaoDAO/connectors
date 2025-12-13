@@ -37,6 +37,8 @@ class Wallet(db.Model):
     notification_email = db.Column(db.String(256))
     ecosystem_profile = db.Column(db.String(64), default="DIIP V3") # to comply with default Talao profile
     agent_framework = db.Column(db.String(64), default="None")
+    agent_name = db.Column(db.String(128), default="")
+    agent_description = db.Column(db.Text, default="")
     url = db.Column(db.Text, unique=True)
     linked_vp = db.Column(db.Text, default="{}")
     chat_profile = db.Column(db.String(80), nullable=True)

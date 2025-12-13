@@ -309,7 +309,8 @@ def init_app(app):
         # Minimal “Agent Card”-style payload
         return jsonify({
             "id": agent_did,
-            "name": wallet.name or agent_did,
+            "name": wallet.agent_name or agent_did,
+            "description": wallet.agent_description,
             "service": {
                 "mcp": f"{base}/mcp",
                 "wallet": f"{base}/agents/{agent_did}",
