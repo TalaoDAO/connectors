@@ -12,6 +12,8 @@ from universal_registrar import UniversalRegistrarClient
 # FOR OASF only TODO
 def store_and_publish(cred, agent_identifier, manager, mode, published=False, type="OASF"):
     """ The OASF attestation is unique"""
+    this_wallet = Wallet.query.filter_by(agent_identifier=agent_identifier).first()
+    wallet_identifier = this_wallet.wallet_identifier
     # store attestation
     vcsd = cred.split("~") 
     vcsd_jwt = vcsd[0]
@@ -44,7 +46,8 @@ def store_and_publish(cred, agent_identifier, manager, mode, published=False, ty
     attestation = Attestation.query.filter(Attestation.service_id == service_id).one_or_none()    
     if not attestation:
         attestation = Attestation(
-                wallet_did=agent_identifier,
+                agent_identifier=agent_identifier,
+                wallet_identifier=wallet_identifier,
                 service_id=service_id,
                 vc=cred,
                 vc_format=attestation_header.get("typ"),
@@ -70,12 +73,12 @@ def store_and_publish(cred, agent_identifier, manager, mode, published=False, ty
 
 
 def publish_linked_vp(service_id: str, attestation: str, server: str, mode, manager, vc_format: str):
-    wallet_did = service_id.split("#")[0]
+    agent_identifier = service_id.split("#")[0]
     id = service_id.split("#")[1]
 
-    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if this_wallet is None:
-        logging.error("Wallet not found for DID %s", wallet_did)
+        logging.error("Wallet not found for DID %s", agent_identifier)
         return None
 
     try:
@@ -90,7 +93,7 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
         if not sd_jwt_presentation.endswith("~"):
             sd_jwt_presentation = sd_jwt_presentation + "~"
 
-        sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, wallet_did, manager)
+        sd_jwt_plus_kb = sign_and_add_kb(sd_jwt_presentation, agent_identifier, manager)
         if not sd_jwt_plus_kb:
             return None
 
@@ -103,18 +106,18 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
     # ---- Other VC formats (jwt_vc_json, ldp_vc, ...) ----
     else:
         payload = {
-            "iss": wallet_did,
-            "sub": wallet_did,
+            "iss": agent_identifier,
+            "sub": agent_identifier,
             "jti": secrets.token_urlsafe(16),
             "iat": int(datetime.utcnow().timestamp()),
             "vp": {
                 "@context": ["https://www.w3.org/ns/credentials/v2"],
                 "type": ["VerifiablePresentation"],
-                "holder": wallet_did,
+                "holder": agent_identifier,
                 "verifiableCredential": [attestation],
             },
         }
-        vm = wallet_did + "#key-1"
+        vm = agent_identifier + "#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         header = {
@@ -135,7 +138,7 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
 
     # ---- Update DID Document service entries (this is where #OASF uniqueness happens) ----
     service_array = did_document.get("service", []) or []
-    endpoint = server + "service/" + wallet_did + "/" + id
+    endpoint = server + "service/" + agent_identifier + "/" + id
 
     new_services = []
     for s in service_array:
@@ -157,13 +160,13 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
     db.session.commit()
     
     # After local update, if this is a did:cheqd, also update on-ledger via Universal Registrar
-    if wallet_did.startswith("did:cheqd:"):
+    if agent_identifier.startswith("did:cheqd:"):
         registrar = UniversalRegistrarClient()
         # extract network from did:cheqd:<network>:<id>
-        parts = wallet_did.split(":")
+        parts = agent_identifier.split(":")
         network = parts[2] if len(parts) > 3 else "testnet"
             
-        vm_id = wallet_did + "#key-1"
+        vm_id = agent_identifier + "#key-1"
         auth = did_document.get("authentication", [])
         if vm_id not in auth:
             auth.append(vm_id)
@@ -171,15 +174,15 @@ def publish_linked_vp(service_id: str, attestation: str, server: str, mode, mana
         
         try:
             registrar.update_did_cheqd(
-                did=wallet_did,
+                did=agent_identifier,
                 did_document=did_document,
                 manager=manager,
                 mode=mode,
                 network=network,
             )
-            logging.info("Linked VP published on-ledger for %s", wallet_did)
+            logging.info("Linked VP published on-ledger for %s", agent_identifier)
         except Exception as e:
-            logging.error("Failed to update cheqd DID document for %s: %s", wallet_did, str(e))
+            logging.error("Failed to update cheqd DID document for %s: %s", agent_identifier, str(e))
             return None
 
     logging.info("Linked VP published for %s (format=%s)", service_id, vc_format)
@@ -196,12 +199,11 @@ def base64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
-    
-def sign_and_add_kb(sd_jwt, wallet_did, manager):
+def sign_and_add_kb(sd_jwt, agent_identifier, manager):
     sd_jwt_presentation = sd_jwt.split("~")[0]
     now = int(datetime.utcnow().timestamp())
     nonce = secrets.token_urlsafe(16)
-    vm = wallet_did + "#key-1"
+    vm = agent_identifier + "#key-1"
     key_id = manager.create_or_get_key_for_tenant(vm)
     jwk, kid, alg = manager.get_public_key_jwk(key_id)
 
@@ -215,7 +217,7 @@ def sign_and_add_kb(sd_jwt, wallet_did, manager):
     }
     payload = {
         "iat": now,
-        "aud": wallet_did,
+        "aud": agent_identifier,
         "nonce": nonce,
         "sd_hash": sd_hash,
     }
@@ -236,12 +238,12 @@ def unpublish_linked_vp(service_id: str, server: str, mode, manager):
     The underlying Attestation row is NOT deleted; the caller is
     responsible for updating Attestation.published.
     """
-    wallet_did = service_id.split("#")[0]
+    agent_identifier = service_id.split("#")[0]
     id = service_id.split("#")[1]
 
-    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if this_wallet is None:
-        logging.error("Wallet not found for DID %s", wallet_did)
+        logging.error("Wallet not found for DID %s", agent_identifier)
         return None
 
     # Load DID Document
@@ -263,7 +265,7 @@ def unpublish_linked_vp(service_id: str, server: str, mode, manager):
 
     # ---- Update DID Document service entries ----
     service_array = did_document.get("service", []) or []
-    endpoint = server + "service/" + wallet_did + "/" + id
+    endpoint = server + "service/" + agent_identifier + "/" + id
 
     new_services = []
     for s in service_array:
@@ -280,22 +282,22 @@ def unpublish_linked_vp(service_id: str, server: str, mode, manager):
     db.session.commit()
 
     # ---- If did:cheqd, push update to ledger ----
-    if wallet_did.startswith("did:cheqd:"):
+    if agent_identifier.startswith("did:cheqd:"):
         try:
             registrar = UniversalRegistrarClient()
-            parts = wallet_did.split(":")
+            parts = agent_identifier.split(":")
             network = parts[2] if len(parts) > 3 else "testnet"
 
             registrar.update_did_cheqd(
-                did=wallet_did,
+                did=agent_identifier,
                 did_document=did_document,
                 manager=manager,
                 mode=mode,
                 network=network,
             )
-            logging.info("Linked VP unpublished on-ledger for %s", wallet_did)
+            logging.info("Linked VP unpublished on-ledger for %s", agent_identifier)
         except Exception as e:
-            logging.exception("Failed to update cheqd DID document for %s: %s", wallet_did, str(e))
+            logging.exception("Failed to update cheqd DID document for %s: %s", agent_identifier, str(e))
             return None
 
     logging.info("Linked VP unpublished for %s", service_id)

@@ -6,7 +6,7 @@ from urllib.parse import urlencode,parse_qs, urlparse
 import pkce
 import logging
 from datetime import datetime
-from db_model import Wallet, Attestation, db
+from db_model import Wallet, Attestation, db,get_wallet_by_wallet_identifier
 from utils import oidc4vc
 import secrets
 import json
@@ -23,22 +23,22 @@ def init_app(app):
     
     # OIDC4VCI wallet endpoint (oauth2 client)
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
-    app.add_url_rule('/<path:wallet_did>/credential_offer', view_func=credential_offer, methods=['GET', 'POST'])
-    app.add_url_rule('/<path:wallet_did>/callback', view_func=callback, methods=['GET'])
+    app.add_url_rule('/wallets/<wallet_identifier>/credential_offer', view_func=credential_offer, methods=['GET', 'POST'])
+    app.add_url_rule('/wallets/<wallet_identifier>/callback', view_func=callback, methods=['GET'])
     
     # OIDC4VP wallet endpoint (Oauth2 authorization server)
-    app.add_url_rule('/<path:wallet_did>/authorize', view_func=authorize, methods=['GET', 'POST'])
+    app.add_url_rule('/wallets/<wallet_identifier>/authorize', view_func=authorize, methods=['GET', 'POST'])
     
     # openid configuration endpoint of the web wallet
-    app.add_url_rule('/<path:wallet_did>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
-    app.add_url_rule('/.well-known/openid-configuration/<wallet_did>', view_func=web_wallet_openid_configuration, methods=['GET'])
+    app.add_url_rule('/wallets/<wallet_identifier>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
+    app.add_url_rule('/.well-known/openid-configuration/wallets/<wallet_identifier>', view_func=web_wallet_openid_configuration, methods=['GET'])
     
     # wallet landing page
-    app.add_url_rule('/<path:wallet_did>', view_func=wallet_landing_page, methods=['GET'])
+    app.add_url_rule('/wallets/<wallet_identifier>', view_func=wallet_landing_page, methods=['GET'])
     
     # user consent for credential offer / transaction_code
-    app.add_url_rule('/<path:wallet_did>/user/consent', view_func=user_consent, methods=['POST'])
-    app.add_url_rule('/<path:wallet_did>/user/tx_code', view_func=user_tx_code, methods=['POST'])
+    app.add_url_rule('/wallets/<wallet_identifier>/user/consent', view_func=user_consent, methods=['POST'])
+    app.add_url_rule('/wallets/<wallet_identifier>/user/tx_code', view_func=user_tx_code, methods=['POST'])
     
     return
 
@@ -55,23 +55,24 @@ def protected_resource_metadata():
     return jsonify(config)
 
 # openid configuration endpoint for web wallet 
-def web_wallet_openid_configuration(wallet_did):
+def web_wallet_openid_configuration(wallet_identifier):
     mode = current_app.config["MODE"]
     config = {
-        "credential_offer_endpoint": mode.server  + wallet_did + "/credential_offer",
-        "authorization_endpoint": mode.server +  wallet_did + "/authorize"
+        "credential_offer_endpoint": mode.server  + "wallets/" + wallet_identifier + "/credential_offer",
+        "authorization_endpoint": mode.server + "wallets/" + wallet_identifier + "/authorize"
     }
     return jsonify(config)
 
     
 # endpoint for wallet landing page
-def wallet_landing_page(wallet_did):
-    message = "This data wallet is controlled by the AI Agent :" + wallet_did + "."
+def wallet_landing_page(wallet_identifier):
+    w = get_wallet_by_wallet_identifier(wallet_identifier)
+    message = "This data wallet is controlled by the AI Agent :" + w.agent_identifier + "."
     return render_template("wallet/session_screen.html", message=message, title="Welcome !")
 
 
 # authorization endpoint of the wallet 
-def authorize(wallet_did):
+def authorize(wallet_identifier):
     """
     OIDC4VP / Self-Issued authorization endpoint for the wallet.
 
@@ -87,6 +88,8 @@ def authorize(wallet_did):
     5. POST (direct_post) the id_token ONLY to the response_uri endpoint.
     """
     manager = current_app.config["MANAGER"]
+    w = get_wallet_by_wallet_identifier(wallet_identifier)
+    wallet_did = w.agent_identifier
 
     # 1. Get request / request_uri parameters
     req_jwt = request.args.get("request") or request.form.get("request")
@@ -234,8 +237,7 @@ def authorize(wallet_did):
 
 
 def build_session_config(agent_id: str, credential_offer: dict, mode):
-    this_wallet = Wallet.query.filter(Wallet.did == agent_id).one_or_none()
-    #profile = this_wallet.ecosystem_profile
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_id).first()
     if not this_wallet:
         logging.warning("wallet not found")
         return None, "wallet not found"
@@ -347,10 +349,12 @@ def build_session_config(agent_id: str, credential_offer: dict, mode):
         "code_verifier": code_verifier,
         "code_challenge": code_challenge,
         "state": secrets.token_urlsafe(32),
-        "wallet_did": this_wallet.did,
+        "agent_identifier": this_wallet.agent_identifier,
+        'is_DID': bool(this_wallet.did_document),
+        "wallet_identifier": this_wallet.wallet_identifier,
         "wallet_url": this_wallet.url, # not used
         "wallet_profile": this_wallet.ecosystem_profile,
-        "owners_login": json.loads(this_wallet.owners_login),
+        "admins_login": json.loads(this_wallet.admins_login),
         "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
         "server": mode.server,
         "tx_code": tx_code,
@@ -377,7 +381,7 @@ def build_session_config(agent_id: str, credential_offer: dict, mode):
 def wallet(agent_id, credential_offer, mode, manager):
     session_config, text = build_session_config(agent_id, credential_offer, mode)
     if not session_config:
-        return None, text
+        return None, None, text
     if session_config["grant_type"] == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
         attestation, text = code_flow(session_config, mode, manager)
         return session_config, attestation, text
@@ -391,7 +395,9 @@ def wallet_route():
 
 
 # endpoint to request transaction id to user and get attestation in a pre authorzed flow with human in the loop
-def user_tx_code(wallet_did):
+def user_tx_code(wallet_identifier):
+    w = get_wallet_by_wallet_identifier(wallet_identifier)
+    agent_identifier = w.agent_identifier
     red = current_app.config["REDIS"]
     manager = current_app.config["MANAGER"]
     mode = current_app.config["MODE"]
@@ -405,7 +411,7 @@ def user_tx_code(wallet_did):
     sd_jwt_vc, text = code_flow(session_config, mode, manager)
     logout_user()
     if sd_jwt_vc:
-        return render_template("wallet/user_consent.html", wallet_did=wallet_did, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
+        return render_template("wallet/user_consent.html", wallet_did=agent_identifier, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
     else:
         logging.warning("sd jwt is missing %s", text)
         message = "The attestation cannot be issued"
@@ -413,7 +419,9 @@ def user_tx_code(wallet_did):
  
     
 # credential offer endpoint
-def credential_offer(wallet_did):
+def credential_offer(wallet_identifier):
+    w = get_wallet_by_wallet_identifier(wallet_identifier)
+    agent_identifier = w.agent_identifier
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
     manager = current_app.config["MANAGER"]
@@ -443,11 +451,11 @@ def credential_offer(wallet_did):
         else:
             # exit point to get transaction id from human
             if session_config["tx_code"]:
-                return render_template("wallet/tx_code.html", session_id=session_id, wallet_did=wallet_did)
+                return render_template("wallet/tx_code.html", session_id=session_id, wallet_did=agent_identifier)
             logout_user()   
             sd_jwt_vc, text = code_flow(session_config, mode, manager)
             if sd_jwt_vc:
-                return render_template("wallet/user_consent.html", wallet_did=wallet_did, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
+                return render_template("wallet/user_consent.html", wallet_did=agent_identifier, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
             else:
                 logging.warning("sd jwt is missing %s", text)
                 message = "The attestation cannot be issued"
@@ -476,12 +484,12 @@ def credential_offer(wallet_did):
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     
     # build session config and store it in memory for next call to the same endpoint
-    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
     
-    session_config, text = build_session_config(this_wallet.did, offer, mode)    
+    session_config, text = build_session_config(this_wallet.agent_identifier, offer, mode)    
     if not session_config:
         logging.warning(" session config expired %s", text)
         message = "The attestation offer has expired"
@@ -524,7 +532,9 @@ def credential_offer(wallet_did):
 
 
 # route to request user consent then store the VC
-def user_consent(wallet_did):
+def user_consent(wallet_identifier):
+    #w = get_wallet_by_wallet_identifier(wallet_identifier)
+    #wallet_did = w.agent_identifier
     mode = current_app.config["MODE"]
     decision = request.form.get('decision')
     if decision == "reject":
@@ -569,8 +579,8 @@ def user_consent(wallet_did):
 def build_authorization_request(session_config, red, mode) -> str:
     authorization_endpoint = session_config['authorization_endpoint']
     data = {
-        "redirect_uri": mode.server + session_config["wallet_did"] + "/callback",
-        "client_id": session_config["wallet_did"],
+        "redirect_uri": mode.server + "wallets/"  + session_config["wallet_identifier"] + "/callback",
+        "client_id": session_config["agent_identifier"],
         "scope": session_config["scope"],
         "response_type": "code",
         "code_challenge": session_config["code_challenge"],
@@ -584,7 +594,9 @@ def build_authorization_request(session_config, red, mode) -> str:
 
 
 # callback of the wallet as a client for OIDC4VCI authorization code flow
-def callback(wallet_did):
+def callback(wallet_identifier):
+    w = get_wallet_by_wallet_identifier(wallet_identifier)
+    wallet_did = w.agent_identifier
     logging.info('This is an authorized code flow')
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
@@ -615,7 +627,6 @@ def callback(wallet_did):
         if not raw:
             raise ValueError("Session not found or expired")
         session_config = json.loads(raw.decode())
-        print("code = ", code)
     except Exception as e:
         logging.warning("Callback issue: %s", e)
         message = "The authorization response cannot be processed (session expired or invalid callback)."
@@ -644,7 +655,7 @@ def token_request(session_config, mode):
     token_endpoint = session_config['token_endpoint']
     grant_type = session_config["grant_type"]
 
-    data = {"grant_type": grant_type, "client_id": session_config["wallet_did"]}
+    data = {"grant_type": grant_type, "client_id": session_config["agent_identifier"]}
 
     if grant_type == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
         data["pre-authorized_code"] = session_config["code"]
@@ -657,7 +668,7 @@ def token_request(session_config, mode):
         data.update({
             "code": session_config["code"],
             "code_verifier": session_config["code_verifier"],
-            "redirect_uri": mode.server + session_config["wallet_did"] + "/callback"
+            "redirect_uri": mode.server + "wallets/" + session_config["wallet_identifier"] + "/callback"
         })
     else:
         return None, "grant type is unknown"
@@ -721,8 +732,8 @@ def credential_request(session_config, access_token, proof):
 
 
 def build_proof_of_key_ownership(session_config, nonce, manager):
-    wallet_did = session_config["wallet_did"]
-    wallet_kid = wallet_did + "#key-1"
+    agent_identifier = session_config["agent_identifier"]
+    wallet_kid = agent_identifier + "#key-1"
     key_id = manager.create_or_get_key_for_tenant(wallet_kid)
     jwk, kid, alg = manager.get_public_key_jwk(key_id)
     header = {
@@ -730,11 +741,11 @@ def build_proof_of_key_ownership(session_config, nonce, manager):
         'alg': alg
     }
     payload = {
-        'iss': wallet_did,
+        'iss': agent_identifier,
         'iat': int(datetime.timestamp(datetime.now())),
         'aud': session_config["credential_issuer"]  # Credential Issuer URL
     }
-    if session_config["wallet_profile"] in ["EWC","ARF"]:
+    if session_config["wallet_profile"] in ["EWC","ARF"] or not session_config["is_DID"]:
         header["jwk"] = jwk
         header["jwk"].pop("kid", None)
     else:
@@ -836,7 +847,7 @@ def store_and_publish(cred, session_config, mode, manager, published=False):
 
     # Publish attestation
     id = secrets.token_hex(16)
-    service_id = session_config["wallet_did"] + "#" + id
+    service_id = session_config["agent_identifier"] + "#" + id
     if published:
         result = publish_linked_vp(
             service_id=service_id,
@@ -852,7 +863,8 @@ def store_and_publish(cred, session_config, mode, manager, published=False):
     
     # Store attestation     
     attestation = Attestation(
-            wallet_did=session_config["wallet_did"],
+            agent_identifier=session_config["agent_identifier"],
+            wallet_identifier=session_config["wallet_identifier"],
             service_id=service_id,
             vc=cred,
             vc_format=vc_format,

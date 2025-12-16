@@ -137,7 +137,7 @@ class UniversalRegistrarClient:
         did = f"did:web:{domain}:{name}"        
 
         # avoid collision in your Wallet table
-        one_wallet = Wallet.query.filter(Wallet.did == did).one_or_none()
+        one_wallet = Wallet.query.filter(Wallet.agent_identifier == did).first()
         if one_wallet:
             did = f"{did}-{random_numbers}"
 
@@ -168,6 +168,15 @@ class UniversalRegistrarClient:
         vm_id = did + "#key-1"
         return did, vm_id
 
+    def create_only_wallet(self, agent_identifier, manager):
+        key_spec = "ED25519"
+        vm_id = agent_identifier + "#key-1"
+        key_id = manager.create_or_get_key_for_verification_method(vm_id, key_spec)
+        if not key_id:
+            return False
+        return True
+        
+        
     def create_did_cheqd(
         self,
         manager: TenantKMSManager,

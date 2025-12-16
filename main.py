@@ -33,7 +33,7 @@ def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
     """
     oasf = copy.deepcopy(oasf_template)
 
-    agent_did = wallet.did
+    agent_did = wallet.agent_identifier
     # Subject of the OASF: this Agent's DID
     oasf["id"] = agent_did
 
@@ -104,37 +104,6 @@ def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
         module["tools"] = filtered_tools
 
     return oasf
-
-""""
-def create_oasf_vp(agent_identifier, manager, mode):
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-    if not this_wallet:
-        return None
-
-    with open("OASF.json", "r", encoding="utf-8") as f:
-        oasf_template = json.load(f)
-
-    # local copy of the same helper logic, or import from wallet_tools if you prefer
-    oasf_json = _adapt_oasf_for_wallet(oasf_template, this_wallet)
-
-    oasf_json["disclosure"] = ["all"]
-    oasf_json["vct"] = "urn:ai-agent:oasf:0001"
-
-    profile = this_wallet.ecosystem_profile
-    if profile == "DIIP V3":
-        draft = 13
-    else:
-        draft = 15
-
-    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360 * 24 * 60 * 60,)
-
-    success, message = linked_vp.store_and_publish( cred, agent_identifier, manager, mode, published=True, type="OASF")
-    if success:
-        return True
-
-    logging.warning("Failed to publish OASF record as Linked VP %s", message)
-    return False
-"""
     
 def create_app() -> Flask:
     """Application factory: configure, wire dependencies, register routes/APIs."""
@@ -224,10 +193,6 @@ def create_app() -> Flask:
     Session(app)
     QRcode(app)
 
-    # ---- DB bootstrap / seed (idempotent) ----
-    #agent_list = ["did:web:wallet4agent.com:demo", "did:web:wallet4agent.com:demo2", "did:web:wallet4agent.com:diipv4", "did:web:wallet4agent.com:ewc",
-    #"did:web:wallet4agent.com:arf" ]
-
     with app.app_context():
         db.create_all()
         # NOTE: seeding in production can be dangerous; guard by env flag
@@ -236,9 +201,7 @@ def create_app() -> Flask:
             seed_user()
             seed_wallet(mode, manager, myenv)
             seed_key(myenv)
-            #for agent in agent_list:
-            #    create_oasf_vp(agent, manager, mode)
-
+         
     # ---- Flask-Login ----
     login_manager = LoginManager()
     login_manager.login_view = "register"   # endpoint name for redirect
@@ -317,8 +280,8 @@ def create_app() -> Flask:
     # .well-known DID API to serve DID Document as did:web
     @app.get('/<optional_path>/did.json')
     def well_known_did(optional_path):
-        wallet_did = "did:web:wallet4agent.com:" + optional_path
-        this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+        agent_identifier = "did:web:wallet4agent.com:" + optional_path
+        this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
         headers = {
             "Content-Type": "application/did+ld+json",
             "Cache-Control": "no-cache",
@@ -338,9 +301,9 @@ def create_app() -> Flask:
         return Response(did_doc, headers=headers)
     
     # service endpoint for linked vp
-    @app.get('/service/<wallet_did>/<id>')
-    def service(wallet_did, id):
-        this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
+    @app.get('/service/<agent_identifier>/<id>')
+    def service(agent_identifier, id):
+        this_wallet = Wallet.query.filter(Wallet.wallet_identifier == agent_identifier).first()
         service = json.loads(this_wallet.linked_vp).get(id)
         if service:
             headers = {

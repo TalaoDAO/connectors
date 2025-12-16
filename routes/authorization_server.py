@@ -46,7 +46,7 @@ def authenticate_client():
             # IMPORTANT: split from the RIGHT so DIDs with ':' are preserved
             client_id, client_secret = decoded.rsplit(":", 1)
 
-            wallet = Wallet.query.filter(Wallet.did == client_id).one_or_none()
+            wallet = Wallet.query.filter(Wallet.agent_identifier == client_id).first()
             if not wallet:
                 logging.warning("Basic auth: no wallet found for did=%s", client_id)
                 return None, "invalid_client_credentials"
@@ -73,7 +73,7 @@ def authenticate_client():
 
     if client_id and client_secret:
         logging.info("Client Secret Post")
-        wallet = Wallet.query.filter(Wallet.did == client_id).one_or_none()
+        wallet = Wallet.query.filter(Wallet.agent_identifier == client_id).first()
         if not wallet:
             logging.warning("Post auth: no wallet found for did=%s", client_id)
             return None, "invalid_client_credentials"
@@ -120,7 +120,7 @@ def authenticate_client():
                 return None, "invalid_client_assertion"
 
             # Load wallet & public key from DB
-            wallet = Wallet.query.filter(Wallet.did == client_id).one_or_none()
+            wallet = Wallet.query.filter(Wallet.agent_identifier == client_id).first()
             if not wallet or not wallet.client_public_key:
                 logging.warning("JWT auth: no wallet or public key for did=%s", client_id)
                 return None, "unknown_client"

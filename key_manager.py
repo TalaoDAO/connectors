@@ -257,18 +257,18 @@ class TenantKMSManager:
     # -------- core / legacy: tenant-level key (DID) --------
 
     def create_or_get_key_for_tenant(self, vm_id, description=None, key_spec: str = None):
-        if vm_id.startswith("did:cheqd:"):
+        if not vm_id.startswith("did:web:"):
             if "#" not in vm_id:
                 vm_id = vm_id + "#key-1"
             # test if it exist
             key_exist = Key.query.filter(Key.key_id == vm_id).one_or_none()
             if key_exist:
-                logging.info("Key for cheqd exist")
+                logging.info("Key exists")
                 return vm_id
             # create a new key
             ed_jwk = jwk.JWK.generate(kty="OKP", crv="Ed25519")
             private_key = ed_jwk.export(private_key=True, as_dict=True)
-            private_key["kid"] = ed_jwk.thumbprint()
+            private_key["kid"] = vm_id  # ed_jwk.thumbprint()
             key_data = encrypt_json(private_key)
             new_key = Key(
                 key_id=vm_id,
@@ -464,7 +464,7 @@ class TenantKMSManager:
     def sign_message(self, key_id, message_bytes: bytes) -> Tuple[bytes, Tuple[int, int]]:
         digest = hashlib.sha256(message_bytes).digest()
         
-        if key_id.startswith("did:cheqd:"):
+        if not key_id.startswith("did:web:"):
             # --- Local Ed25519 path using jwcrypto ---
             key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
             if key_in_db is None:
@@ -524,7 +524,7 @@ class TenantKMSManager:
         signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
 
         # --- Local Ed25519 path (EdDSA) ---
-        if key_id.startswith("did:cheqd"):
+        if not key_id.startswith("did:web:"):
             # sign_message() will use the local Ed25519 key when local=True
             signature, _ = self.sign_message(key_id, signing_input)
 

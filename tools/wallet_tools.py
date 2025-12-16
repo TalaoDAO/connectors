@@ -7,32 +7,23 @@ import logging
 from utils import oidc4vc, message
 import hashlib
 from universal_registrar import UniversalRegistrarClient
-import linked_vp
-import copy
 from routes import agent_chat
-from agntcy import agntcy_create_agent_and_badge_rest
+import uuid
+#from agntcy import agntcy_create_agent_and_badge_rest
 
 
 # do not provide this tool to an LLM
 tools_guest = [
     {
         "name": "create_agent_identifier_and_wallet",
-        "description": "Generate an identifier (DID) for the Agent in the ecosystem and create a new wallet to store Agent attestations as verifiable credentials.",
+        "description": "Generate a Decentralized Identifier (DID) for the Agent and create a wallet to store Agent attestations as verifiable credentials.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "Optional agent name. If it exists this name will be used to create the DID of the Agent."                    
-                },
-                "agent_description": {
-                    "type": "string",
-                    "description": "Optional agent description."                    
-                },
                 "agent_framework": {
                     "type": "string",
                     "description": "Agent framework as Agntcy",
-                    "enum": ["None", "Agntcy"],
+                    "enum": ["None", "Agntcy", "A2A"],
                     "default": "None"
                 },
                 "did_method": {
@@ -92,6 +83,67 @@ tools_guest = [
         }
     },
     {
+        "name": "create_agent_wallet",
+        "description": "Create a wallet to store Agent attestations as verifiable credentials.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent_identifier": {
+                    "type": "string",
+                    "description": "Input your Agent identifier"
+                },
+                "agent_framework": {
+                    "type": "string",
+                    "description": "Agent framework as Agntcy",
+                    "enum": ["None", "Agntcy", "A2A"],
+                    "default": "None"
+                },
+                "ecosystem_profile": {
+                    "type": "string",
+                    "description": "Ecosystem profile",
+                    "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF"],
+                    "default": "DIIP V3"
+                },
+                "always_human_in_the_loop": {
+                    "type": "boolean",
+                    "description": "Always human in the loop",
+                    "default": True
+                },
+                "receive_credentials": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to receive attestations as verifiable credentials",
+                    "default": True
+                }, 
+                "sign": {
+                    "type": "boolean",
+                    "description": "Authorize Agent to sign message and payload",
+                    "default": False
+                },
+                "mcp_client_authentication": {
+                    "type": "string",
+                    "description": "Authentication between MCP client and MCP server for agent. Admins use PAT",
+                    "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
+                    "default": "Personal Access Token (PAT)"
+                },
+                "admins_identity_provider": {
+                    "type": "string",
+                    "description": "Identity provider for admins",
+                    "enum": ["google", "github"],
+                    "default": "google"
+                },
+                "admins_login": {
+                    "type": "string",
+                    "description": "One or more admin login separated by a comma (Google email, Github login ). This login will be needed to accept new attestations offer."
+                },
+                "notification_email": {
+                    "type": "string",
+                    "description": "This email is used to notify about Agent actions if human in the loop"
+                }
+            },
+            "required": ["agent_identifier", "admins_identity_provider", "admins_login"]
+        }
+    },
+    {
         "name": "help_wallet4agent",
         "description": (
             "Explain to a human developer how to install and use the Wallet4Agent MCP "
@@ -115,6 +167,73 @@ tools_guest = [
 ]
 
 
+tools_for_did = [
+    {
+        "name": "register_wallet_as_chat_agent",
+        "description": (
+            "Attach this wallet and DID to a Chat AI agent for demo or testing. "
+            "You will be able to access to the Chat through the URL https://wallet4agent.com/agent/<my-chat>."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "my-chat": {
+                    "type": "string",
+                    "description": (
+                        "Short profile name for the chat agent."
+                        " If omitted, a name will be derived from the DID."
+                    )
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "publish_attestation",
+        "description": (
+            "Publish one of this Agent's stored attestations as a Linked Verifiable "
+            "Presentation in the DID Document. The attestation itself is already "
+            "stored in the wallet; this tool only exposes it via a Linked VP "
+            "service. Supports both did:web and did:cheqd identifiers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_id": {
+                    "type": "integer",
+                    "description": (
+                        "The local Attestation ID (from get_attestations_of_this_wallet "
+                        "structuredContent.id) to publish."
+                    )
+                }
+            },
+            "required": ["attestation_id"]
+        }
+    },
+    {
+        "name": "unpublish_attestation",
+        "description": (
+            "Unpublish one of this Agent's previously published attestations: "
+            "it removes the Linked Verifiable Presentation from the DID Document "
+            "and from the wallet's linked_vp registry, but keeps the credential "
+            "stored locally. Supports both did:web and did:cheqd identifiers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attestation_id": {
+                    "type": "integer",
+                    "description": (
+                        "The local Attestation ID (from get_attestations_of_this_wallet "
+                        "structuredContent.id) to unpublish."
+                    )
+                }
+            },
+            "required": ["attestation_id"]
+        }
+    }
+]
+
 tools_admin = [
     {
         "name": "help_wallet4agent",
@@ -134,26 +253,6 @@ tools_admin = [
         "inputSchema": {
             "type": "object",
             "properties": {},
-            "required": []
-        }
-    },
-    {
-        "name": "register_wallet_as_chat_agent",
-        "description": (
-            "Attach this wallet and DID to a Chat AI agent for demo or testing. "
-            "You will be able to access to the Chat through the URL https://wallet4agent.com/agent/<my-chat>."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "my-chat": {
-                    "type": "string",
-                    "description": (
-                        "Short profile name for the chat agent."
-                        " If omitted, a name will be derived from the DID."
-                    )
-                }
-            },
             "required": []
         }
     },
@@ -238,8 +337,8 @@ tools_admin = [
         }
     },
     {
-        "name": "delete_identity",
-        "description": "Delete agent identifier and wallet",
+        "name": "delete_wallet",
+        "description": "Delete wallet and attestations",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -297,50 +396,6 @@ tools_admin = [
             "properties": {},
             "required": []
         }
-    },
-    {
-        "name": "publish_attestation",
-        "description": (
-            "Publish one of this Agent's stored attestations as a Linked Verifiable "
-            "Presentation in the DID Document. The attestation itself is already "
-            "stored in the wallet; this tool only exposes it via a Linked VP "
-            "service. Supports both did:web and did:cheqd identifiers."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "attestation_id": {
-                    "type": "integer",
-                    "description": (
-                        "The local Attestation ID (from get_attestations_of_this_wallet "
-                        "structuredContent.id) to publish."
-                    )
-                }
-            },
-            "required": ["attestation_id"]
-        }
-    },
-    {
-        "name": "unpublish_attestation",
-        "description": (
-            "Unpublish one of this Agent's previously published attestations: "
-            "it removes the Linked Verifiable Presentation from the DID Document "
-            "and from the wallet's linked_vp registry, but keeps the credential "
-            "stored locally. Supports both did:web and did:cheqd identifiers."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "attestation_id": {
-                    "type": "integer",
-                    "description": (
-                        "The local Attestation ID (from get_attestations_of_this_wallet "
-                        "structuredContent.id) to unpublish."
-                    )
-                }
-            },
-            "required": ["attestation_id"]
-        }
     }
 ]
 
@@ -375,47 +430,44 @@ def issue_agent_badge(agent_identifier: str, agent_name, agent_description, mode
 
 
 # for admin
-def call_delete_identity(wallet_did) -> Dict[str, Any]:
+def call_delete_wallet(agent_identifier) -> Dict[str, Any]:
     """
     Delete a wallet and its related data from the database.
 
-    - Removes the Wallet row identified by `wallet_did`
+    - Removes the Wallet row identified by `agent_identifier`
     - Removes all Attestations linked to this wallet
     - Returns a structured summary of what was deleted
     """
 
     # Look up the wallet
-    this_wallet = Wallet.query.filter(Wallet.did == wallet_did).one_or_none()
-    if not this_wallet:
-        text = f"Wallet not found for DID: {wallet_did}"
+    wallets = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).all()
+    if not wallets:
+        text = f"Wallet not found for gnet identifier: {agent_identifier}"
         return _ok_content(
             [{"type": "text", "text": text}],
             is_error=True,
         )
 
     # Query attestations linked to this wallet
-    attestations_list = Attestation.query.filter_by(wallet_did=wallet_did).all()
+    attestations_list = Attestation.query.filter_by(agent_identifier=agent_identifier).all()
     number_of_attestations = len(attestations_list)
 
     # Capture info before deletion
     structured = {
-        "wallet_did": wallet_did,
-        "wallet_url": getattr(this_wallet, "url", None),
+        "agent_identifier": agent_identifier,
         "number_of_attestations_deleted": number_of_attestations,
-        "ecosystem_profile": getattr(this_wallet, "ecosystem_profile", None),
-        "human_in_the_loop": getattr(this_wallet, "always_human_in_the_loop", None),
         "deleted": True,
     }
 
     # First delete attestations, then wallet
     for att in attestations_list:
         db.session.delete(att)
-
-    db.session.delete(this_wallet)
+    for w in wallets:
+        db.session.delete(w)
     db.session.commit()
 
     text = (
-        f"Wallet {wallet_did} has been deleted, along with "
+        f"Agent {agent_identifier} has been deleted, along with wallets and "
         f"{number_of_attestations} attestation(s)."
     )
 
@@ -427,14 +479,14 @@ def call_delete_identity(wallet_did) -> Dict[str, Any]:
 
 # admin tool
 def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
 
     # Turn all DB columns into a dict
     structured = {
         column.name: getattr(this_wallet, column.name)
         for column in Wallet.__table__.columns
     }
-    attestations = Attestation.query.filter(Attestation.wallet_did == agent_identifier).all()
+    attestations = Attestation.query.filter(Attestation.agent_identifier == agent_identifier).all()
     structured["nb_attestations"] = len(attestations)
     structured["nb_attestations_published"] = len(json.loads(this_wallet.linked_vp))
     if structured.get("created_at"):
@@ -452,7 +504,7 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
     
 
 def call_rotate_personal_access_token(arguments, agent_identifier) -> Dict[str, Any]:
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     structured = {
         "agent_identifier": agent_identifier,
         "wallet_url": this_wallet.url
@@ -473,7 +525,7 @@ def call_rotate_personal_access_token(arguments, agent_identifier) -> Dict[str, 
 
 def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str, Any]:
     # Find the wallet for this agent
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
@@ -515,7 +567,7 @@ def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str
 
     # Choose an identifier for the new key
     # Prefer a provided 'kid' if present, otherwise use "key-N"
-    did = this_wallet.did
+    did = this_wallet.agent_identifier
     key_suffix = jwk.get("kid")
     if not key_suffix:
         key_suffix = f"key-{len(verification_methods) + 1}"
@@ -546,7 +598,7 @@ def call_add_authentication_key(arguments, agent_identifier, config) -> Dict[str
 
     text = "New authentication key added to the DID Document."
     structured = {
-        "agent_identifier": this_wallet.did,
+        "agent_identifier": this_wallet.agent_identifier,
         "wallet_url": this_wallet.url,
         "did_document": did_document,
         "added_key_id": verification_method_id,
@@ -566,7 +618,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     # Normalise agent_name → "my-agent" instead of "my agent"
     raw_agent_name = arguments.get("agent_name", "") or ""
     agent_name = "-".join(raw_agent_name.split()) or None
-    agent_description = arguments.get("agent_description")
 
     admins_identity_provider = arguments.get("admins_identity_provider")
     admins_login = (arguments.get("admins_login") or "").split(",")
@@ -575,12 +626,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
 
     # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
     client = UniversalRegistrarClient()
-
     method = arguments.get("did_method")
-
-    # Build service endpoints dynamically from your mode.server
-    # e.g. https://wallet4agent.com/agents/<did> or similar
-    # Here we keep it simple: OIDC4VP and A2A entrypoints under your base server URL.
     a2a_endpoint = agent_card_url
 
     # ----------------------------------------------------------------------
@@ -607,8 +653,8 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             [{"type": "text", "text": f"Unsupported DID method: {method}"}],
             is_error=True,
         )
-
-    wallet_url = mode.server.rstrip("/") + "/" + agent_did
+    wallet_identifier = str(uuid.uuid4())
+    wallet_url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
 
     if not did_document:
         return _ok_content(
@@ -639,9 +685,8 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         admins_identity_provider=admins_identity_provider,
         admins_login=json.dumps(admins_login),
         agent_framework=agent_framework,
-        did=agent_did,
-        agent_name=agent_name,
-        agent_description=agent_description,
+        agent_identifier=agent_did,
+        wallet_identifier=wallet_identifier,
         did_document=json.dumps(did_document),
         url=wallet_url,
         always_human_in_the_loop=arguments.get("always_human_in_the_loop"),
@@ -680,13 +725,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     db.session.add(wallet)
     db.session.commit()
     
-    # After wallet is created, auto-issue AGNTCY badge if requested
-    if agent_framework == "Agntcy":
-        res = issue_agent_badge(agent_did, raw_agent_name, agent_description, mode)
-        wallet.agntcy_app_id = res["app_id"]
-        wallet.agntcy_agent_badge = json.dumps(res["badge"])  # if you want to store the whole badge object
-        db.session.commit()
-
     # ----------------------------------------------------------------------
     # 6) Build structured response
     # ----------------------------------------------------------------------
@@ -696,10 +734,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         "wallet_url": wallet.url
     }
     
-    if agent_framework == "Agntcy":
-        structured["agent_framework"] = agent_framework
-        structured["agntcy_app_id"] = res["app_id"]
-
+    
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
         structured["agent_client_id"] = agent_did
         structured["agent_client_secret"] = client_secret
@@ -754,7 +789,7 @@ def call_update_configuration(
       - client_public_key (public JWK for OAuth2 private_key_jwt client auth)
     """
     # 0. Load wallet
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
@@ -816,7 +851,7 @@ def call_update_configuration(
             )
 
         services = did_document.get("service", []) or []
-        a2a_id = f"{this_wallet.did}#a2a"
+        a2a_id = f"{this_wallet.agent_identifier}#a2a"
 
         # Remove existing A2AService entries for that id
         new_services = [s for s in services if s.get("id") != a2a_id]
@@ -876,7 +911,7 @@ def call_update_configuration(
             client_pk = None
 
     structured = {
-        "agent_identifier": this_wallet.did,
+        "agent_identifier": this_wallet.agent_identifier,
         "wallet_url": this_wallet.url,
         "ecosystem_profile": this_wallet.ecosystem_profile,
         "publish_unpublish": this_wallet.publish_unpublish,
@@ -900,150 +935,12 @@ def call_update_configuration(
     )
 
 
-def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
-    """
-    Take the base OASF.json template and adapt it for a specific wallet:
-    - Set the OASF `id` to the Agent DID.
-    - Filter agent tools according to wallet flags (sign, receive_credentials, publish_unpublish).
-    - Expose capabilities under wallet4agent.capabilities.
-    """
-    oasf = copy.deepcopy(oasf_template)
-
-    agent_did = wallet.did
-    # Subject of the OASF: this Agent's DID
-    oasf["id"] = agent_did
-
-    # ---- Expose capabilities in wallet4agent section ----
-    w4a = oasf.get("wallet4agent") or {}
-    capabilities = w4a.get("capabilities") or {}
-
-    capabilities.update(
-        {
-            "sign": bool(wallet.sign),
-            "receive_credentials": bool(wallet.receive_credentials),
-            "publish_unpublish": bool(wallet.publish_unpublish),
-            "always_human_in_the_loop": bool(wallet.always_human_in_the_loop),
-        }
-    )
-
-    w4a["capabilities"] = capabilities
-    oasf["wallet4agent"] = w4a
-
-    # ---- Adapt tools inside the mcp_server module ----
-    modules = oasf.get("modules") or []
-    for module in modules:
-        if module.get("type") != "mcp_server":
-            continue
-
-        tools = module.get("tools") or []
-        filtered_tools = []
-
-        for tool in tools:
-            name = tool.get("name")
-            if not name:
-                filtered_tools.append(tool)
-                continue
-
-            # In the new OASF.json, tools use "role" (guest/agent/dev).
-            # Some tools (publish/unpublish) have no explicit role, so we default to "agent".
-            role = tool.get("role") or tool.get("audience") or "agent"
-
-            # Guests & dev tools are always present
-            if role in ("guest", "admin"):
-                filtered_tools.append(tool)
-                continue
-
-            if role != "agent":
-                # Any other audience: keep as-is
-                filtered_tools.append(tool)
-                continue
-
-            # ---- Agent tools: gate them by wallet flags ----
-
-            # Receiving credentials
-            if name == "accept_credential_offer" and not wallet.receive_credentials:
-                # Agent cannot receive credentials
-                continue
-
-            # Signing tools
-            if name in ("sign_text_message", "sign_json_payload") and not wallet.sign:
-                # Agent cannot sign
-                continue
-
-            # Publish / unpublish tools
-            if name in ("publish_attestation", "unpublish_attestation") and not wallet.publish_unpublish:
-                # Agent is not allowed to manage Linked VP publication
-                continue
-
-            # All remaining agent tools are always available
-            filtered_tools.append(tool)
-
-        module["tools"] = filtered_tools
-
-    return oasf
-
-
 # tool
-"""
-def call_create_oasf(agent_identifier, config):
-    manager = config["MANAGER"]
-    mode = config["MODE"]
-
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-    if not this_wallet:
-        text = f"No wallet found for Agent DID {agent_identifier}."
-        return _ok_content([{"type": "text", "text": text}], is_error=True)
-
-    # 1. Load OASF template from file
-    with open("OASF.json", "r", encoding="utf-8") as f:
-        oasf_template = json.load(f)
-
-    # 2. Adapt template to this wallet (tools & capabilities)
-    oasf_json = _adapt_oasf_for_wallet(oasf_template, this_wallet)
-
-    # 3. Add envelope fields for the SD-JWT/DC attestation
-    #    (these are credential-level, not service-level)
-    oasf_json["disclosure"] = ["all"]
-    oasf_json["vct"] = "urn:ai-agent:oasf:0001"
-
-    # 4. Select DIIP draft according to ecosystem profile
-    profile = this_wallet.ecosystem_profile
-    if profile == "DIIP V3":
-        draft = 13
-    else:
-        draft = 15
-
-    # 5. Sign as DC+SD-JWT with the Agent key
-    cred = oidc4vc.sign_sdjwt_by_agent(oasf_json, agent_identifier, manager, draft=draft, duration=360 * 24 * 60 * 60)
-
-    # 6. Store & publish as Linked VP (#OASF service)
-    success, message = linked_vp.store_and_publish( cred, agent_identifier, manager, mode, published=True, type="OASF",)
-
-    if success:
-        structured = {
-            "success": True,
-            "message": message,
-        }
-        text = f"{message} for Agent {agent_identifier}"
-        return _ok_content(
-            [{"type": "text", "text": text}],
-            structured=structured,
-        )
-
-    logging.warning("Failed to publish OASF record as Linked VP: %s", message)
-    text = "Failed to publish OASF record"
-    return _ok_content(
-        [{"type": "text", "text": text}],
-        is_error=True,
-    )
-"""
-
-
 def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
     """
     Dev tool: inspect and summarize the DID Document associated with this Agent's wallet.
     """
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": f"No wallet found for Agent DID {agent_identifier}."}],
@@ -1095,7 +992,7 @@ def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
 
 
 def call_register_wallet_as_chat_agent(arguments, agent_identifier, config) -> Dict[str, Any]:
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
@@ -1123,4 +1020,135 @@ def call_register_wallet_as_chat_agent(arguments, agent_identifier, config) -> D
         "chat_url": mode.server + "agent/" + profile,
         "agent_identifier": agent_identifier
     }
+    return _ok_content([{"type": "text", "text": text}], structured=structured)
+
+
+def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
+    mode = config["MODE"]
+    manager = config["MANAGER"]
+
+    admins_identity_provider = arguments.get("admins_identity_provider")
+    admins_login = (arguments.get("admins_login") or "").split(",")
+    agent_identifier = arguments.get("agent_identifier") or agent_identifier
+    
+    wallets = Wallet.query.filter_by(agent_identifier=agent_identifier).all()
+    # cannot create more than 1 wallet per agent
+    if wallets:
+        return _ok_content(
+                [{"type": "text", "text": "This Agent has one wallet"}],
+                is_error=True,
+            )
+
+    # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
+    client = UniversalRegistrarClient()
+    result = client.create_only_wallet(agent_identifier, manager)
+    if not result:
+        return _ok_content(
+                [{"type": "text", "text": "Identifier not supported"}],
+                is_error=True,
+            )
+    wallet_identifier = str(uuid.uuid4())
+    wallet_url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
+    
+    admin_pat, admin_pat_jti = oidc4vc.generate_access_token(agent_identifier, "admin", "pat")
+    agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_identifier, "agent", "pat")
+    mcp_authentication = arguments.get("mcp_client_authentication")
+    
+    client_secret = secrets.token_urlsafe(64)
+
+    # ----------------------------------------------------------------------
+    # 5) Create / update admins and wallet in DB
+    # ----------------------------------------------------------------------
+
+    wallet = Wallet(
+        admin_pat_jti=admin_pat_jti,
+        agent_pat_jti=agent_pat_jti,
+        mcp_authentication=mcp_authentication,
+        client_secret_hash=oidc4vc.hash_client_secret(client_secret),
+        admins_identity_provider=admins_identity_provider,
+        admins_login=json.dumps(admins_login),
+        agent_identifier=agent_identifier,
+        wallet_identifier=wallet_identifier,
+        url=wallet_url,
+        always_human_in_the_loop=arguments.get("always_human_in_the_loop"),
+        publish_unpublish=0,
+        sign=arguments.get("sign"),
+        notification_email=arguments.get("notification_email"),
+        receive_credentials=arguments.get("receive_credentials")
+    )
+    # If your Wallet model has a key_id column, you can also store:
+    # wallet.key_id = key_id
+
+    for user_login in admins_login:
+        if admins_identity_provider == "google":
+            email = user_login
+            login = email
+            admin = User.query.filter_by(email=email).first()
+        elif admins_identity_provider == "github":
+            admin = User.query.filter_by(email=user_login).first()
+            email = ""
+            login = user_login
+        else:
+            return _ok_content(
+                [{"type": "text", "text": "Identity provider not supported"}],
+                is_error=True,
+            )
+
+        if not admin:
+            admin = User(
+                email=email,
+                login=login,
+                registration="wallet_creation",
+                subscription="free",
+            )
+        db.session.add(admin)
+
+    db.session.add(wallet)
+    db.session.commit()
+    
+    # ----------------------------------------------------------------------
+    # 6) Build structured response
+    # ----------------------------------------------------------------------
+    structured = {
+        "agent_identifier": agent_identifier,
+        "admin_personal_access_token": admin_pat,
+        "agent_personal_access_token": agent_pat,
+        "wallet_url": wallet.url
+    }
+    
+    
+    if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
+        structured["agent_client_id"] = agent_identifier
+        structured["agent_client_secret"] = client_secret
+        structured["authorization_server"] = mode.server
+
+        text = (
+            "New agent identifier and wallet created.\n"
+            f"Agent DID: {agent_identifier}\n"
+            f"Wallet URL: {wallet.url}\n"
+            "Copy your admin personal access token and OAuth client credentials from the secure console; "
+            "they are not stored and will not be shown again."
+        )
+    else:
+        structured["agent_personal_access_token"] = agent_pat
+
+        text = (
+            "New agent identifier and wallet created.\n"
+            f"Agent DID: {agent_identifier}\n"
+            f"Wallet URL: {wallet.url}\n"
+            "Copy the agent personal access token and the admin personal access token from the secure console; "
+            "they are not stored and will not be shown again."
+        )
+
+    # ----------------------------------------------------------------------
+    # 7) Notify admin / user
+    # ----------------------------------------------------------------------
+    message_text = "Wallet created for " + " ".join(admins_login)
+    message.message(
+        "A new wallet for AI Agent has been created",
+        "thierry.thevenet@talao.io",
+        message_text,
+        mode,
+    )
+
     return _ok_content([{"type": "text", "text": text}], structured=structured)

@@ -59,20 +59,13 @@ def init_app(app):
         )
         
     def _extract_subject_did(verification_result: dict) -> Optional[str]:
-        # try common flat fields
-        for k in ("sub", "subject", "did"):
-            v = verification_result.get(k)
-            if isinstance(v, str) and v:
-                return v
-
-        # try nested VC structures
-        vc = verification_result.get("verifiableCredential") or verification_result.get("vc")
+        vc = verification_result.get("document")
         if isinstance(vc, dict):
             subj = vc.get("credentialSubject") or {}
             if isinstance(subj, dict):
-                did = subj.get("id") or subj.get("did")
-                if isinstance(did, str) and did:
-                    return did
+                id = subj.get("id")
+                if isinstance(id, str) and id:
+                    return id
         return None
 
 
@@ -99,7 +92,7 @@ def init_app(app):
 
             if not verified:
                 return None
-
+            logging.warning("AGNTCY REST badge verification succeeded.")
             return result
 
         except Exception as e:
@@ -154,17 +147,20 @@ def init_app(app):
                 return "expired", None
 
             if not role:
+                logging.warning("no role in the access token")
                 return "guest", None
 
-            this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+            # TODO
+            this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
 
             if typ == "pat":
                 try:
                     if jti == this_wallet.admin_pat_jti and role == "admin":
                         return role, agent_identifier
                     elif jti == this_wallet.agent_pat_jti and role == "agent":
-                        return role, agent_identifier
+                        return "agent", agent_identifier
                     else:
+                        logging.warning("role mismatch")
                         return "guest", None
                 except Exception as e:
                     logging.warning(str(e))
@@ -176,27 +172,25 @@ def init_app(app):
         except Exception as e:
             logging.info("Not a Wallet4Agent token (decrypt failed): %s", str(e))
 
-        # --- 2) NEW: AGNTCY badge verification path ---
+        # --- AGNTCY badge verification path ---
         badge = _verify_agntcy_badge(token)
         if not badge:
             return "guest", None
 
-        subject_did = _extract_subject_did(badge)
+        agent_identifier = _extract_subject_did(badge)
 
-        if not subject_did:
-            logging.warning("AGNTCY badge verified but missing subject DID")
+        if not agent_identifier:
+            logging.warning("AGNTCY badge verified but missing subject")
             return "guest", None
-        logging.info("AGNTCY badge authenticated for DID %s", subject_did)
+        logging.info("AGNTCY badge authenticated for identifier %s", agent_identifier)
 
-        # Map verified DID -> your wallet DB row
-        this_wallet = Wallet.query.filter(Wallet.did == subject_did).one_or_none()
+        # Map verified agent identifier
+        this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
         if not this_wallet:
-            logging.warning("AGNTCY subject DID has no wallet in Wallet4Agent DB: %s", subject_did)
-            return "guest", None
+            logging.warning("AGNTCY subject has no wallet in Wallet4Agent DB: %s", agent_identifier)
+            return "external", agent_identifier
 
-        # Decide role mapping:
-        # simplest: any verified badge => agent role for that DID
-        return "agent", subject_did
+        return "agent", agent_identifier
     
     
     def _error(code: int, message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -263,6 +257,8 @@ def init_app(app):
                     tools_list["tools"].extend(getattr(module, const))
         return jsonify(tools_list)
 
+    
+    """
     def _agent_manifest(did: str) -> dict:
         base = current_app.config["MODE"].server.rstrip("/")
         # Minimal manifest: identity + where to find badge + where MCP is
@@ -319,7 +315,7 @@ def init_app(app):
                 "vcs": f"{base}/agents/{agent_did}/.well-known/vcs.json",
             }
         })
-
+    """
     
     # --------- CORS for /mcp ---------  
     def _add_cors(resp):
@@ -358,6 +354,7 @@ def init_app(app):
         logging.info("tools have been called")
 
         # ----- guest / admin: keep old behaviour -----
+        
         if role in ("guest", "admin"):
             tools: List[Dict[str, Any]] = []
             modules = ["tools.wallet_tools", "tools.wallet_tools_for_agent", "tools.verifier_tools"]
@@ -366,15 +363,14 @@ def init_app(app):
                 module = importlib.import_module(module_name)
                 if hasattr(module, constant):
                     tools.extend(getattr(module, constant))
+            if agent_identifier and (agent_identifier.startswith("did:web") or agent_identifier.startswith("did:cheqd")):
+                tools.extend(wallet_tools.tools_for_did)
             return {"tools": tools}
 
         # ----- agent: feature-gated by Wallet flags -----
         if role == "agent":
             tools: List[Dict[str, Any]] = []
 
-            # 1) "Others" are always available to agents
-            #    (resolve_agent_identifier, get_this_agent_data, get_attestations_xxx,
-            #     describe_wallet4agent, help_wallet4agent, ...)
             tools.extend(wallet_tools_for_agent.tools_agent_others)
 
             # 2) Verifier tools for agents are always available as well
@@ -382,7 +378,7 @@ def init_app(app):
                 tools.extend(verifier_tools.tools_agent)
 
             # 3) Feature-gated groups based on Wallet flags
-            this_wallet = Wallet.query.filter_by(did=agent_identifier).one_or_none() if agent_identifier else None
+            this_wallet = Wallet.query.filter_by(agent_identifier=agent_identifier).first() if agent_identifier else None
             if not this_wallet:
                 # No wallet: only "others" + verifier tools
                 logging.warning("No wallet found for agent DID %s in _tools_list", agent_identifier)
@@ -390,17 +386,14 @@ def init_app(app):
 
             # receive_credentials -> accept_credential_offer
             if this_wallet.receive_credentials:
-                print("add credentials")
                 tools.extend(wallet_tools_for_agent.tools_agent_receive_credentials)
 
             # sign -> sign_text_message, sign_json_payload
             if this_wallet.sign:
-                print("add sign")
                 tools.extend(wallet_tools_for_agent.tools_agent_sign)
 
             # publish_unpublish -> publish_attestation, unpublish_attestation
-            if this_wallet.publish_unpublish:
-                print("add publish")
+            if this_wallet.publish_unpublish and this_wallet.did_document:
                 tools.extend(wallet_tools_for_agent.tools_agent_publish_unpublish)
 
             return {"tools": tools}
@@ -741,8 +734,7 @@ def init_app(app):
             def _get_wallet_for_agent(agent_identifier: Optional[str]) -> Optional[Wallet]:
                 if not agent_identifier:
                     return None
-                return Wallet.query.filter_by(did=agent_identifier).one_or_none()
-    
+                return Wallet.query.filter_by(agent_identifier=agent_identifier).first()
     
             if name == "start_user_verification":
                 if not arguments.get("user_email"):
@@ -800,6 +792,16 @@ def init_app(app):
                                 "error":{"code":-32001,"message":"Unauthorized: admins_login or admin_identity_provider missing "}}        
                 out = wallet_tools.call_create_agent_identifier_and_wallet(arguments, config())
             
+            elif name == "create_agent_wallet":
+                if role not in ["external", "guest"]:
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                
+                if not arguments.get("admins_login") or not arguments.get("admins_identity_provider"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: admins_login or admin_identity_provider missing "}}        
+                out = wallet_tools.call_create_agent_wallet(arguments, agent_identifier, config())
+                
             elif name == "add_authentication_key":
                 if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
@@ -833,14 +835,14 @@ def init_app(app):
             elif name == "help_wallet4agent":
                 out = wallet_tools_for_agent.call_help_wallet4agent()
             
-            elif name == "delete_identity":
+            elif name == "delete_waallet":
                 if role != "admin":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 if agent_identifier != arguments.get("agent_identifier"):
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: agent_identifier missing "}}
-                out = wallet_tools.call_delete_identity(agent_identifier)
+                out = wallet_tools.call_delete_wallet(agent_identifier)
             
             elif name == "get_attestations_of_this_wallet":
                 if role not in ["admin", "agent"]:

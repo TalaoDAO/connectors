@@ -8,8 +8,8 @@ from db_model import Wallet, Attestation, db
 import requests
 import base64
 from urllib.parse import unquote
-import time                       # <-- ADD
-from datetime import datetime      # <-- ADD
+import time                      
+from datetime import datetime      
 import linked_vp
 from utils import message
 
@@ -255,7 +255,7 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
 def admin_message(wallet, message_text, mode):
     if wallet.always_human_in_the_loop and wallet.notification_email:
         to = wallet.notification_email
-        subject = f"Agent: {wallet.did}"
+        subject = f"Agent: {wallet.agent_identifier}"
         message.message(subject, to, message_text, mode)
         
 
@@ -298,7 +298,8 @@ def _summarize_local_attestation(att: Attestation) -> Dict[str, Any]:
     """
     item: Dict[str, Any] = {
         "id": att.id,
-        "wallet_did": att.wallet_did,
+        "wallet_identifier": att.wallet_identifier,
+        "agent_identifier": att.agent_identifier,
         "service_id": att.service_id,
         "name": att.name,
         "description": att.description,
@@ -520,7 +521,7 @@ def call_get_attestations_of_this_wallet(
 
     attestations = (
         Attestation.query
-        .filter_by(wallet_did=wallet_did)
+        .filter_by(agent_identifier=wallet_did)
         .order_by(Attestation.created_at.desc())
         .all()
     )
@@ -534,7 +535,8 @@ def call_get_attestations_of_this_wallet(
             # Fallback: minimal info
             items.append({
                 "id": att.id,
-                "wallet_did": att.wallet_did,
+                "wallet_identifier": att.wallet_identifier,
+                "agent_identifier": att.agent_identifier,
                 "service_id": att.service_id,
                 "name": att.name,
                 "description": att.description,
@@ -566,7 +568,7 @@ def call_get_attestations_of_this_wallet(
         text = "\n".join(lines)
 
     structured = {
-        "wallet_did": wallet_did,
+        "agent_identifier": wallet_did,
         "attestations": items,
     }
 
@@ -930,44 +932,42 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
     The DID identifies the Agent itself.
     The wallet is a secure component attached to this Agent that stores credentials.
     """
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
-    attestations_list = Attestation.query.filter_by(wallet_did=agent_identifier).all()
-    
-    # number of published attestation:
-    nb_published_attestations = 0
-    for a in attestations_list:
-        if a.published == 1:
-            nb_published_attestations += 1
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
+    attestations_list = Attestation.query.filter_by(agent_identifier=agent_identifier).all()
         
     structured = {
         "agent": {
-            "did": agent_identifier,
+            "identifier": agent_identifier,
         },
         "wallet": {
-            "wallet_endpoint": this_wallet.url if this_wallet else None,
-            "ecosystem": this_wallet.ecosystem_profile,
+            "wallet_url": this_wallet.url if this_wallet else None,
             "number_of_attestations": len(attestations_list),
-            "number_of_published_attestations": nb_published_attestations,
             "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,
             "sign": bool(this_wallet.sign) if this_wallet else False,
-            "publish_unpublish": bool(this_wallet.publish_unpublish) if this_wallet else False,
             "receive_credentials": bool(this_wallet.receive_credentials) if this_wallet else False,
         },
     }
+    if this_wallet.did_document:
+        # number of published attestation:
+        nb_published_attestations = 0
+        for a in attestations_list:
+            if a.published == 1:
+                nb_published_attestations += 1
+        structured["wallet"]["number_of_published_attestations"] = nb_published_attestations
+        structured["wallet"]["publish_unpublish"] = bool(this_wallet.publish_unpublish) if this_wallet else False
 
     if this_wallet:
         text = (
-            f"My DID is {agent_identifier}. "
+            f"My Agent Identifier is {agent_identifier}. "
             f"I have an attached wallet at {this_wallet.url} "
             f"with a total of {len(attestations_list)} attestations. "
             f"{'I need a human in the loop' if this_wallet.always_human_in_the_loop else 'I dont need a human'}."
             f"{'I can sign payload' if this_wallet.sign else 'I cannot sign payload'}."
             f"{'I can receive credentials' if this_wallet.receive_credentials else 'I cannot receive credentials'}."
-            f"{'I can publish and unpublish attestations'  if this_wallet.publish_unpublish else 'I cannot publish or unpublish attestations'}."
         )
     else:
         text = (
-            f"My DID is {agent_identifier}, but py wallet has not be found in the database."
+            f"My Agent identifier is {agent_identifier}, but my wallet has not be found in the database."
         )
 
     return _ok_content([{"type": "text", "text": text}], structured=structured)
@@ -975,14 +975,6 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
 
 # agent tool
 def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: str, config: dict ) -> Dict[str, Any]:
-    """
-    MCP tool: accept an OIDC4VCI credential offer for this Agent.
-    The 'credential_offer' argument may be:
-    - the full 'openid-credential-offer://' URI,
-    - an HTTPS URL with 'credential_offer_uri' or 'credential_offer' params,
-    - or the JSON 'credential_offer' object as a string.
-    We delegate the heavy lifting to wallet.build_session_config / wallet.wallet.
-    """
     raw_offer = arguments.get("credential_offer")
     logging.info("accept_credential_offer called with: %r (%s)", raw_offer, type(raw_offer))
 
@@ -991,7 +983,7 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             [{"type": "text", "text": "Missing 'credential_offer' argument."}],
             is_error=True,
         )
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if this_wallet.always_human_in_the_loop:
         return _ok_content(
             [{"type": "text", "text": "Human in the loop is needed."}],
@@ -1006,12 +998,6 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
     message_text = "Agent receives an attestation"
     admin_message(this_wallet, message_text, config["MODE"])
     
-    
-    # Normalize input for wallet.wallet():
-    # - dict -> keep as-is
-    # - string:
-    #     * if it looks like JSON, try json.loads
-    #     * otherwise, pass the string through (URI / URL case)
     if isinstance(raw_offer, dict):
         normalized_offer = raw_offer
     elif isinstance(raw_offer, str):
@@ -1041,11 +1027,14 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
 
     # Delegate to the wallet OIDC4VCI client logic to receive the attestation
     try:
-        session_config, attestation, text = wallet.wallet(agent_identifier, normalized_offer, mode, manager) 
+        session_config, attestation, text = wallet.wallet(agent_identifier, normalized_offer, mode, manager)
     except Exception:
-        msg = "Incorret credential_offer format"
-        logging.warning(msg)
-        return _ok_content([{"type": "text", "text": msg}], is_error=True)
+        logging.warning("session config issue")
+        return _ok_content([{"type": "text", "text": "Session with issuer problem."}], is_error=True)
+    
+    if not session_config:
+        logging.warning(text)
+        return _ok_content([{"type": "text", "text": text}], is_error=True)
     
     # store and publish if consent
     if attestation:
@@ -1056,7 +1045,8 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             text = "Thank you, I have received the attestation but I cannot store this attestation without the my admin consent."
             return _ok_content([{"type": "text", "text": text}], is_error=False, structured=structured)
         else:
-            result, message = wallet.store_and_publish(attestation, session_config, mode, manager, published=True)
+            published = True if this_wallet.did_document else False
+            result, message = wallet.store_and_publish(attestation, session_config, mode, manager, published=published)
             if result:
                 message = "Thank you, the attestation has been stored and published successfully."
                 return _ok_content([{"type": "text", "text": message}], is_error=False)
@@ -1172,7 +1162,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
     if not isinstance(message, str):
         message = str(message)
     
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet.sign:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot sign."}],
@@ -1192,7 +1182,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
         sig_b64 = base64.b64encode(sig).decode("ascii")
 
         structured = {
-            "agent_did": agent_identifier,
+            "agent_identifier": agent_identifier,
             "message": message,
             "signature_base64": sig_b64,
         }
@@ -1201,7 +1191,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
 
     except Exception as e:
         logging.exception("Failed to sign text message with KMS %s", str(e))
-        text = f"Failed to sign message with my DID."
+        text = f"Failed to sign message."
         return _ok_content([{"type": "text", "text": text}], is_error=True)
 
 
@@ -1209,7 +1199,7 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
     payload = arguments.get("payload", "")
     payload = json.loads(payload)
     
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet.sign:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot sign."}],
@@ -1234,7 +1224,7 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
         }
         signed_json = manager.sign_jwt_with_key(key_id, header, payload)
         structured = {
-            "agent_did": agent_identifier,
+            "agent_identifier": agent_identifier,
             "payload": payload,
             "signed_json": signed_json,
         }
@@ -1243,17 +1233,13 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
 
     except Exception as e:
         logging.exception("Failed to sign text message with KMS %s", str(e))
-        text = f"Failed to sign message with my DID"
+        text = f"Failed to sign payload"
         return _ok_content([{"type": "text", "text": text}], is_error=True)
     
     
 def call_resolve_agent_identifier(
     arguments: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    Resolve any DID and return its DID Document + a human-readable summary.
-    This is especially useful for resolving other Agents (did:web, did:cheqd, ...).
-    """
     target = arguments.get("agent_identifier")
     if not target:
         return _ok_content(
@@ -1279,9 +1265,9 @@ def call_resolve_agent_identifier(
             continue
 
     if did_document is None:
-        msg = f"Unable to resolve DID {target} via configured resolvers."
+        msg = f"Unable to resolve Agent Identifier {target}."
         if last_error:
-            msg += f" Last error: {last_error}"
+            logging.warning(f" Last error: {last_error}")
         return _ok_content(
             [{"type": "text", "text": msg}],
             is_error=True,
@@ -1332,7 +1318,7 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
     - Updates DID Document (service entry)
     - For did:cheqd, also updates the DID on-ledger via Universal Registrar
     """
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet.publish_unpublish:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot publish attestations."}],
@@ -1352,7 +1338,7 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
     mode = config["MODE"]
     manager = config["MANAGER"]
 
-    att = Attestation.query.filter_by(id=attestation_id, wallet_did=agent_identifier).one_or_none()
+    att = Attestation.query.filter_by(id=attestation_id, agent_identifier=agent_identifier).one_or_none()
     if not att:
         msg = f"No attestation with id {attestation_id} for Agent {agent_identifier}."
         logging.warning(msg)
@@ -1387,7 +1373,7 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
 
     structured = {
         "attestation_id": att.id,
-        "wallet_did": att.wallet_did,
+        "wallet_did": att.wallet_agent_identifier,
         "service_id": service_id,
         "published": True
     }
@@ -1407,7 +1393,7 @@ def call_unpublish_attestation(arguments: Dict[str, Any], agent_identifier: str,
     - For did:cheqd, also updates the DID on-ledger via Universal Registrar
     - Keeps the Attestation (VC) stored locally, but sets published=False
     """
-    this_wallet = Wallet.query.filter(Wallet.did == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet.publish_unpublish:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot unpublish attestations."}],
@@ -1427,7 +1413,7 @@ def call_unpublish_attestation(arguments: Dict[str, Any], agent_identifier: str,
     mode = config["MODE"]
     manager = config["MANAGER"]
 
-    att = Attestation.query.filter_by(id=attestation_id, wallet_did=agent_identifier).one_or_none()
+    att = Attestation.query.filter_by(id=attestation_id, agent_identifier=agent_identifier).one_or_none()
     if not att:
         msg = f"No attestation with id {attestation_id} for Agent {agent_identifier}."
         logging.warning(msg)

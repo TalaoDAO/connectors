@@ -63,22 +63,22 @@ def init_app(app):
                 register_agent_profile(profile, did, wallet_profile)
                 logging.info(f"Initialized built-in chat agent profile '{profile}' with DID {did}")
         
-        wallets = Wallet.query.filter(Wallet.did.like("did:web:wallet4agent.com:%")).all()
+        wallets = Wallet.query.filter(Wallet.agent_identifier.like("did:web:wallet4agent.com:%")).all()
         for w in wallets:
-            profile = w.did.split(":")[-1]
+            profile = w.agent_identifier.split(":")[-1]
             if profile not in AGENT_DIDS:
                 wallet_profile = getattr(w, "ecosystem_profile", None) or ecosystem(profile)
-                register_agent_profile(profile, w.did, wallet_profile)
-                logging.info(f"Registered chat agent profile '{profile}' for DID {w.did}")
+                register_agent_profile(profile, w.agent_identifier, wallet_profile)
+                logging.info(f"Registered chat agent profile '{profile}' for DID {w.agent_identifier}")
         
         extra_agents = Wallet.query.filter(Wallet.is_chat_agent == True).all()        
         for w in extra_agents:
-            profile = w.chat_profile or w.did.split(":")[-1]
+            profile = w.agent_identifier.split(":")[-1]
             profile = profile.lower()
             if profile not in AGENT_DIDS:
                 wallet_profile = getattr(w, "ecosystem_profile", None) or ecosystem(profile)
-                register_agent_profile(profile, w.did, wallet_profile)
-                logging.info(f"Re-registered chat agent profile '{profile}' for DID {w.did} from DB")
+                register_agent_profile(profile, w.agent_identifier, wallet_profile)
+                logging.info(f"Re-registered chat agent profile '{profile}' for DID {w.agent_identifier} from DB")
 
 
 def ecosystem(wallet_profile):
@@ -279,7 +279,7 @@ def register_agent_profile(profile: str, did: str, wallet_profile: str | None = 
     AGENT_DIDS[profile] = did
 
     # Essayez de récupérer le wallet pour ce DID pour réutiliser les JTI existants
-    wallet = Wallet.query.filter(Wallet.did == did).one_or_none()
+    wallet = Wallet.query.filter(Wallet.agent_identifier == did).first()
     if wallet:
         jti_agent = wallet.agent_pat_jti or profile
         jti_admin = wallet.admin_pat_jti or profile

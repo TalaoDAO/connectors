@@ -135,18 +135,4 @@ def agntcy_verify_badge_rest(
         raise AgntcyRestError(f"VerifyBadge failed: {r.status_code} {r.text}")
     return r.json()
 
-"""
-def agntcy_verify_badge_rest(
-    *,
-    org_api_key: str,
-    badge_jose: str,
-) -> Dict[str, Any]:
-    base = _agntcy_rest_base_url()
-    headers = _agntcy_headers(org_api_key)
 
-    payload = {"badge": badge_jose}
-    r = requests.post(f"{base}/v1alpha1/badges/verify", headers=headers, json=payload, timeout=30)
-    if not r.ok:
-        raise AgntcyRestError(f"VerifyBadge failed: {r.status_code} {r.text}")
-    return r.json()
-"""

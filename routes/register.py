@@ -58,7 +58,7 @@ def register():
     except Exception:
         message = "Session expired"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    wallet = Wallet.query.filter(Wallet.did == session_config["wallet_did"]).one_or_none()
+    wallet = Wallet.query.filter(Wallet.agent_identifier == session_config["agent_identifier"]).first()
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
@@ -79,7 +79,7 @@ def register():
 # wallet registration
 def create_wallet():
     wallet_did = request.args.get("wallet_did")
-    wallet = Wallet.query.filter_by(did=wallet_did).first()
+    wallet = Wallet.query.filter_by(wallet_identifier=wallet_did).first()
     if not wallet:
         message = "Wallet not found"
         return render_template("wallet/session_screen.html", message=message, title="Sorry !")
@@ -131,8 +131,8 @@ def register_google_callback(db):
             logout_user()
             login_user(user)
             logging.info("admin is now authenticated")
-            did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
-            return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
+            wallet_identifier = session_config["wallet_identifier"]
+            return redirect("/wallets/" + wallet_identifier + "/credential_offer?session_id=" + session_id)
         else:
             logging.warning("user is not authorized for this session")
             return redirect("/")
@@ -173,8 +173,8 @@ def register_github_callback(db):
             logout_user()
             login_user(user)
             logging.info("admin is now authenticated")
-            did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
-            return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
+            wallet_identifier = session_config["wallet_identifier"]
+            return redirect("/wallets/" + wallet_identifier + "/credential_offer?session_id=" + session_id)
         else:
             logging.warning("user is not authorized for this session")
             return redirect("/")
@@ -283,8 +283,8 @@ def register_admin():
         except Exception:
             logging.warning("session not found")
             return redirect("/")
-        did_urlsafe = urllib.parse.quote(session_config["wallet_did"], safe="")
-        return redirect("/" + did_urlsafe + "/credential_offer?session_id=" + session_id)
+        wallet_identifier = session_config["wallet_identifier"]
+        return redirect("/wallets/" + wallet_identifier + "/credential_offer?session_id=" + session_id)
     
     # standard registration
     else:
