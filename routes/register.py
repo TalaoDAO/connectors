@@ -124,7 +124,7 @@ def register_google_callback(db):
         session_config = json.loads(red.get(session_id).decode())
     except Exception:
         logging.warning("session not found")
-        return redirect("/")
+        return render_template("wallet/session_screen.html", message="Session not found.", title="Sorry !")
         
     if user:
         if userinfo.get("email") in session_config["admins_login"]:
@@ -135,9 +135,9 @@ def register_google_callback(db):
             return redirect("/wallets/" + wallet_identifier + "/credential_offer?session_id=" + session_id)
         else:
             logging.warning("user is not authorized for this session")
-            return redirect("/")
+            return render_template("wallet/session_screen.html", message="User is not authorized.", title="Sorry !")
     logging.warning("user not found in DB")
-    return redirect("/")
+    return render_template("wallet/session_screen.html", message="User not found.", title="Sorry !")
 
 
 def login_with_github():
@@ -167,7 +167,7 @@ def register_github_callback(db):
         session_config = json.loads(red.get(session_id).decode())
     except Exception:
         logging.warning("session not found")
-        return redirect("/")
+        return render_template("wallet/session_screen.html", message="Session not found.", title="Sorry !")
     if user:
         if userinfo.get("login") in session_config["admins_login"]:
             logout_user()
@@ -177,10 +177,10 @@ def register_github_callback(db):
             return redirect("/wallets/" + wallet_identifier + "/credential_offer?session_id=" + session_id)
         else:
             logging.warning("user is not authorized for this session")
-            return redirect("/")
+            return render_template("wallet/session_screen.html", message="User is not authorized.", title="Sorry !")
     
     logging.warning("user is not found in DB")
-    return redirect("/")
+    return render_template("wallet/session_screen.html", message="User not found.", title="Sorry !")
     
 """
 def login_with_wallet():
@@ -282,10 +282,10 @@ def register_admin():
             session_config = json.loads(red.get(session_id).decode())
         except Exception:
             logging.warning("session not found")
-            return redirect("/")
+            return render_template("wallet/session_screen.html", message="User not found.", title="Sorry !")
         wallet_identifier = session_config["wallet_identifier"]
         return redirect("/wallets/" + wallet_identifier + "/credential_offer?session_id=" + session_id)
     
     # standard registration
     else:
-        return redirect("/")
+        return render_template("wallet/session_screen.html", message="Session expired.", title="Sorry !")

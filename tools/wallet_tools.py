@@ -20,12 +20,6 @@ tools_guest = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "agent_framework": {
-                    "type": "string",
-                    "description": "Agent framework as Agntcy",
-                    "enum": ["None", "Agntcy", "A2A"],
-                    "default": "None"
-                },
                 "did_method": {
                     "type": "string",
                     "description": "Optional DID Method, did:web by default",
@@ -91,12 +85,6 @@ tools_guest = [
                 "agent_identifier": {
                     "type": "string",
                     "description": "Input your Agent identifier"
-                },
-                "agent_framework": {
-                    "type": "string",
-                    "description": "Agent framework as Agntcy",
-                    "enum": ["None", "Agntcy", "A2A"],
-                    "default": "None"
                 },
                 "ecosystem_profile": {
                     "type": "string",
@@ -314,12 +302,6 @@ tools_admin = [
                     "description": "Ecosystem profile",
                     "enum": ["DIIP V4", "DIIP V3", "EWC", "ARF"],
                 },
-                "agent_framework": {
-                    "type": "string",
-                    "description": "Agent framework",
-                    "enum": ["None"],
-                    "default": "None"
-                },
                 "agentcard_url": {
                     "type": "string",
                     "description": "Optional AgentCard URL."
@@ -408,11 +390,9 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
+"""
 def issue_agent_badge(agent_identifier: str, agent_name, agent_description, mode) -> dict:
-    """
-    Creates AGNTCY agent + badge via REST and returns result dict:
-      { app_id, app, badge }
-    """
+    
     # Use the service key to create the agent app & issue badge
     api_key = current_app.config["AGNTCY_ORG_API_KEY"]
 
@@ -427,7 +407,7 @@ def issue_agent_badge(agent_identifier: str, agent_name, agent_description, mode
         agent_description=agent_description or "wallet4agent provisioned agent",
         config=current_app.config,
     )
-
+"""
 
 # for admin
 def call_delete_wallet(agent_identifier) -> Dict[str, Any]:
@@ -622,7 +602,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     admins_identity_provider = arguments.get("admins_identity_provider")
     admins_login = (arguments.get("admins_login") or "").split(",")
     agent_card_url = arguments.get("agentcard_url")
-    agent_framework = arguments.get("agent_framework", "None")
 
     # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
     client = UniversalRegistrarClient()
@@ -684,7 +663,6 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
         client_secret_hash=oidc4vc.hash_client_secret(client_secret),
         admins_identity_provider=admins_identity_provider,
         admins_login=json.dumps(admins_login),
-        agent_framework=agent_framework,
         agent_identifier=agent_did,
         wallet_identifier=wallet_identifier,
         did_document=json.dumps(did_document),
@@ -758,12 +736,10 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             "they are not stored and will not be shown again."
         )
 
-    # ----------------------------------------------------------------------
-    # 7) Notify admin / user
-    # ----------------------------------------------------------------------
+    # Notify
     message_text = "Wallet created for " + " ".join(admins_login)
     message.message(
-        "A new wallet for AI Agent has been created",
+        f"A new DID: {agent_did} and wallet for AI Agent have been created",
         "thierry.thevenet@talao.io",
         message_text,
         mode,
@@ -784,7 +760,6 @@ def call_update_configuration(
     Can update:
       - always_human_in_the_loop (bool)
       - ecosystem_profile (via 'ecosystem' string)
-      - agent_framework (string)
       - agentcard_url (A2AService in DID Document, id = did + '#a2a')
       - client_public_key (public JWK for OAuth2 private_key_jwt client auth)
     """
@@ -825,12 +800,6 @@ def call_update_configuration(
         rc = arguments["receive_credentials"]
         this_wallet.receive_credentials = rc
         updated["receive_credentials"] = rc
-
-    # 3. agent framework
-    if "agent_framework" in arguments and arguments.get("agent_framework"):
-        af = arguments["agent_framework"]
-        this_wallet.agent_framework = af
-        updated["agent_framework"] = af
 
     # 4. agentcard_url (stored in DID Document as A2AService with id did + '#a2a')
     if "agentcard_url" in arguments:
@@ -917,7 +886,6 @@ def call_update_configuration(
         "publish_unpublish": this_wallet.publish_unpublish,
         "sign": this_wallet.sign,
         "receive_credentials": this_wallet.receive_credentials,
-        "agent_framework": this_wallet.agent_framework,
         "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
         "client_public_key": client_pk,
         "updated_fields": updated,
@@ -1123,8 +1091,8 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
         structured["authorization_server"] = mode.server
 
         text = (
-            "New agent identifier and wallet created.\n"
-            f"Agent DID: {agent_identifier}\n"
+            "New wallet created.\n"
+            f"Agent Identifier: {agent_identifier}\n"
             f"Wallet URL: {wallet.url}\n"
             "Copy your admin personal access token and OAuth client credentials from the secure console; "
             "they are not stored and will not be shown again."
@@ -1133,8 +1101,8 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
         structured["agent_personal_access_token"] = agent_pat
 
         text = (
-            "New agent identifier and wallet created.\n"
-            f"Agent DID: {agent_identifier}\n"
+            "New wallet created.\n"
+            f"Agent Identifier: {agent_identifier}\n"
             f"Wallet URL: {wallet.url}\n"
             "Copy the agent personal access token and the admin personal access token from the secure console; "
             "they are not stored and will not be shown again."

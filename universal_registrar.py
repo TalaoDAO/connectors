@@ -130,7 +130,7 @@ class UniversalRegistrarClient:
         key = verificationMethod (vm_id = did + "#key-1")
         """
         # Use agent name if provided, or random digits to avoid collisions
-        random_numbers = "".join(random.choice(string.digits) for _ in range(5))
+        random_numbers = "".join(random.choice(string.digits) for _ in range(9))
         if not name:
             name = random_numbers
 

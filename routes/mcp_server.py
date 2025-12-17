@@ -188,7 +188,7 @@ def init_app(app):
         this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
         if not this_wallet:
             logging.warning("AGNTCY subject has no wallet in Wallet4Agent DB: %s", agent_identifier)
-            return "external", agent_identifier
+            return "guest", agent_identifier
 
         return "agent", agent_identifier
     
@@ -793,7 +793,7 @@ def init_app(app):
                 out = wallet_tools.call_create_agent_identifier_and_wallet(arguments, config())
             
             elif name == "create_agent_wallet":
-                if role not in ["external", "guest"]:
+                if role != "guest":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
                 
