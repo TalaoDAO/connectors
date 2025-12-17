@@ -277,17 +277,14 @@ def register_agent_profile(profile: str, did: str, wallet_profile: str | None = 
     ALLOWED_PROFILES.add(profile)
     AGENT_DIDS[profile] = did
 
-    # Essayez de récupérer le wallet pour ce DID pour réutiliser les JTI existants
     wallet = Wallet.query.filter(Wallet.agent_identifier == did).first()
-    if wallet:
-        jti_agent = wallet.agent_pat_jti or profile
-        jti_admin = wallet.admin_pat_jti or profile
-    else:
-        # fallback : ancien comportement
-        jti_agent = profile
-        jti_admin = profile
+    if not wallet:
+        return None
+    
+    jti_agent = wallet.agent_pat_jti 
+    jti_admin = wallet.admin_pat_jti or profile
 
-    # PAT Agent
+    # create a PAT for this Agent
     pat_agent, _ = oidc4vc.generate_access_token(
         did,
         "agent",
@@ -315,6 +312,7 @@ def register_agent_profile(profile: str, did: str, wallet_profile: str | None = 
 
     # Pas de flow de confirmation en cours au départ
     pending_confirmations[profile] = None
+    return True
 
 
 
@@ -488,5 +486,7 @@ def register_agent_endpoint():
     if not profile or not did:
         return jsonify({"error": "profile and did are required"}), 400
 
-    register_agent_profile(profile, did, ecosystem_profile)
+    if not register_agent_profile(profile, did, ecosystem_profile):
+        return jsonify({"status": "error", "profile": profile, "did": did})
+    
     return jsonify({"status": "ok", "profile": profile, "did": did})

@@ -50,6 +50,7 @@ class Wallet(db.Model):
     url = db.Column(db.Text, unique=True)
     linked_vp = db.Column(db.Text, default="{}")
     is_chat_agent = db.Column(db.Boolean, default=False)
+    chat_profile = db.Column(db.String(256))
     agent_identifier = db.Column(db.Text, index=True)          # NOT unique
     wallet_identifier = db.Column(db.Text, unique=True, index=True)
     did_document = db.Column(db.Text)
