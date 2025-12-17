@@ -68,12 +68,7 @@ def build_jwk_did_document(
     document: Dict[str, Any] = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
-            {
-                "publicKeyJwk": {
-                    "@id": "https://w3id.org/security#publicKeyJwk",
-                    "@type": "@json"
-                }
-            }
+            "https://w3id.org/security/suites/jws-2020/v1"
         ],
         "id": did,
         "controller": [did],
