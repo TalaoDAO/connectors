@@ -215,12 +215,13 @@ def create_did_document(did, jwk_1, url) -> str:
     document = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
-            {
-                "publicKeyJwk": {
-                    "@id": "https://w3id.org/security#publicKeyJwk",
-                    "@type": "@json"
-                }
-            }
+            "https://w3id.org/security/jwk/v1"
+            #{
+            #    "publicKeyJwk": {
+            #        "@id": "https://w3id.org/security#publicKeyJwk",
+            #        "@type": "@json"
+            #    }
+            #}
         ],
         "id": did,
         "verificationMethod": [ 

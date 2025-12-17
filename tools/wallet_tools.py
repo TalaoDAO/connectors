@@ -2,7 +2,6 @@ import json
 from typing import Any, Dict, List, Optional
 from db_model import Wallet, db, User, Attestation
 import secrets
-from flask import current_app
 import logging
 from utils import oidc4vc, message
 import hashlib
@@ -55,7 +54,7 @@ tools_guest = [
                 "mcp_client_authentication": {
                     "type": "string",
                     "description": "Authentication between MCP client and MCP server for agent. Admins use PAT",
-                    "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
+                    "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant", "Agntcy Badge"],
                     "default": "Personal Access Token (PAT)"
                 },
                 "admins_identity_provider": {
@@ -110,7 +109,7 @@ tools_guest = [
                 "mcp_client_authentication": {
                     "type": "string",
                     "description": "Authentication between MCP client and MCP server for agent. Admins use PAT",
-                    "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant"],
+                    "enum": ["Personal Access Token (PAT)", "OAuth 2.0 Client Credentials Grant", "Agntcy Badge"],
                     "default": "Personal Access Token (PAT)"
                 },
                 "admins_identity_provider": {
@@ -282,6 +281,10 @@ tools_admin = [
                     "description": "Always human in the loop",
                     "default": True
                 },
+                "notification_email": {
+                    "type": "string",
+                    "description": "This email is used to notify about Agent actions if human in the loop"
+                },
                 "sign": {
                     "type": "boolean",
                     "description": "Authorize Agent to sign",
@@ -326,7 +329,7 @@ tools_admin = [
             "properties": {
                 "agent_identifier": {
                     "type": "string",
-                    "description": "Confirm agent identifier to delete."
+                    "description": "Confirm agent identifier of the wallet to delete."
                 }
             },
             "required": ["agent_identifier"]
@@ -475,7 +478,9 @@ def call_get_configuration(agent_identifier, config) -> Dict[str, Any]:
         structured["did_document"] = json.loads(structured["did_document"])
     
     # remove useless info
-    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "admin_pat_jti", "linked_vp"]}
+    final_structured = {key: value for key, value in structured.items() if key not in ["id", "agent_pat_jti", "admin_pat_jti", "linked_vp", "is_chat_agent", "status"]}
+    if not final_structured.get("did_document"):
+        final_structured.pop("did_document")
     
     return _ok_content(
         [{"type": "text", "text": "All data"}],
@@ -641,21 +646,14 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
             is_error=True,
         )
 
-    # ----------------------------------------------------------------------
-    # 4) Generate admin + agent PATs
-    # ----------------------------------------------------------------------
+    # Generate admin + agent PATs
     admin_pat, admin_pat_jti = oidc4vc.generate_access_token(agent_did, "admin", "pat")
-    agent_pat, agent_pat_jti = oidc4vc.generate_access_token(
-        agent_did, "agent", "pat", duration=90 * 24 * 60 * 60
-    )
+    agent_pat, agent_pat_jti = oidc4vc.generate_access_token(agent_did, "agent", "pat", duration=90 * 24 * 60 * 60)
 
     mcp_authentication = arguments.get("mcp_client_authentication")
     client_secret = secrets.token_urlsafe(64)
 
-    # ----------------------------------------------------------------------
-    # 5) Create / update admins and wallet in DB
-    # ----------------------------------------------------------------------
-
+    # Create / update admins and wallet in DB
     wallet = Wallet(
         admin_pat_jti=admin_pat_jti,
         agent_pat_jti=agent_pat_jti,
@@ -703,16 +701,13 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], config: d
     db.session.add(wallet)
     db.session.commit()
     
-    # ----------------------------------------------------------------------
-    # 6) Build structured response
-    # ----------------------------------------------------------------------
+    # Build structured response
     structured = {
         "agent_identifier": agent_did,
         "admin_personal_access_token": admin_pat,
         "wallet_url": wallet.url
     }
-    
-    
+ 
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
         structured["agent_client_id"] = agent_did
         structured["agent_client_secret"] = client_secret
@@ -773,13 +768,13 @@ def call_update_configuration(
 
     updated: Dict[str, Any] = {}
 
-    # 1. human-in-the-loop
+    # human-in-the-loop
     if "always_human_in_the_loop" in arguments:
         value = bool(arguments.get("always_human_in_the_loop"))
         this_wallet.always_human_in_the_loop = value
         updated["always_human_in_the_loop"] = value
 
-    # 2. ecosystem profile
+    # ecosystem profile
     if "ecosystem" in arguments and arguments.get("ecosystem"):
         eco = arguments["ecosystem"]
         this_wallet.ecosystem_profile = eco
@@ -800,45 +795,44 @@ def call_update_configuration(
         rc = arguments["receive_credentials"]
         this_wallet.receive_credentials = rc
         updated["receive_credentials"] = rc
+    
+    if "notification_email" in arguments and arguments.get("notification_email"):
+        ne = arguments["notification_email"]
+        this_wallet.notification_email = ne
+        updated["notification_email"] = ne
 
-    # 4. agentcard_url (stored in DID Document as A2AService with id did + '#a2a')
+    # agentcard_url (stored in DID Document as A2AService with id did + '#a2a')
     if "agentcard_url" in arguments:
         agentcard_url = arguments.get("agentcard_url") or None
 
         # Load DID Document strictly; if it is broken we fail rather than wipe it.
-        try:
-            did_document = (
-                json.loads(this_wallet.did_document)
-                if isinstance(this_wallet.did_document, str) and this_wallet.did_document
-                else {}
-            )
-        except Exception:
-            logging.exception("Invalid DID Document in wallet while updating configuration")
-            return _ok_content(
-                [{"type": "text", "text": "Stored DID Document is invalid JSON; cannot update AgentCard URL."}],
-                is_error=True,
-            )
+        if this_wallet.did_document:
+            try:
+                did_document = json.loads(this_wallet.did_document)
+            except Exception:
+                logging.exception("Invalid DID Document in wallet while updating configuration")
+                return _ok_content(
+                    [{"type": "text", "text": "Stored DID Document is invalid JSON; cannot update AgentCard URL."}],
+                    is_error=True,
+                )
+            services = did_document.get("service", []) or []
+            a2a_id = f"{this_wallet.agent_identifier}#a2a"
 
-        services = did_document.get("service", []) or []
-        a2a_id = f"{this_wallet.agent_identifier}#a2a"
-
-        # Remove existing A2AService entries for that id
-        new_services = [s for s in services if s.get("id") != a2a_id]
-
-        if agentcard_url:
-            new_services.append(
-                {
-                    "id": a2a_id,
-                    "type": "A2AService",
-                    "serviceEndpoint": agentcard_url,
-                }
-            )
-
-        did_document["service"] = new_services
-        this_wallet.did_document = json.dumps(did_document)
+            # Remove existing A2AService entries for that id
+            new_services = [s for s in services if s.get("id") != a2a_id]
+            if agentcard_url:
+                new_services.append(
+                    {
+                        "id": a2a_id,
+                        "type": "A2AService",
+                        "serviceEndpoint": agentcard_url,
+                    }
+                )
+            did_document["service"] = new_services
+            this_wallet.did_document = json.dumps(did_document)
         updated["agentcard_url"] = agentcard_url
 
-    # 5. client_public_key for JWT client authentication (private_key_jwt)
+    # client_public_key for JWT client authentication (private_key_jwt)
     if "client_public_key" in arguments and arguments.get("client_public_key"):
         public_key_raw = arguments["client_public_key"]
 
@@ -868,10 +862,10 @@ def call_update_configuration(
         this_wallet.client_public_key = json.dumps(jwk_obj)
         updated["client_public_key"] = jwk_obj
 
-    # 6. Persist
+    # Persist
     db.session.commit()
 
-    # 7. Build a structured response (JSON-safe)
+    # Build a structured response (JSON-safe)
     client_pk = None
     if this_wallet.client_public_key:
         try:
@@ -906,7 +900,7 @@ def call_update_configuration(
 # tool
 def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
     """
-    Dev tool: inspect and summarize the DID Document associated with this Agent's wallet.
+    Dev tool: inspect and summarize the DID Document (if it exists) associated with this Agent's wallet.
     """
     this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
     if not this_wallet:
@@ -919,40 +913,46 @@ def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
         did_document = json.loads(this_wallet.did_document or "{}")
     except Exception:
         did_document = {}
-
-    vm_list = did_document.get("verificationMethod", [])
-    auth = did_document.get("authentication", [])
-    assertion = did_document.get("assertionMethod", [])
-    services = did_document.get("service", [])
-
-    linked_vp_services = [
-        s for s in services if s.get("type") == "LinkedVerifiablePresentation"
-    ]
-
-    structured = {
-        "agent_identifier": agent_identifier,
-        "did_document": did_document,
-        "verification_methods": vm_list,
-        "authentication": auth,
-        "assertionMethod": assertion,
-        "services": services,
-        "linked_vp_services": linked_vp_services,
-    }
-
-    text_lines = [
-        f"DID Document for Agent {agent_identifier}:",
-        f"- verification methods: {len(vm_list)}",
-        f"- authentication refs: {len(auth)}",
-        f"- assertionMethod refs: {len(assertion)}",
-        f"- services: {len(services)}",
-    ]
-    if linked_vp_services:
-        text_lines.append(f"- Linked VP services: {len(linked_vp_services)}")
+        
+    if not did_document:
+        structured = {
+            "agent_identifier": agent_identifier
+        }
+        text = "There is no DID Document for this Agent"
     else:
-        text_lines.append("- Linked VP services: none")
 
-    text = "\n".join(text_lines)
+        vm_list = did_document.get("verificationMethod", [])
+        auth = did_document.get("authentication", [])
+        assertion = did_document.get("assertionMethod", [])
+        services = did_document.get("service", [])
 
+        linked_vp_services = [
+            s for s in services if s.get("type") == "LinkedVerifiablePresentation"
+        ]
+
+        structured = {
+            "agent_identifier": agent_identifier,
+            "did_document": did_document,
+            "verification_methods": vm_list,
+            "authentication": auth,
+            "assertionMethod": assertion,
+            "services": services,
+            "linked_vp_services": linked_vp_services,
+        }
+
+        text_lines = [
+            f"DID Document for Agent {agent_identifier}:",
+            f"- verification methods: {len(vm_list)}",
+            f"- authentication refs: {len(auth)}",
+            f"- assertionMethod refs: {len(assertion)}",
+            f"- services: {len(services)}",
+        ]
+        if linked_vp_services:
+            text_lines.append(f"- Linked VP services: {len(linked_vp_services)}")
+        else:
+            text_lines.append("- Linked VP services: none")
+        text = "\n".join(text_lines)
+    
     return _ok_content(
         [{"type": "text", "text": text}],
         structured=structured,
@@ -968,8 +968,6 @@ def call_register_wallet_as_chat_agent(arguments, agent_identifier, config) -> D
         )
     profile = arguments.get("my-chat")
     if not profile:
-        # ex : did:web:wallet4agent.com:myagent  -> "myagent"
-        #      did:cheqd:testnet:xxx-yyy-zzz    -> dernière partie
         profile = agent_identifier.split(":")[-1]
     profile = profile.lower()
     
@@ -999,15 +997,15 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
     admins_login = (arguments.get("admins_login") or "").split(",")
     agent_identifier = arguments.get("agent_identifier") or agent_identifier
     
-    wallets = Wallet.query.filter_by(agent_identifier=agent_identifier).all()
-    # cannot create more than 1 wallet per agent
-    if wallets:
+    wallet = Wallet.query.filter_by(agent_identifier=agent_identifier).first()
+    # cannot create more than 1 wallet per agent TODO
+    if wallet:
         return _ok_content(
-                [{"type": "text", "text": "This Agent has one wallet"}],
+                [{"type": "text", "text": "This Agent has already one wallet."}],
                 is_error=True,
             )
 
-    # 1) Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
+    # Initialise Universal Registrar client (local docker-compose: http://localhost:9080/1.0)
     client = UniversalRegistrarClient()
     result = client.create_only_wallet(agent_identifier, manager)
     if not result:
@@ -1024,10 +1022,7 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
     
     client_secret = secrets.token_urlsafe(64)
 
-    # ----------------------------------------------------------------------
-    # 5) Create / update admins and wallet in DB
-    # ----------------------------------------------------------------------
-
+    # Create / update admins and wallet in DB
     wallet = Wallet(
         admin_pat_jti=admin_pat_jti,
         agent_pat_jti=agent_pat_jti,
@@ -1045,8 +1040,6 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
         receive_credentials=arguments.get("receive_credentials")
     )
     # If your Wallet model has a key_id column, you can also store:
-    # wallet.key_id = key_id
-
     for user_login in admins_login:
         if admins_identity_provider == "google":
             email = user_login
@@ -1080,7 +1073,6 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
     structured = {
         "agent_identifier": agent_identifier,
         "admin_personal_access_token": admin_pat,
-        "agent_personal_access_token": agent_pat,
         "wallet_url": wallet.url
     }
     
@@ -1097,9 +1089,15 @@ def call_create_agent_wallet(arguments: Dict[str, Any], agent_identifier, config
             "Copy your admin personal access token and OAuth client credentials from the secure console; "
             "they are not stored and will not be shown again."
         )
+    elif mcp_authentication == "Agntcy Badge":
+        text = (
+            "New wallet created.\n"
+            f"Agent Identifier: {agent_identifier}\n"
+            f"Wallet URL: {wallet.url}\n"
+            "Use your Agntcy Badge to connect your Agent. Use your Admin PAT to configure the wallet."
+        )
     else:
         structured["agent_personal_access_token"] = agent_pat
-
         text = (
             "New wallet created.\n"
             f"Agent Identifier: {agent_identifier}\n"
