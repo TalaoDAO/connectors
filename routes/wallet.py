@@ -89,7 +89,7 @@ def authorize(wallet_identifier):
     """
     manager = current_app.config["MANAGER"]
     w = get_wallet_by_wallet_identifier(wallet_identifier)
-    wallet_did = w.agent_identifier
+    agent_identifier = w.agent_identifier
 
     # 1. Get request / request_uri parameters
     req_jwt = request.args.get("request") or request.form.get("request")
@@ -164,13 +164,13 @@ def authorize(wallet_identifier):
         logging.warning(message)
         return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
 
-    #check wallet_did with aud
+    #check agent_identifier with aud
     aud = (
         request.args.get("aud")
         or request.form.get("aud")
         or req_payload.get("aud")
     )
-    if aud != wallet_did:
+    if aud != agent_identifier:
         message = "aud in authorization request is not correct."
         logging.warning(message)
         #return render_template("wallet/session_screen.html", message=message, title="OIDC4VP Error")
@@ -179,7 +179,7 @@ def authorize(wallet_identifier):
     now = int(datetime.utcnow().timestamp())
     exp = now + 60*60  # 60 minutes validity
 
-    wallet_kid = wallet_did + "#key-1"
+    wallet_kid = agent_identifier + "#key-1"
     key_id = manager.create_or_get_key_for_tenant(wallet_kid)
     jwk, kid, alg = manager.get_public_key_jwk(key_id)
 
@@ -190,8 +190,8 @@ def authorize(wallet_identifier):
     }
 
     id_token_payload = {
-        "iss": wallet_did,        # Self-issued: issuer is the wallet DID
-        "sub": wallet_did,        # Subject is also the wallet DID
+        "iss": agent_identifier,        # Self-issued: issuer is the wallet DID
+        "sub": agent_identifier,        # Subject is also the wallet DID
         "aud": client_id,         # Audience is the verifier / client_id
         "iat": now,
         "exp": exp,
@@ -533,8 +533,6 @@ def credential_offer(wallet_identifier):
 
 # route to request user consent then store the VC
 def user_consent(wallet_identifier):
-    #w = get_wallet_by_wallet_identifier(wallet_identifier)
-    #wallet_did = w.agent_identifier
     mode = current_app.config["MODE"]
     decision = request.form.get('decision')
     if decision == "reject":
@@ -596,7 +594,7 @@ def build_authorization_request(session_config, red, mode) -> str:
 # callback of the wallet as a client for OIDC4VCI authorization code flow
 def callback(wallet_identifier):
     w = get_wallet_by_wallet_identifier(wallet_identifier)
-    wallet_did = w.agent_identifier
+    agent_identifier = w.agent_identifier
     logging.info('This is an authorized code flow')
     red = current_app.config["REDIS"]
     mode = current_app.config["MODE"]
@@ -643,7 +641,7 @@ def callback(wallet_identifier):
     sd_jwt_vc, text = code_flow(session_config, mode, manager)
     
     if sd_jwt_vc:
-        return render_template("wallet/user_consent.html", wallet_did=wallet_did, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
+        return render_template("wallet/user_consent.html", wallet_did=agent_identifier, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
     else:
         logging.warning("sd jwt is missing %s", text)
         message = "The attestation cannot be issued"

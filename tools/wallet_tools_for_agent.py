@@ -12,6 +12,7 @@ import time
 from datetime import datetime      
 import linked_vp
 from utils import message
+import secrets
 
 RESOLVER_LIST = [
     "https://unires:test@unires.talao.co/1.0/identifiers/",
@@ -505,23 +506,23 @@ def _extract_vc_from_jwt_vp(jwt_vp: str) -> Optional[Dict[str, Any]]:
 
 # for admin and agent
 def call_get_attestations_of_this_wallet(
-    wallet_did: str,
+    agent_identifier: str,
     config: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     List all attestations stored for THIS Agent's wallet.
 
-    - Looks up Attestation rows by wallet_did
+    - Looks up Attestation rows by agent_identifier
     - For each one, tries to decode the underlying VC / SD-JWT
     - Returns both human-readable text blocks and a structured JSON payload
       suitable for an Agent.
     """
 
-    logging.info("Listing attestations for wallet %s", wallet_did)
+    logging.info("Listing attestations for agent %s", agent_identifier)
 
     attestations = (
         Attestation.query
-        .filter_by(agent_identifier=wallet_did)
+        .filter_by(agent_identifier=agent_identifier)
         .order_by(Attestation.created_at.desc())
         .all()
     )
@@ -568,7 +569,7 @@ def call_get_attestations_of_this_wallet(
         text = "\n".join(lines)
 
     structured = {
-        "agent_identifier": wallet_did,
+        "agent_identifier": agent_identifier,
         "attestations": items,
     }
 
@@ -740,7 +741,7 @@ def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, A
 
 
 
-def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
+def call_get_attestations_of_another_agent(agent_identifier: str) -> Dict[str, Any]:
     """
     List attestations (Linked VPs) of an Agent DID.
 
@@ -753,15 +754,15 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
 
     # 1. Resolve DID using Universal Resolver (Talao -> fallback to public)
     resolver_urls = [
-        f"https://unires:test@unires.talao.co/1.0/identifiers/{wallet_did}",
-        f"https://dev.uniresolver.io/1.0/identifiers/{wallet_did}",
+        f"https://unires:test@unires.talao.co/1.0/identifiers/{agent_identifier}",
+        f"https://dev.uniresolver.io/1.0/identifiers/{agent_identifier}",
     ]
     did_doc = None
     last_exception = None
 
     for url in resolver_urls:
         try:
-            logging.info("Resolving DID %s via %s", wallet_did, url)
+            logging.info("Resolving DID %s via %s", agent_identifier, url)
             r = requests.get(url, timeout=10)
             r.raise_for_status()
             payload = r.json()
@@ -773,8 +774,8 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
             last_exception = e
 
     if did_doc is None:
-        logging.warning("Failed to resolve DID %s via all resolvers", wallet_did)
-        text = f"Could not resolve DID {wallet_did} using Universal Resolver."
+        logging.warning("Failed to resolve DID %s via all resolvers", agent_identifier)
+        text = f"Could not resolve DID {agent_identifier} using Universal Resolver."
         structured = {
             "attestations": [],
             "error": "cannot_access_universal_resolver",
@@ -913,10 +914,10 @@ def call_get_attestations_of_another_agent(wallet_did: str) -> Dict[str, Any]:
 
     # 3. Human-readable text for MCP client
     if not wallet_attestations:
-        text = f"No attestations found for Agent DID {wallet_did}."
+        text = f"No attestations found for Agent DID {agent_identifier}."
     else:
         nb_attestations = str(len(wallet_attestations))
-        text = f"{nb_attestations} attestations of Agent DID {wallet_did}."
+        text = f"{nb_attestations} attestations of Agent DID {agent_identifier}."
         i = 1
         for attest in wallet_attestations:
             text += "\n attestation #" + str(i) + " = " + json.dumps(attest)
@@ -983,7 +984,7 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             [{"type": "text", "text": "Missing 'credential_offer' argument."}],
             is_error=True,
         )
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if this_wallet.always_human_in_the_loop:
         return _ok_content(
             [{"type": "text", "text": "Human in the loop is needed."}],
@@ -1162,7 +1163,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
     if not isinstance(message, str):
         message = str(message)
     
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet.sign:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot sign."}],
@@ -1199,7 +1200,7 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
     payload = arguments.get("payload", "")
     payload = json.loads(payload)
     
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet.sign:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot sign."}],
@@ -1310,7 +1311,7 @@ def call_resolve_agent_identifier(
 
 def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
     """
-    Agent tool: publish an existing Attestation as a LinkedVerifiablePresentation
+    Agent tool: publish an existing Attestation as a Linked Verifiable Presentation
     service in the Agent's DID Document.
 
     - Keeps the VC in the Attestation row
@@ -1318,7 +1319,7 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
     - Updates DID Document (service entry)
     - For did:cheqd, also updates the DID on-ledger via Universal Registrar
     """
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet.publish_unpublish:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot publish attestations."}],
@@ -1373,7 +1374,7 @@ def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, c
 
     structured = {
         "attestation_id": att.id,
-        "wallet_did": att.wallet_agent_identifier,
+        "agent_identifier": att.agent_identifier,
         "service_id": service_id,
         "published": True
     }
@@ -1446,7 +1447,7 @@ def call_unpublish_attestation(arguments: Dict[str, Any], agent_identifier: str,
 
     structured = {
         "attestation_id": att.id,
-        "wallet_did": att.wallet_did,
+        "agent_identifier": att.agent_identifier,
         "service_id": service_id,
         "published": False,
         "unpublished": True,

@@ -8,14 +8,13 @@ import hashlib
 from universal_registrar import UniversalRegistrarClient
 from routes import agent_chat
 import uuid
-#from agntcy import agntcy_create_agent_and_badge_rest
 
 
 # do not provide this tool to an LLM
 tools_guest = [
     {
         "name": "create_agent_identifier_and_wallet",
-        "description": "Generate a Decentralized Identifier (DID) for the Agent and create a wallet to store Agent attestations as verifiable credentials.",
+        "description": "Option 1 : Generate a Decentralized Identifier (DID) for the Agent and create a wallet to store Agent attestations as verifiable credentials.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -77,7 +76,7 @@ tools_guest = [
     },
     {
         "name": "create_agent_wallet",
-        "description": "Create a wallet to store Agent attestations as verifiable credentials.",
+        "description": "Option 2: Create only a wallet to store Agent attestations as verifiable credentials.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -133,12 +132,12 @@ tools_guest = [
     {
         "name": "help_wallet4agent",
         "description": (
-            "Explain to a human developer how to install and use the Wallet4Agent MCP "
+            "Explain how to install and use the Wallet4Agent MCP "
             "server with their own agent. Describe at a high level:\n"
             "- How to install and run the Wallet4Agent MCP server.\n"
             "- How to configure and use the manifest.json so the agent can discover the MCP server.\n"
             "- How to connect as a guest, and how to obtain a developer personal access token (PAT).\n"
-            "- How to create a new Agent identifier (DID) and an attached wallet for that Agent, "
+            "- How to create a new Agent identifier (DID) and/or an attached wallet for that Agent, "
             "including how the DID document is published and where the wallet endpoint lives.\n"
             "- How to configure the agent to use that DID and wallet (including storing the PAT safely).\n"
             "- Basic security best practices for protecting keys, PATs, and the wallet endpoint.\n\n"
@@ -393,24 +392,6 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
         out["isError"] = True
     return out
 
-"""
-def issue_agent_badge(agent_identifier: str, agent_name, agent_description, mode) -> dict:
-    
-    # Use the service key to create the agent app & issue badge
-    api_key = current_app.config["AGNTCY_ORG_API_KEY"]
-
-    # IMPORTANT: this should be a stable per-agent URL you serve
-    # (A2A well-known URL for that agent)
-    well_known_url = mode.server.rstrip("/") + f"/agents/{agent_identifier}/.well-known/a2a.json"
-
-    return agntcy_create_agent_and_badge_rest(
-        api_key=api_key,
-        agent_name=agent_name or agent_identifier,      # or a nicer display name
-        well_known_url=well_known_url,
-        agent_description=agent_description or "wallet4agent provisioned agent",
-        config=current_app.config,
-    )
-"""
 
 # for admin
 def call_delete_wallet(agent_identifier) -> Dict[str, Any]:
@@ -423,8 +404,8 @@ def call_delete_wallet(agent_identifier) -> Dict[str, Any]:
     """
 
     # Look up the wallet
-    wallets = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).all()
-    if not wallets:
+    wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
+    if not wallet:
         text = f"Wallet not found for gnet identifier: {agent_identifier}"
         return _ok_content(
             [{"type": "text", "text": text}],
@@ -445,8 +426,7 @@ def call_delete_wallet(agent_identifier) -> Dict[str, Any]:
     # First delete attestations, then wallet
     for att in attestations_list:
         db.session.delete(att)
-    for w in wallets:
-        db.session.delete(w)
+        db.session.delete(wallet)
     db.session.commit()
 
     text = (
@@ -759,7 +739,7 @@ def call_update_configuration(
       - client_public_key (public JWK for OAuth2 private_key_jwt client auth)
     """
     # 0. Load wallet
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": "Wallet not found for this agent_identifier"}],
@@ -902,7 +882,7 @@ def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
     """
     Dev tool: inspect and summarize the DID Document (if it exists) associated with this Agent's wallet.
     """
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": f"No wallet found for Agent DID {agent_identifier}."}],
@@ -960,7 +940,7 @@ def call_describe_identity_document(agent_identifier) -> Dict[str, Any]:
 
 
 def call_register_wallet_as_chat_agent(arguments, agent_identifier, config) -> Dict[str, Any]:
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).one_or_none()
+    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet:
         return _ok_content(
             [{"type": "text", "text": "Wallet not found for this agent_identifier"}],

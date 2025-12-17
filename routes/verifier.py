@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from jwcrypto import jwk, jwt
 from utils import oidc4vc
 import didkit
-from db_model import Wallet, list_wallets_by_agent_identifier
+from db_model import Wallet
 from urllib.parse import  urlencode
 import logging
 
@@ -88,8 +88,6 @@ def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> 
 
 # build the authorization request for user                                   
 def user_verification(agent_identifier, mcp_scope, red, mode, manager):
-    
-    
     # configure verifier from ecosystem profile
     wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     wallet_identifier = wallet.wallet_identifier

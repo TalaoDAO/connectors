@@ -9,11 +9,8 @@ import redis
 import markdown
 import env
 import json
-import copy
-
 import key_manager
-import linked_vp
-from utils import oidc4vc, message
+from utils import message
 from database import db
 from db_model import load_user, seed_user, seed_wallet, Wallet
 from kms_model import seed_key
@@ -24,86 +21,6 @@ DEFAULT_API_LIFE = 5000
 DEFAULT_GRANT_LIFE = 5000
 DEFAULT_ACCEPTANCE_TOKEN_LIFE = 28 * 24 * 60 * 60
 
-def _adapt_oasf_for_wallet(oasf_template: dict, wallet: Wallet) -> dict:
-    """
-    Take the base OASF.json template and adapt it for a specific wallet:
-    - Set the OASF `id` to the Agent DID.
-    - Filter agent tools according to wallet flags (sign, receive_credentials, publish_unpublish).
-    - Expose capabilities under wallet4agent.capabilities.
-    """
-    oasf = copy.deepcopy(oasf_template)
-
-    agent_did = wallet.agent_identifier
-    # Subject of the OASF: this Agent's DID
-    oasf["id"] = agent_did
-
-    # ---- Expose capabilities in wallet4agent section ----
-    w4a = oasf.get("wallet4agent") or {}
-    capabilities = w4a.get("capabilities") or {}
-
-    capabilities.update(
-        {
-            "sign": bool(wallet.sign),
-            "receive_credentials": bool(wallet.receive_credentials),
-            "publish_unpublish": bool(wallet.publish_unpublish),
-            "always_human_in_the_loop": bool(wallet.always_human_in_the_loop),
-        }
-    )
-
-    w4a["capabilities"] = capabilities
-    oasf["wallet4agent"] = w4a
-
-    # ---- Adapt tools inside the mcp_server module ----
-    modules = oasf.get("modules") or []
-    for module in modules:
-        if module.get("type") != "mcp_server":
-            continue
-
-        tools = module.get("tools") or []
-        filtered_tools = []
-
-        for tool in tools:
-            name = tool.get("name")
-            if not name:
-                filtered_tools.append(tool)
-                continue
-
-            # In the new OASF.json, tools use "role" (guest/agent/dev).
-            role = tool.get("role") or tool.get("audience") or "agent"
-
-            # Guests & dev tools are always present
-            if role in ("guest", "admin"):
-                filtered_tools.append(tool)
-                continue
-
-            if role != "agent":
-                # Any other audience: keep as-is
-                filtered_tools.append(tool)
-                continue
-
-            # ---- Agent tools: gate them by wallet flags ----
-
-            # Receiving credentials
-            if name == "accept_credential_offer" and not wallet.receive_credentials:
-                # Agent cannot receive credentials
-                continue
-
-            # Signing tools
-            if name in ("sign_text_message", "sign_json_payload") and not wallet.sign:
-                # Agent cannot sign
-                continue
-
-            # Publish / unpublish tools
-            if name in ("publish_attestation", "unpublish_attestation") and not wallet.publish_unpublish:
-                # Agent is not allowed to manage Linked VP publication
-                continue
-
-            # All remaining agent tools are always available
-            filtered_tools.append(tool)
-
-        module["tools"] = filtered_tools
-
-    return oasf
     
 def create_app() -> Flask:
     """Application factory: configure, wire dependencies, register routes/APIs."""

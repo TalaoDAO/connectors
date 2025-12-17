@@ -1,7 +1,6 @@
 import json
 from typing import List, Dict, Any
-import os
-from flask import Flask, request, jsonify, render_template, current_app
+from flask import request, jsonify, render_template
 from openai import OpenAI
 from utils import oidc4vc
 import logging
