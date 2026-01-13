@@ -57,9 +57,9 @@ def manage_error(error, error_description, red, mode, status=400):
 def build_issuer_metadata(mode) -> dict:
     logging.info('Call credential issuer configuration endpoint')
     metadata = {
-        "credential_issuer": f"{mode.server.rstrip("/")}/issuer",
-        "credential_endpoint": f"{mode.server.rstrip("/")}/issuer/credential",
-        "nonce_endpoint": f"{mode.server.rstrip("/")}/issuer/nonce"
+        "credential_issuer": f"{mode.server}issuer",
+        "credential_endpoint": f"{mode.server}issuer/credential",
+        "nonce_endpoint": f"{mode.server}issuer/nonce"
     }
     metadata["credential_configurations_supported"] = {
         "OBO": {
