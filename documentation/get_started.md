@@ -1,9 +1,9 @@
 # Getting Started with Wallet4Agent
 
-Wallet4Agent allows you to provision a **trusted identity** and a **credential wallet** for any AI Agent.  
-With it, your agent can authenticate, receive verifiable credentials, present proofs, and interact safely with users and services.
+Wallet4Agent allows you to provision **trusted identity** and **credential wallets** for AI Agents — aligned with the EUDI Wallet architecture.  
+Your agents can authenticate, receive verifiable credentials, present proofs, and act **On‑Behalf‑Of** humans or companies.
 
-Wallet4Agent exposes its capabilities through a remote **MCP Server**, compatible with any MCP-enabled agent framework. DIDs creation (DNS based or blockchain based), VC issuers and verifiers are provided in minutes out of the box through tools.
+All capabilities are exposed through a remote **MCP Server** compatible with any MCP‑enabled agent framework.
 
 ---
 
@@ -11,12 +11,22 @@ Wallet4Agent exposes its capabilities through a remote **MCP Server**, compatibl
 
 A typical flow:
 
-1. A **Guest** (no auth) creates a new **Agent Identifier (DID)** and its associated **wallet**.  
-2. The Guest receives:  
-   - a **Admin Personal Access Token (admin_pat)**  
+1. A **Developer** creates **one account** as either:
+   - a **Human** (personal developer), or  
+   - a **Company** (organization controlling agents).  
+   This creates a DID and a base wallet.
+
+2. Using this **Human or Company account**, the developer connects to the **Wallet4Agent MCP Server**.
+
+3. Through MCP, the developer creates **one or more Agent wallets** (each with its own DID and wallet).
+
+4. For each Agent, the developer receives:
+   - an **Admin Personal Access Token (admin_pat)**  
    - an **Agent Personal Access Token (agent_pat)** *or* OAuth2 client credentials  
-3. Using the **Admin token**, the developer configures the agent (update configuration, rotate tokens, register authentication keys).  
-4. Using the **Agent token**, the agent collects credentials, presents proofs, authenticates to others, and manages attestations.
+
+5. Using the **Admin token**, the developer configures each agent (keys, ecosystem, OBO, publishing rules).
+
+6. Using the **Agent token**, the agent receives credentials, authenticates, signs data, presents proofs, and interacts with users and other agents.
 
 All interactions happen through:
 
@@ -24,42 +34,101 @@ All interactions happen through:
 POST https://wallet4agent.com/mcp
 ```
 
+You can create **as many Agent wallets as you want** under the same Human or Company account.
+
 ---
 
 # 2. 🧩 Roles and Authentication
 
-## **2.1 Guest (no authentication)**  
-A Guest can:
+## **2.1 Developer (Human or Company account)**  
+Created with:
 
-- Create a new Agent identity  
-- Create its wallet  
-- Retrieve initial Developer and Agent credentials  
-
-## **2.2 Admin**  
-Authenticated using:  
 ```
-Authorization: Bearer <dev_personal_access_token>
+create_account
 ```
 
-An admin can:
+A developer account:
+- Owns all Agent wallets
+- Receives notifications
+- Issues On‑Behalf‑Of delegations
+- Controls wallet policies
 
-- Manage configuration  
-- Register OAuth client keys  
-- Rotate the agent’s PAT  
-- Create or update OASF  
-- Delete the agent’s identity  
-- Inspect wallet content  
-
-## **2.3 Agent**  
-Authenticated using:
-
-- `Bearer <agent_personal_access_token>`
-- OAuth2 Client Credentials Access Token  
-- OAuth2 private_key_jwt Access Token  
+This account has a DID and wallet like any EUDI‑style identity.
 
 ---
 
-# 3. 🆕 Creating an Agent Identity & Wallet (Guest)
+## **2.2 Admin (per Agent)**  
+Authenticated using:
+
+```
+Authorization: Bearer <admin_personal_access_token>
+```
+
+An Admin can:
+- Configure the Agent wallet
+- Register OAuth keys
+- Rotate tokens
+- Set ecosystem (DIIP, EWC, ARF…)
+- Set AgentCard
+- Delete the Agent wallet
+- Inspect attestations
+
+Each Agent has its **own Admin token**.
+
+---
+
+## **2.3 Agent**  
+Authenticated using:
+- `Bearer <agent_personal_access_token>`
+- OAuth2 Client Credentials
+- OAuth2 private_key_jwt
+
+The Agent:
+- Receives credentials
+- Publishes Linked VPs
+- Signs messages
+- Authenticates to other agents
+- Verifies users
+- Acts On‑Behalf‑Of its owner
+
+---
+
+# 3. 🧑‍💼 Create a Human or Company Account
+
+Tool:
+
+```
+create_account
+```
+
+Creates:
+- A DID
+- A wallet
+- An owner identity (Human or Company)
+
+Example:
+
+```json
+{
+  "name": "create_account",
+  "arguments": {
+    "account_type": "company",
+    "notification_email": "dev@mycompany.com",
+    "did_method": "did:web"
+  }
+}
+```
+
+You now have:
+- A **Company DID**
+- A **Company wallet**
+- The right to create and control Agents
+
+---
+
+# 4. 🤖 Creating Agent Wallets
+
+Authenticated as your **Human or Company account**.
 
 Tool:
 
@@ -68,41 +137,22 @@ create_agent_identifier_and_wallet
 ```
 
 Creates:
-
-- **DID**
-- **Wallet**
-- **DID Document**
-- **Owner registration**
+- An Agent DID
+- An Agent wallet
+- DID Document
+- MCP credentials
 
 Returns:
+- Agent DID
+- Wallet URL
+- Admin PAT
+- Agent PAT or OAuth credentials
 
-- Developer PAT  
-- Agent PAT *or* OAuth credentials  
-- Wallet URL  
-- Agent Identifier (DID)
-
-### Example
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "create_agent_identifier_and_wallet",
-    "arguments": {
-      "owners_identity_provider": "google",
-      "owners_login": "someone@example.com",
-      "did_method": "did:web",
-      "mcp_client_authentication": "Personal Access Token (PAT)"
-    }
-  }
-}
-```
+You can repeat this **as many times as you want**.
 
 ---
 
-# 4. 🛠 Admin Tools
+# 5. 🛠 Admin Tools
 
 Authenticated with:
 
@@ -110,176 +160,130 @@ Authenticated with:
 Authorization: Bearer <admin_pat>
 ```
 
-## **4.1 get_configuration**
+## get_account_configuration  
+Returns owner (Human/Company) wallet data.
 
-Returns agent metadata and DID doc.
+## get_wallet_configuration  
+Returns configuration of one Agent wallet.
 
-## **4.2 update_configuration**
+## update_configuration  
+Configure:
+- Ecosystem profile
+- AgentCard
+- OAuth keys
+- Human‑in‑the‑loop rules
 
-Used to:
-
-- Set runtime metadata  
-- Register JWK for OAuth private_key_jwt  
-- Update agentcard URL  
-- Update ecosystem_profile  
-
-## **4.3 rotate_personal_access_token**
-
-Rotates admin or agent PAT.
-
-## **4.4 add_authentication_key**
-
-Registers a new public JWK.
-
-## **4.5 delete_identity**
-
-Removes DID, wallet, attestations.
+## delete_wallet  
+Deletes the Agent wallet and all its credentials.
 
 ---
 
-# 5. 🔐 Authentication Modes for the Agent
+# 6. 🔐 Agent Authentication Modes
 
-## **5.1 PAT**
+## PAT
 
 ```
 Authorization: Bearer <agent_pat>
 ```
 
-## **5.2 OAuth2 Client Credentials**
+## OAuth2 Client Credentials
 
 ```
-POST <authorization_server>/oauth/token
+POST /oauth/token
 grant_type=client_credentials
 client_id=<agent_did>
-client_secret=<agent_client_secret>
-resource=https://wallet4agent.com
+client_secret=<agent_secret>
 ```
 
-## **5.3 OAuth2 private_key_jwt**
+## OAuth2 private_key_jwt
 
-Agent signs a JWT assertion.  
-Developer must register a `client_public_key`.
-
----
-
-# 6. 🤖 Agent Tools
-
-## **6.1 get_this_agent_data**  
-Retrieve DID, wallet summary, attestations, config.
-
-## **6.2 get_attestations_of_this_wallet**
-
-Returns local attestations.
-
-## **6.3 accept_credential_offer**
-
-Supports JWT-VC, SD-JWT, JSON-LD.
-
-```json
-{
-  "name": "accept_credential_offer",
-  "arguments": { "credential_offer": "<offer>" }
-}
-```
+Agent signs a JWT with a registered public key.
 
 ---
 
-# 7. 🔄 Interacting with Other Agents
+# 7. 🎫 Agent Wallet Capabilities
 
-## **7.1 get_attestations_of_another_agent**
+Agents can:
 
-Fetch public/published attestations.
+- Accept credentials
+- Store them
+- Publish Linked VPs
+- Resolve other agents
+- Authenticate
+- Sign data
+- Verify users
 
-Supports:
-
-- JSON-LD VP  
-- JWT VP  
-- SD-JWT envelopes  
-- EnvelopedVP  
-
-## **7.2 start_agent_authentication**  
-## **7.3 poll_agent_authentication**
-
-OIDC4VP-based agent-to-agent authentication.
-
----
-
-# 8. 👤 User Verification
-
-## **start_user_verification**  
-Sends email to user.
-
-## **poll_user_verification**  
-Returns:
-
-- pending  
-- verified  
-- refused  
-- expired  
-
----
-
-# 9. ✍ Signing Tools
-
-## **sign_text_message**
-
-Signs raw text.
-
-## **sign_json_payload**
-
-Signs structured JSON.
-
----
-
-# 10. 📦 OASF
-
-Developer tool:
-
-```
-create_OASF
-```
-
-Creates or updates the agent's OASF metadata.
-
----
-
-# 11. 📚 Complete Tool Reference
-
-## Guest Tools
-- create_agent_identifier_and_wallet  
-- describe_wallet4agent  
-
-## Admin Tools
-- get_configuration  
-- update_configuration  
-- rotate_personal_access_token  
-- add_authentication_key  
-- get_attestations_of_this_wallet  
-- create_OASF  
-- delete_identity  
-
-## Agent Tools
-- get_this_agent_data  
-- get_attestations_of_this_wallet  
-- get_attestations_of_another_agent  
+Tools include:
 - accept_credential_offer  
-- sign_text_message  
-- sign_json_payload  
-- start_user_verification  
-- poll_user_verification  
+- get_attestations_of_this_wallet  
+- publish_attestation  
+- unpublish_attestation  
+- resolve_agent_identifier  
+
+---
+
+# 8. 🔄 Agent‑to‑Agent Trust
+
+Agents authenticate using **OIDC4VP**.
+
+Tools:
 - start_agent_authentication  
 - poll_agent_authentication  
-- help_wallet4agent
-- publish_attestations
-- unpublish_attestations
+
+This provides cryptographic proof of the other agent’s DID, keys, and published claims.
+
+---
+
+# 9. 👤 User Verification
+
+Agents can verify humans by email‑based wallet flows.
+
+Tools:
+- start_user_verification  
+- poll_user_verification  
+
+Supports:
+- Profile verification
+- Over‑18 proof
+
+---
+
+# 10. ✍ Cryptographic Signing
+
+Agents can sign:
+
+- Raw text
+- JSON payloads
+
+Tools:
+- sign_text_message  
+- sign_json_payload  
+
+This proves the Agent controls its DID keys.
+
+---
+
+# 11. 📦 On‑Behalf‑Of (OBO) Delegation
+
+The **Human or Company** can issue **mandates** to Agents:
+
+```
+issue_OBO
+```
+
+This creates a Verifiable Credential that says:
+
+> “This Agent is authorized to perform task X on my behalf until time Y.”
+
+This is the legal and cryptographic foundation of delegated AI action.
 
 ---
 
 # 12. 🎯 Next Steps
 
-- Browse use cases  
-- Try the live demo agent  
-- Connect your agent framework  
-- Issue credentials from any OIDC4VCI or SD-JWT issuer  
-
-Wallet4Agent lets your AI Agent evolve from a chat interface into a **trusted autonomous digital actor**.
+- Create your Human or Company account  
+- Connect it to MCP  
+- Create Agent wallets  
+- Issue OBO mandates  
+- Attach credentials  
+- Go live with trusted AI agents

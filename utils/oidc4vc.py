@@ -14,16 +14,7 @@ from cryptography.x509.oid import ExtensionOID
 import secrets
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import os
-
-
-"""
-https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/EBSI+DID+Method
-VC/VP https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/E-signing+and+e-sealing+Verifiable+Credentials+and+Verifiable+Presentations
-DIDS method https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/EBSI+DID+Method
-supported signature: https://ec.europa.eu/digital-building-blocks/wikis/display/EBSIDOC/E-signing+and+e-sealing+Verifiable+Credentials+and+Verifiable+Presentations
-
-"""
-
+import uuid
 
 
 RESOLVER_LIST = [
@@ -145,55 +136,6 @@ def generate_access_token(did, role, type, jti=None, duration=None):
     access_token = encrypt_string(json.dumps(payload))
     return access_token, payload["jti"]
 
-
-def extract_first_san_dns_from_der_b64(cert_b64: str) -> str:
-    """
-    Takes a base64-encoded DER X.509 certificate and returns the first DNS name
-    in its Subject Alternative Name extension, or None if not found.
-    """
-    if not cert_b64:
-        return 
-    cert_b64 += "=" * (-len(cert_b64) % 4)
-    cert_der = base64.b64decode(cert_b64)
-    cert = x509.load_der_x509_certificate(cert_der)
-
-    try:
-        san_ext = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-        dns_names = san_ext.value.get_values_for_type(x509.DNSName)
-        return dns_names[0] if dns_names else None
-    except x509.ExtensionNotFound:
-        return None
-    
-
-def extract_first_san_uri_from_der_b64(cert_b64: str) -> str:
-    """
-    Returns the first URI (uniformResourceIdentifier) from the SAN extension,
-    or None if not present.
-    """
-    if not cert_b64:
-        return 
-    cert_b64 += "=" * (-len(cert_b64) % 4)
-    cert_der = base64.b64decode(cert_b64)
-    cert = x509.load_der_x509_certificate(cert_der)
-    try:
-        san_ext = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-        uris = san_ext.value.get_values_for_type(x509.UniformResourceIdentifier)
-        return uris[0] if uris else None
-    except x509.ExtensionNotFound:
-        return None
-
-
-def extract_expiration(cert_b64: str):
-    if not cert_b64:
-        return 
-    cert_b64 += "=" * (-len(cert_b64) % 4)
-    cert_der = base64.b64decode(cert_b64)
-    cert = x509.load_der_x509_certificate(cert_der)
-    not_before = getattr(cert, "not_valid_before_utc", cert.not_valid_before_utc)
-    not_after = getattr(cert, "not_valid_after_utc" , cert.not_valid_after_utc)
-    return not_after
-
-
 def pub_key(key):
     key = json.loads(key) if isinstance(key, str) else key
     Key = jwk.JWK(**key) 
@@ -280,36 +222,41 @@ def sd(data):
     return payload, _disclosure
 
 
-def sign_sdjwt_by_agent(unsecured, agent_identifier, manager, draft=13, duration=360*24*60*60):
+def sign_sdjwt_by_agent(unsecured, agent_identifier, target_agent, manager, draft=13, duration=360*24*60*60):
+    # bypass selective disclosure if needed
     if "all" in unsecured.get("disclosure", []):
-        _payload, _disclosure = unsecured, ""
-        _payload.pop("disclosure")
+        payload, _disclosure = unsecured, ""
+        payload.pop("disclosure")
     else:
-        _payload, _disclosure = sd(unsecured)
+        payload, _disclosure = sd(unsecured)
+        
     # lazily create or fetch tenant key
     key_id = manager.create_or_get_key_for_tenant(agent_identifier)
     jwk, kid, alg = manager.get_public_key_jwk(key_id)
+    
     header = {
         "alg": alg,
-        "kid": agent_identifier + "#key-1"
+        "kid": agent_identifier + "#key-1",
+        'typ': "dc+sd-jwt" if draft >= 15 else "vc+sd-jwt"
     }
-    payload = {
+    
+    payload_update = {
+        'jti':  str(uuid.uuid4()),
+        'aud': target_agent,
         'iss': agent_identifier,
         'iat': int(datetime.timestamp(datetime.now())),
-        'exp': int(datetime.timestamp(datetime.now())) + duration,
         "_sd_alg": "sha-256",
+        "cnf":  {"kid": target_agent + "#key-1"}
     }
-    payload['cnf'] = {"kid": agent_identifier + "#key-1"}
-    payload.update(_payload)
+    payload.update(payload_update)
+    
+    # update expiration date with duration if not done before
+    if not payload.get("exp"):
+        payload["exp"] = int(datetime.timestamp(datetime.now())) + duration,
+
+    # clean
     if not payload.get("_sd"):
-        logging.info("no _sd present")
         payload.pop("_sd_alg", None)
-    # build header
-    if draft >= 15:
-        header['typ'] = "dc+sd-jwt"
-    else:
-        header['typ'] = "vc+sd-jwt"
-    # sign with signer
     
     sd_token = manager.sign_jwt_with_key(key_id, header, payload)
     sd_token += _disclosure + "~"

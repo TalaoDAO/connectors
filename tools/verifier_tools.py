@@ -1,9 +1,6 @@
-import io
 import json
-import base64
 from typing import Any, Dict, List, Optional
 import logging
-import qrcode
 from routes import verifier
 from utils import message
 import requests
@@ -257,11 +254,7 @@ def call_start_agent_authentication(
         oidc4vp_endpoint = None
         for s in services:
             stype = s.get("type")
-            if isinstance(stype, list):
-                if "OIDC4VP" in stype:
-                    oidc4vp_endpoint = s.get("serviceEndpoint")
-                    break
-            elif stype == "OIDC4VP":
+            if stype == "OIDC4VCWalletService":
                 oidc4vp_endpoint = s.get("serviceEndpoint")
                 break
         
@@ -272,7 +265,7 @@ def call_start_agent_authentication(
                 is_error=True,
             )
     else: # for testing
-        oidc4vp_endpoint = mode.server + target_agent 
+        oidc4vp_endpoint = mode.server + "wallet/" + target_agent 
 
     # 2. Fetch authorization_endpoint from well-known endpoint
     try:

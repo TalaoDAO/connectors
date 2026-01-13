@@ -27,8 +27,7 @@
       font-size: 17px; /* was the browser default ~16px */
     }
 
-    html, body {
-      margin: 0;
+    html, body{margin: 0;
       padding: 0;
       font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
@@ -37,7 +36,9 @@
       color: #e5e7eb;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
-    }
+  font-size: 18px;
+  line-height: 1.55;
+}
 
     body {
       min-height: 100vh;
@@ -576,7 +577,21 @@
       }
     }
 
+  .columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
+  }
+
+  .columns > .card {
+    width: 100%;
+  }
+
+
+
     .card {
+      padding: 22px 24px;
+       box-sizing: border-box;
       border-radius: 1.1rem;
       border: 1px solid rgba(148, 163, 184, 0.35);
       background: radial-gradient(circle at 0% 0%, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.9));
@@ -820,7 +835,16 @@
       margin-top: 1.25rem;
       max-width: 46rem;
     }
-  </style>
+  
+  /* Readability boost */
+  .hero-title{font-size: clamp(40px, 5vw, 64px); line-height:1.05;}
+  .hero-subtitle{font-size: 1.1rem; line-height: 1.55; max-width: 55ch;}
+  .section-title{font-size: clamp(28px, 3vw, 38px);}
+  .section-subtitle{font-size: 1.05rem; max-width: 62ch;}
+  .card p{font-size: 1rem; line-height: 1.5;}
+  .btn{font-size: 1rem;}
+
+</style>
 </head>
 <body>
   <div class="page">
@@ -849,348 +873,169 @@
     </header>
 
     <main>
-      <section class="hero">
-        <div class="hero-left">
-          <div class="hero-badge">
-            <span class="dot"></span>
-            Trust &amp; identity layer for AI Agents
-          </div>
-          <h1 class="hero-title">
-            Give your AI Agents a
-            <span>real, verifiable digital identity</span>
-          </h1>
-          <p class="hero-subtitle">
-            AI agents are powerful – but without trust, they can’t safely access services, act on your behalf, or touch
-            real data.
-            <br><br>
-            <strong>Wallet4Agent</strong> gives every agent a <strong>trusted identifier</strong> and a
-            <strong>wallet of verifiable credentials</strong>, so it can prove:
-            who owns it, who controls it, and what it’s allowed to do.
-            <br><br>
-            Your agents become <strong>reliable, accountable digital actors</strong> instead of anonymous bots –
-            ready to work with users, companies, and APIs in a way that’s <strong>verifiable and auditable</strong> by design.
-            <br><br>
-            Your agent become <strong>compliant</strong> with decentralized ecosystems which use <strong>W3C Verifiable Credentials, OAuth 2.0 and OIDC4VC</strong> protocols.
-            <br><br> 
-            Easy to get started, Wallet4agent is just a remote <strong>MCP Server</strong>. 
-          </p>
-          <div class="hero-actions">
-            <a class="btn btn-primary" href="/agent">Try the live demo</a>
-            <a class="btn btn-outline" href="/documentation/get_started">Get started in minutes</a>
-            <a class="btn btn-outline" href="/documentation/use_cases">Explore use cases</a>
-            <a class="btn btn-outline" href="/documentation/stack">See how it works</a>
-          </div>
-          <div class="hero-footnote">
-            <strong>Sandbox:</strong> Wallet4Agent is currently available as a developer sandbox.
-            For enterprise or production deployments, contact the authors to discuss managed or on-prem environments.
-          </div>
-        </div>
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        Trust &amp; identity layer for AI Agents
+      </div>
+      <h1 class="hero-title">
+        Give your AI Agents a
+        <span>verifiable identity &amp; a credential wallet</span>
+      </h1>
+                  <p class="hero-subtitle">
+        <strong>Wallet4Agent</strong> gives AI agents a real identity — so people, companies, and other agents can trust them.
+        Your agent can prove <strong>who it is</strong> and <strong>what it’s allowed to do</strong> before taking actions.
+      </p>
+      <p class="hero-subtitle" style="margin-top:10px">
+        We believe agents must be integrated into the legal identity stack — especially the <strong>EUDI Wallet</strong> infrastructure —
+        with verifiable permissions and auditability by design.
+      </p>
 
-        <div class="hero-right">
-          <div class="hero-card">
-            <div class="hero-card-halo"></div>
-            <div class="hero-card-inner">
-              <div class="hero-card-label">Trusted agents · Out of the box</div>
-              <div class="hero-card-main">
-                Turn any AI Agent into a trusted, verifiable digital entity with its own identity and credential wallet.
-              </div>
-              <div class="hero-card-sub">
-                Wallet4Agent handles identity, credentials, and governance – so your agents can act safely in the real world.
-              </div>
-              <div class="hero-metrics">
-                <div class="metric">
-                  <div class="metric-label">Identity</div>
-                  <div class="metric-value">Trusted Agent ID through DIDs</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-label">Credentials</div>
-                  <div class="metric-value">Wallet of verifiable attestations</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-label">Control</div>
-                  <div class="metric-value">Human-in-the-loop &amp; policy</div>
-                </div>
-              </div>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/agent"><span>▶</span> Try the live demo</a>
+        <a class="btn btn-outline" href="/documentation/get_started">Talk to us</a>
+        <a class="btn btn-outline" href="/manifest.json">MCP manifest</a>
+        <a class="btn btn-outline" href="/documentation/stack">How it works</a>
+      </div>
+
+      <div class="callout" style="margin-top: 1.2rem;">
+        <div class="callout-row">
+          <span><strong>For builders:</strong> no key management, no custom identity stack.</span>
+          <span><strong>For security:</strong> credentials, scopes, expiry, and auditability.</span>
+        </div>
+        <div>
+          Need production / on-prem? Contact the authors (sandbox is public).
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <div class="hero-card">
+        <div class="hero-card-halo"></div>
+        <div class="hero-card-inner">
+          <div class="hero-card-label">What an agent gets</div>
+          <div class="hero-card-main">
+            A trusted identity, a wallet, and clear authority — ready for the real world.
+          </div>
+          <div class="hero-card-sub">
+            Replace “trust me” with proofs. Show identity, roles, and delegation when it matters.
+          </div>
+          <div class="hero-metrics">
+            <div class="metric">
+              <div class="metric-label">Identity</div>
+              <div class="metric-value">Verifiable identity</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Wallet</div>
+              <div class="metric-value">Trusted proofs</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Governance</div>
+              <div class="metric-value">Delegation &amp; governance</div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
+    </div>
+  </section>
 
-      <!-- Why / value -->
-      <section class="section">
-        <div class="section-header">
-          <div class="section-kicker">Why Wallet4Agent</div>
-          <h2 class="section-title">AI Agents need more than intelligence — they need trust</h2>
-          <p class="section-description">
-            Today, most AI agents are stateless and anonymous. They cannot prove who they are, who they belong to, or what
-            they’re allowed to do. That’s fine for chat – but not for actions that impact users, companies, or real systems.
+  <div class="divider"></div>
+
+  <section class="section" id="main-points">
+    <div class="section-header">
+      <div class="section-kicker">Core capabilities</div>
+      <h2 class="section-title">Trust, built into your agents</h2>
+      <p class="section-description">
+        Wallet4Agent focuses on one simple idea: <strong>trust should be verifiable</strong>.<br>Give your agents portable proofs and clear permissions — so they can safely move from “chat” to “actions”.</p>
+    </div>
+
+    <div class="columns">
+      <article class="card">
+        <div class="card-body">
+          <div class="badge"><span class="badge-dot green"></span> Verification &amp; trust checks</div>
+          <p>
+            Verify people and other agents before sensitive actions. Use simple flows to request proofs and confirm results —
+            ideal for onboarding, compliance, and high‑risk operations.
           </p>
-          <p class="section-highlight">
-            <strong>Wallet4Agent</strong> gives your agent a <strong>verifiable identity</strong> and a
-            <strong>wallet of credentials</strong>, so it can log in, present proofs, and act within clear,
-            auditable boundaries.
-          </p>
-        </div>
+          <ul class="tech-list">
+<li><strong>Users:</strong> verify age, profile, and other proofs.</li>
+<li><strong>Agents:</strong> confirm another agent’s identity and published claims.</li>
+</ul>
+</div>
+      </article>
+    </div>
+  </section>
 
-        <div class="columns">
-          <article class="card">
-            <div class="card-body">
-              <div class="badge">
-                <span class="badge-dot blue"></span>
-                What your agent gets
-              </div>
-              <p>
-                With Wallet4Agent, each agent becomes a <strong>first-class digital entity</strong>:
-              </p>
-              <ul class="tech-list">
-                <li><strong>A solid identifier:</strong> a stable, verifiable ID that others can resolve and trust.</li>
-                <li><strong>A personal wallet:</strong> the agent can hold credentials that prove ownership, role, skills, or mandates.</li>
-                <li><strong>Delegations &amp; mandates:</strong> people or companies can authorize the agent to act on their behalf, with clear scopes and expiry.</li>
-                <li><strong>Safe access to services:</strong> instead of raw API keys, your agent uses verifiable credentials to access APIs and workflows.</li>
-                <li><strong>Governance &amp; guardrails:</strong> you can enforce human approval for sensitive actions and keep a full audit trail.</li>
-              </ul>
-              <p>
-                The result: agents that <strong>act, sign, access, and decide</strong> – but always within a trusted, accountable framework.
-              </p>
-            </div>
-          </article>
+  <div class="divider"></div>
 
-          <article class="card">
-            <div class="card-body">
-              <div class="badge">
-                <span class="badge-dot orange"></span>
-                Example · Your agent in action
-              </div>
-              <p>
-                Imagine a personal AI agent that can negotiate a contract on behalf of a user:
-              </p>
-              <ul class="list">
-                <li><strong>1 — The user delegates authority:</strong> they give the agent permission to negotiate and sign within a defined limit.</li>
-                <li><strong>2 — The agent receives a credential:</strong> Wallet4Agent stores a verifiable mandate in the agent’s wallet.</li>
-                <li><strong>3 — The agent talks to a partner service:</strong> it presents its identity plus the mandate as proof of authorization.</li>
-                <li><strong>4 — The service verifies and executes:</strong> the service trusts the agent because identity, delegation, and scope are all cryptographically proven.</li>
-              </ul>
-              <p style="margin-top:0.6rem;">
-                At every step, Wallet4Agent ensures that <strong>who the agent is</strong> and <strong>what it can do</strong> are transparent and verifiable.
-              </p>
-            </div>
-          </article>
-        </div>
-
+  <section class="section" id="how-it-works">
+    <div class="section-header">
+      <div class="section-kicker">Integration</div>
+      <h2 class="section-title">It’s just tools: connect via MCP</h2>
+      <p class="section-description">
+        <h2 class="section-title">Business outcomes</h2>
+      <p class="section-subtitle">
+        Reduce risk and unlock high‑value automation with agents that can prove identity, permissions, and compliance.
+      </p>
+      <div class="grid grid-3">
+        <article class="card"><h3>Safer automation</h3><p>Replace “trust me” with verifiable permissions and delegation.</p></article>
         <br>
-        <div style="text-align:center;">
-          <a class="btn btn-outline" href="/documentation/use_cases">See detailed use cases</a>
-          <a class="btn btn-primary" href="/agent">Launch the demo agent</a>
-        </div>
-      </section>
-
-      <div class="divider"></div>
-
-      <!-- Use cases -->
-      <section class="section">
-        <div class="section-header">
-          <div class="section-kicker">From chat to action</div>
-          <h2 class="section-title">What your AI Agents can safely do with Wallet4Agent</h2>
-          <p class="section-description">
-            Once your agent has a trusted identity and a wallet of attestations, it can stop being “just a chat interface” and start
-            acting as a <strong>trusted digital representative</strong> for people and organizations.
-          </p>
-          <p class="section-highlight">
-            Each use case below combines identity, credentials, and controlled delegation – all enforced through Wallet4Agent.
-          </p>
-        </div>
-
-        <article class="card">
-          <div class="card-body">
-            <div class="badge"><span class="badge-dot blue"></span> Example use cases</div>
-            <div class="use-cases-grid">
-              <div class="use-case">
-                <div class="use-case-title">Enterprise Copilots · With real access</div>
-                <p>
-                  Equip copilots with verifiable identities and role-based credentials so they can access internal tools, request approvals,
-                  and execute tasks – always within clear boundaries and logs.
-                </p>
-                <div class="use-case-tags">
-                  <span class="tag"><span>Enterprise IT</span></span>
-                  <span class="tag"><span>Access control</span></span>
-                  <span class="tag"><span>Auditability</span></span>
-                </div>
-              </div>
-
-              <div class="use-case">
-                <div class="use-case-title">Customer Support Agents · Trusted by users</div>
-                <p>
-                  Let AI support agents prove they really belong to your brand, and only reveal the customer data they need for a
-                  given interaction – no more, no less.
-                </p>
-                <div class="use-case-tags">
-                  <span class="tag"><span>Customer experience</span></span>
-                  <span class="tag"><span>Brand trust</span></span>
-                </div>
-              </div>
-
-              <div class="use-case">
-                <div class="use-case-title">Agents accessing regulated APIs</div>
-                <p>
-                  Use verifiable credentials instead of static keys so agents can safely access banking, insurance, or government APIs
-                  with the right level of assurance.
-                </p>
-                <div class="use-case-tags">
-                  <span class="tag"><span>Financial APIs</span></span>
-                  <span class="tag"><span>Governments</span></span>
-                </div>
-              </div>
-
-              <div class="use-case">
-                <div class="use-case-title">Supply Chain &amp; ESG Monitoring</div>
-                <p>
-                  Assign identities and credentials to agents, companies, and devices so your AI can collect and verify attestations
-                  along the supply chain.
-                </p>
-                <div class="use-case-tags">
-                  <span class="tag"><span>ESG</span></span>
-                  <span class="tag"><span>Supply chain</span></span>
-                </div>
-              </div>
-
-              <div class="use-case">
-                <div class="use-case-title">Financial &amp; DeFi Agents</div>
-                <p>
-                  Combine KYC / KYB credentials with agent identities so they can operate across TradFi and DeFi with clear risk
-                  controls and revocable authority.
-                </p>
-                <div class="use-case-tags">
-                  <span class="tag"><span>KYC / KYB</span></span>
-                  <span class="tag"><span>DeFi / TradFi</span></span>
-                </div>
-              </div>
-
-              <div class="use-case">
-                <div class="use-case-title">Personal AI &amp; Agents-as-a-Service</div>
-                <p>
-                  Let people give their personal AI a wallet and credentials that represent them – so it can sign, consent, book, or
-                  negotiate on their behalf, with full transparency.
-                </p>
-                <div class="use-case-tags">
-                  <span class="tag"><span>Personal AI</span></span>
-                  <span class="tag"><span>Digital identity</span></span>
-                </div>
-              </div>
-            </div>
-
-            <div class="callout">
-              <div class="callout-row">
-                <span><strong>All these scenarios use the same interface.</strong> Your LLM or agent framework calls tools; Wallet4Agent takes care of identity, credentials, and checks.</span>
-                <span><strong>You stay in control.</strong> You decide which agents exist, what they can prove, and which actions require human approval.</span>
-              </div>
-              <div>
-                Want the full picture? See the <a href="/documentation/use_cases">detailed use cases and flows</a>.
-              </div>
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <div class="divider"></div>
-
-      <!-- Get started -->
-      <section class="section" id="get-started">
-        <div class="section-header">
-          <div class="section-kicker">For builders &amp; LLM integrators</div>
-          <h2 class="section-title">Add trust to your agent in three simple steps</h2>
-          <p class="section-description">
-            Wallet4Agent runs as an <strong>MCP server</strong>. Any MCP-compatible LLM client or agent framework can attach it and instantly gain
-            identity and credential capabilities – without you handling keys or cryptography yourself.
-          </p>
-        </div>
-
-        <div class="columns">
-          <article class="card">
-            <div class="card-body">
-              <div class="badge"><span class="badge-dot purple"></span> 1 — Create an agent identity &amp; wallet</div>
-              <p>
-                Start with a clean slate and let Wallet4Agent create a new agent identity and its associated wallet. In one step, you:
-              </p>
-              <ul class="list">
-                <li>generate a <strong>trusted identifier</strong> for your agent,</li>
-                <li>provision a <strong>wallet</strong> where its credentials will live,</li>
-                <li>receive a <strong>developer token</strong> to configure everything,</li>
-                <li>and get an <strong>agent token</strong> so the agent can use the wallet.</li>
-              </ul>
-              <p style="margin-top:0.6rem;">
-                No manual key management, no custom identity infrastructure – just a ready-to-use agent identity.
-              </p>
-            </div>
-          </article>
-
-          <article class="card">
-            <div class="card-body">
-              <div class="badge"><span class="badge-dot orange"></span> 2 — Attach your LLM or agent runtime</div>
-              <p>
-                Connect your existing AI agent (or LLM app) to Wallet4Agent as an MCP server:
-              </p>
-              <ul class="list">
-                <li>point your agent framework to the Wallet4Agent MCP endpoint,</li>
-                <li>configure it to use the <strong>agent token</strong> for authentication,</li>
-                <li>let the agent invoke tools such as “get wallet data”, “accept credential offers”, or “present credentials”.</li>
-              </ul>
-              <p style="margin-top:0.6rem;">
-                From your agent’s perspective, it’s just calling tools. Behind the scenes, Wallet4Agent takes care of identity and trust.
-              </p>
-            </div>
-          </article>
-        </div>
-
-        <div class="columns" style="margin-top: 1rem;">
-          <article class="card">
-            <div class="card-body">
-              <div class="badge"><span class="badge-dot blue"></span> 3 — Let the agent collect and use credentials</div>
-              <p>
-                Once connected, your agent can start to:
-              </p>
-              <ul class="tech-list" style="margin-top:0.4rem;">
-                <li><strong>Collect credentials</strong> from issuers (e.g. user identity, company identity, authorizations).</li>
-                <li><strong>Store them</strong> in its wallet as attestations, with expiry and provenance.</li>
-                <li><strong>Present proofs</strong> when services, users, or other agents ask for evidence.</li>
-                <li><strong>Operate under clear delegations</strong>, so every sensitive action has a verifiable origin.</li>
-              </ul>
-              <p style="margin-top:0.6rem;">
-                Over time, your agent builds up a <strong>portfolio of trust</strong> it can use to operate in richer, more sensitive environments.
-              </p>
-            </div>
-          </article>
-
-          <article class="card">
-            <div class="card-body">
-              <h3 class="card-title">Want the full technical details?</h3>
-              <p>
-                The full documentation covers:
-              </p>
-              <ul class="tech-list" style="margin-top:0.4rem;">
-                <li><strong>Authentication options</strong> (PAT, OAuth2, private_key_jwt)</li>
-                <li><strong>All MCP tools</strong> for guests, developers, agents, and verifiers</li>
-                <li><strong>Credential formats</strong> and integration patterns</li>
-              </ul>
-              <p style="margin-top:0.6rem;">
-                When you’re ready to go deeper, jump into the
-                <a href="/documentation/get_started">Getting Started guide</a> and the
-                <a href="/documentation/stack">technical stack overview</a>.
-              </p>
-            </div>
-          </article>
-        </div>
+        <article class="card"><h3> Faster onboarding</h3><p>Onboard faster with reusable proofs instead of repeated checks.</p></article>
         <br>
-        <div style="text-align:center;">
-          <a class="btn btn-outline" href="/documentation/get_started">Read the docs</a>
-          <a class="btn btn-primary" href="/agent">Test with the live demo</a>
-        </div>
+        <article class="card"><h3> Clear accountability</h3><p>Know which agent acted, on whose behalf, and under what mandate.</p></article>
+      </div>
+      <hr class="divider">
+      <h2 class="section-title">How it integrates</h2>
+      <p class="section-subtitle">
+        Connect Wallet4Agent to your agent framework. Your runtime calls identity, verification, and delegation — we handle the secure plumbing.</p>
+    </div>
 
-        <p class="get-started-note">
-          Wallet4Agent is built to be incremental: start with a simple agent in a sandbox,
-          then grow into richer credential flows and stricter governance as your use case matures.
-        </p>
-      </section>
-    </main>
+    <div class="columns">
+      <article class="card">
+        <div class="card-body">
+          <h3 class="card-title">Typical setup</h3>
+          <ul class="list">
+            <li><strong>1 — Create an owner account:</strong> register as a human or a company.</li>
+            <li><strong>2 — Create agent wallets:</strong> make as many agent identities as you need.</li>
+            <li><strong>3 — Run with trust:</strong> your agents use proofs, verification, and delegation when taking actions.</li>
+          </ul>
+          <p style="margin-top:0.6rem;">
+            Start small (sandbox) and add stricter controls as your use case matures.
+          </p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-body">
+          <h3 class="card-title">Go deeper</h3>
+          <ul class="tech-list" style="margin-top:0.4rem;">
+            <li><strong>Getting started:</strong> connect an MCP client and create an agent wallet.</li>
+            <li><strong>Stack:</strong> DIDs, VCs, OAuth 2.0, OIDC4VCI/OIDC4VP, Linked VPs.</li>
+            <li><strong>Use cases:</strong> enterprise copilots, regulated APIs, A2A workflows.</li>
+          </ul>
+          <div style="margin-top:0.9rem; display:flex; gap:0.6rem; flex-wrap:wrap;">
+            <a class="btn btn-primary" href="/documentation/get_started">Read the docs</a>
+            <a class="btn btn-outline" href="/documentation/use_cases">See use cases</a>
+            <a class="btn btn-outline" href="/documentation/stack">Standards & trust stack</a>
+          <p class="fine" style="margin:10px 0 0;opacity:.8">For technical teams: protocols, formats, and interoperability details.</p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" style="margin-top:2.6rem;">
+    <div style="text-align:center;">
+      <h2 class="section-title" style="margin-bottom:0.6rem;">Ready to give your agent a wallet?</h2>
+      <p class="section-description" style="margin:0 auto 1.2rem;">
+        Try the demo agent, then plug Wallet4Agent into your own agent runtime via MCP.
+      </p>
+      <a class="btn btn-primary" href="/agent">Launch live demo</a>
+      <a class="btn btn-outline" href="/documentation/get_started">Talk to us</a>
+    </div>
+  </section>
+</main>
 
     {% include "footer.html" %}
   </div>

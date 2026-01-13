@@ -3,8 +3,7 @@ from flask import request, current_app
 from flask import Response, jsonify, render_template
 import json, base64
 import uuid
-from datetime import datetime, timedelta
-from jwcrypto import jwk, jwt
+from jwcrypto import jwk
 from utils import oidc4vc
 import didkit
 from db_model import Wallet
@@ -26,15 +25,16 @@ rsa_key = jwk.JWK(**RSA_KEY_DICT)
 public_rsa_key = rsa_key.export(private_key=False, as_dict=True)
 
 def init_app(app):
-    # endpoints for wallet
-    app.add_url_rule('/wallets/<wallet_identifier>/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
-    app.add_url_rule('/wallets/<wallet_identifier>/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
+    
+    # wallet as an OAuth 2 client (verifier) in an OIDC4VP flow
+    app.add_url_rule('/verifier/response',  view_func=verifier_response, methods=['POST']) # redirect_uri for DPoP/direct_post
+    app.add_url_rule('/verifier/request_uri/<stream_id>',  view_func=verifier_request_uri, methods=['GET'])
 
     # to manage the verification through a link sent
     app.add_url_rule('/verification_email/<url_id>',  view_func=verification_email, methods=['GET'])
     return
 
-
+"""
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
 
@@ -42,13 +42,11 @@ def _json_compact(obj) -> bytes:
     # Canonical-ish JSON (no spaces, stable key order)
     return json.dumps(obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
+
 def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> str:
-    #credential = Credential.query.filter(Credential.credential_id == credential_id).first()
     with open("keys.json", "r") as f:
-        credential = json.loads(f.read())["credentials"][0]
-    
+        credential = json.loads(f.read())["credentials"][0]    
     private_key = credential.get("key")
-    
     if not credential:
         return None
 
@@ -85,6 +83,7 @@ def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> 
         tok = jwt.JWT(header=header, claims=payload)
         tok.make_signed_token(priv)
         return tok.serialize()
+"""
 
 # build the authorization request for user                                   
 def user_verification(agent_identifier, mcp_scope, red, mode, manager):
@@ -120,12 +119,11 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         "client_id": client_id,
         "iss": agent_identifier,
         "response_type": "vp_token",
-        "response_uri": mode.server + "/wallets/" + wallet_identifier + "/response",
+        "response_uri": mode.server + "/verifier/" + wallet_identifier + "/response",
         "response_mode": "direct_post",
         "nonce": nonce
     }
     response_type = ["vp_token"]
-          
     if 'vp_token' in response_type:         
         if presentation_format == "presentation_exchange":
             path = "presentation_exchange/"
@@ -188,7 +186,7 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
         "client_id": agent_identifier,
-        "request_uri": mode.server + "wallets/" + wallet_identifier + "/request_uri/" + stream_id 
+        "request_uri": mode.server + "verifier/" + wallet_identifier + "/request_uri/" + stream_id 
     }
     if request_uri_method:
         authorization_request_for_qrcode["request_uri_method"] = request_uri_method
@@ -222,7 +220,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
         "client_id": agent_identifier,
         "iss": agent_identifier, # TODO
         "response_type": "id_token",
-        "response_uri": mode.server + "wallets/" + wallet_identifier + "/response",
+        "response_uri": mode.server + "verifier/" + wallet_identifier + "/response",
         "response_mode": "direct_post",
         "nonce": nonce,
         "aud": target_agent,
@@ -262,7 +260,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
         "client_id": agent_identifier,
-        "request_uri": mode.server + "wallets/" + wallet_identifier + "/request_uri/" + stream_id 
+        "request_uri": mode.server + "verifier/" + wallet_identifier + "/request_uri/" + stream_id 
     }
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
@@ -283,7 +281,7 @@ def verification_email(url_id):
     return render_template("wallet/email_verification.html", uri=uri)
 
 
-def verifier_request_uri(wallet_identifier, stream_id):
+def verifier_request_uri(stream_id):
     red = current_app.config["REDIS"]
     try:
         payload = red.get(stream_id).decode()
@@ -306,7 +304,7 @@ def get_format(vp, type="vp"):
     elif len(vp.split("~")) > 1:
         return "vc+sd-jwt"
 
-async def verifier_response(wallet_identifier):
+async def verifier_response():
     red = current_app.config["REDIS"]
     logging.info("Enter wallet response endpoint")
     access = True

@@ -4,7 +4,6 @@ from datetime import timedelta
 from flask import Flask, redirect, request, render_template_string, current_app, Response, jsonify
 from flask_session import Session
 from flask_qrcode import QRcode
-from flask_login import LoginManager
 import redis
 import markdown
 import env
@@ -12,9 +11,11 @@ import json
 import key_manager
 from utils import message
 from database import db
-from db_model import load_user, seed_user, seed_wallet, Wallet
+from db_model import seed_wallet, Wallet
 from kms_model import seed_key
-from routes import home, register, wallet, authorization_server, agent_chat, verifier, mcp_server
+from routes import home, wallet, authorization_server, agent_chat, verifier, mcp_server, issuer
+
+logging.basicConfig(level=logging.INFO)
 
 # ---- default constants (overridable via env) ----
 DEFAULT_API_LIFE = 5000
@@ -115,24 +116,16 @@ def create_app() -> Flask:
         # NOTE: seeding in production can be dangerous; guard by env flag
         if os.getenv("SEED_DATA", "1") == "1":
             logging.info("Run seed DB")
-            seed_user()
-            seed_wallet(mode, manager, myenv)
+            seed_wallet(mode, manager)
             seed_key(myenv)
          
-    # ---- Flask-Login ----
-    login_manager = LoginManager()
-    login_manager.login_view = "register"   # endpoint name for redirect
-    login_manager.init_app(app)
-    login_manager.user_loader(load_user)
+  
 
     # ---- Register routes / APIs ----
     verifier.init_app(app)    # your verifier API
-    
+    issuer.init_app(app)
     mcp_server.init_app(app)
-    
-    home.init_app(app)
-    register.init_app(app, db)
-    
+    home.init_app(app)    
     wallet.init_app(app)
     authorization_server.init_app(app)
     agent_chat.init_app(app)
@@ -151,9 +144,9 @@ def create_app() -> Flask:
             logging.warning("message() failed: %s", x)
         return redirect(mode.server + "/")
     
-    @app.errorhandler(404)
-    def page_not_found(e):
-        return jsonify("Page not found")
+    #@app.errorhandler(404)
+    #def page_not_found(e):
+    #    return jsonify("Page not found")
 
     # ---- Helpers attached to app context ----
     def front_publish(stream_id: str, error: str, error_description: str) -> None:
@@ -193,6 +186,61 @@ def create_app() -> Flask:
 
         html = markdown.markdown(content, extensions=["fenced_code"])
         return render_template_string(html)
+    
+    # .well-known for demo agent card
+    @app.get("/.well-known/agent-card.json")
+    @app.get("/.well-known/agent.json")
+    def agent_card():
+        card = {
+            "name": "Wallet4Agent Demo Chat ",
+            "description": "Chat with an Ai Agent equipped with a wallet and a DID.",
+            "version": "1.0.0",
+            "url":  mode.server + "a2a",
+            "capabilities": {
+                "streaming": False,
+            },
+            "defaultInputModes": ["text"],
+            "defaultOutputModes": ["text"],
+            "skills": [
+                {
+                "id": "1",
+                "name": "Wallet4Agent Overview",
+                "description": "Provide an overview of the Wallet4Agent features."
+                }
+            ],
+            "provider": {
+                "organization": "Web3 Digital Wallet"
+            }
+        }
+        return jsonify(card)
+    
+    # .well-known for tesng with local agent
+    @app.get("/local/.well-known/agent-card.json")
+    def locl_agent_card():
+        card = {
+            "name": "Local Agent ",
+            "description": "Just a test.",
+            "version": "1.0.0",
+            "url":  mode.server + "a2a",
+            "capabilities": {
+                "streaming": False,
+            },
+            "defaultInputModes": ["text"],
+            "defaultOutputModes": ["text"],
+            "skills": [
+                {
+                "id": "1",
+                "name": "Wallet4Agent Overview",
+                "description": "Provide an overview of the Wallet4Agent features."
+                }
+            ],
+            "OIDC4VCWalletService": mode.server + "wallets/local",
+            "provider": {
+                "organization": "Web3 Digital Wallet"
+            }
+        }
+        return jsonify(card)
+        
 
     # .well-known DID API to serve DID Document as did:web
     @app.get('/<optional_path>/did.json')

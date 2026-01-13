@@ -95,6 +95,175 @@
       padding: 2rem 1rem;
     }
 
+    /* Intro message (refined) */
+    .bubble.assistant.intro {
+      padding: 18px 18px;
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(148,163,184,0.35);
+      box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+    }
+
+    .intro-wrap {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .intro-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(700px 220px at 20% -10%, rgba(34,211,238,0.18), transparent 60%),
+        radial-gradient(520px 260px at 85% 10%, rgba(14,165,233,0.14), transparent 55%);
+      opacity: 0.95;
+    }
+
+    .intro-inner {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .intro-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .intro-id {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .intro-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #020617;
+      background: linear-gradient(135deg, rgba(34,211,238,1), rgba(14,165,233,1));
+      box-shadow: 0 10px 22px rgba(34,211,238,0.18);
+      flex: 0 0 auto;
+    }
+
+    .intro-title {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 1.02rem;
+      line-height: 1.15;
+      letter-spacing: 0.02em;
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .intro-sub {
+      margin-top: 4px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.25;
+    }
+
+    .intro-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex: 0 0 auto;
+    }
+
+    .chip {
+      font-size: 0.76rem;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.28);
+      background: rgba(2, 6, 23, 0.55);
+      color: rgba(229,231,235,0.92);
+      letter-spacing: 0.02em;
+    }
+
+    .intro-lead {
+      margin: 0;
+      font-size: 0.96rem;
+      line-height: 1.45;
+      color: rgba(229,231,235,0.96);
+    }
+
+    .intro-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    @media (min-width: 700px) {
+      .intro-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .intro-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 10px;
+      border-radius: 14px;
+      background: rgba(2,6,23,0.45);
+      border: 1px solid rgba(148,163,184,0.18);
+    }
+
+    .intro-item .i {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      color: #020617;
+      background: rgba(34,211,238,0.92);
+      flex: 0 0 auto;
+      margin-top: 2px;
+    }
+
+    .intro-item .t {
+      font-size: 0.9rem;
+      line-height: 1.35;
+      color: rgba(229,231,235,0.95);
+    }
+
+    .intro-callout {
+      margin-top: 2px;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(34,211,238,0.22);
+      background: rgba(34,211,238,0.06);
+      color: rgba(229,231,235,0.96);
+      line-height: 1.45;
+      font-size: 0.92rem;
+    }
+
+    .intro-callout strong { color: rgba(229,231,235,1); }
+
+    .intro-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .intro-cta:hover { text-decoration: underline; }
+
+
     /* Larger, centered chat container */
     .chat-container {
       width: min(1100px, 98vw);
@@ -224,22 +393,48 @@
   <main>
     <div class="chat-container">
       <div class="chat-title">AI Agent with DID and Wallet</div>
-  <div id="chat-messages" class="chat-messages">
-       <div class="chat-message assistant">
-        <div class="bubble assistant">
-          Hi! 👋 I’m your demo chat AI Agent <strong>{{profile_name}}</strong>, equipped with a Wallet4Agent identity and data wallet. My wallet is connected through the Model Context Protocol (MCP) to the Agent built on GPT-5.1.
-          <br>• I can show my wallet data and decentralized identifier (DID)
-          <br>• I can list my digital credentials  
-          <br>• I can authenticate another agent or inspect another agent’s public credentials  
-          <br>• I can sign message and payload with my DID keys 
-          <br>• I can accept digital credential on my owner behalf or with his consent
-          <br>• I can verify a user’s age, profile and other digital credentials  
-          <br>• I can explain you how to create DID and a wallet for your agents
+ 
+<div id="chat-messages" class="chat-messages">
+  <div class="chat-message assistant">
+    <div class="bubble assistant intro intro-wrap">
+      <div class="intro-inner">
+        <div class="intro-head">
+          <div class="intro-id">
+            <div class="intro-mark">W</div>
+            <div style="min-width:0">
+              <p class="intro-title">Wallet4Agent Demo — <strong>{{profile_name}}</strong></p>
+              <div class="intro-sub">AI agent identity (DID) + wallet, connected through MCP</div>
+            </div>
+          </div>
+          <div class="intro-chips" aria-hidden="true">
+            <span class="chip">DID</span>
+            <span class="chip">Wallet</span>
+            <span class="chip">OBO</span>
+          </div>
+        </div>
+
+        <p class="intro-lead">
+          I can hold verifiable credentials, prove who I am, and act <strong>On‑Behalf‑Of</strong> my human or company owner when authorized.
+        </p>
+
+        <div class="intro-grid">
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Identity</strong> — show my DID & wallet configuration</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Credentials</strong> — list & present verifiable credentials</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Publishing</strong> — expose selected claims as Linked VPs</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Trust</strong> — authenticate / verify other AI agents</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Signing</strong> — sign messages and JSON payloads with DID keys</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>User verification</strong> — verify age/profile/proofs by email</div></div>
+        </div>
+
+        <div class="intro-callout">
+          <strong>Build your own:</strong> create an account as a <strong>human</strong> or a <strong>company</strong>, connect to the Wallet4Agent MCP server,
+          then create as many agent wallets as you need — each with its own DID, wallet, and delegation mandates.
+          <div><a class="intro-cta" href="/documentation/get_started">Read the Get Started guide <span aria-hidden="true">→</span></a></div>
         </div>
       </div>
-
-
-      </div>
+    </div>
+  </div>
+</div>
 
       <form id="chat-form" class="chat-input-row">
         <input hidden name="profile" value="{{profile}}">

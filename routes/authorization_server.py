@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, current_app, redirect
+from flask import request, jsonify, current_app, redirect
 import base64
 import datetime
 import uuid
@@ -13,11 +13,10 @@ from jwcrypto import jwk, jws  # <-- use jwcrypto, not pyjwt
 
 
 def init_app(app):
-    # Authorization server endpoint for MCP server
+    # Standard Authorization Server endpoint for MCP server
     app.add_url_rule('/.well-known/oauth-authorization-server', view_func=oauth_metadata, methods=['GET'])    
     app.add_url_rule('/.well-known/openid-configuration', view_func=oauth_metadata, methods=['GET'])
     app.add_url_rule('/oauth/token', view_func=token, methods=['GET', 'POST'])
-
     return
 
 

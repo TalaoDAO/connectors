@@ -10,9 +10,8 @@ import base64
 from urllib.parse import unquote
 import time                      
 from datetime import datetime      
-import linked_vp
+from utils import log
 from utils import message
-import secrets
 
 RESOLVER_LIST = [
     "https://unires:test@unires.talao.co/1.0/identifiers/",
@@ -102,7 +101,7 @@ tools_agent_others = [
         }
     },
     {
-        "name": "get_this_agent_data",
+        "name": "get_this_wallet_data",
         "description": (
             "Retrieve a high-level overview of this Agent's identity and its attached wallet configuration. "
             "The Agent is identified by its DID. The wallet is a secure component attached "
@@ -131,7 +130,7 @@ tools_agent_others = [
         }
     },
     {
-        "name": "get_attestations_of_another_agent",
+        "name": "get_published_attestations_of_an_agent",
         "description": (
             "Resolve another Agent's DID and retrieve its published attestations. "
             "The DID identifies the Agent itself. The returned attestations are "
@@ -152,90 +151,10 @@ tools_agent_others = [
             },
             "required": ["agent_identifier"]
         }
-    },
-    {
-        "name": "describe_wallet4agent",
-        "description": (
-            "Explain what the Wallet4Agent MCP server and its wallet do. Use this "
-            "tool when you need to understand the concepts of 'wallet', 'Agent', and "
-            "'digital/verifiable credentials' in this ecosystem before calling "
-            "other tools."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
-    },
-    {
-        "name": "help_wallet4agent",
-        "description": (
-            "Explain to a human developer how to install and use the Wallet4Agent MCP "
-            "server with their own agent. Describe at a high level:\n"
-            "- How to install and run the Wallet4Agent MCP server.\n"
-            "- How to configure and use the manifest.json so the agent can discover the MCP server.\n"
-            "- How to connect as a guest, and how to obtain a developer personal access token (PAT).\n"
-            "- How to create a new Agent identifier (DID) and an attached wallet for that Agent, "
-            "including how the DID document is published and where the wallet endpoint lives.\n"
-            "- How to configure the agent to use that DID and wallet (including storing the PAT safely).\n"
-            "- Basic security best practices for protecting keys, PATs, and the wallet endpoint.\n\n"
-            "Use this tool whenever a developer asks how to get started with Wallet4Agent, how to "
-            "create a DID or wallet for an Agent, or how to wire the Agent and wallet together."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
     }
 ]
 
-tools_agent_publish_unpublish = [
-    {
-        "name": "publish_attestation",
-        "description": (
-            "Publish one of this Agent's stored attestations as a Linked Verifiable "
-            "Presentation in the DID Document. The attestation itself is already "
-            "stored in the wallet; this tool only exposes it via a Linked VP "
-            "service. Supports both did:web and did:cheqd identifiers."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "attestation_id": {
-                    "type": "integer",
-                    "description": (
-                        "The local Attestation ID (from get_attestations_of_this_wallet "
-                        "structuredContent.id) to publish."
-                    )
-                }
-            },
-            "required": ["attestation_id"]
-        }
-    },
-    {
-        "name": "unpublish_attestation",
-        "description": (
-            "Unpublish one of this Agent's previously published attestations: "
-            "it removes the Linked Verifiable Presentation from the DID Document "
-            "and from the wallet's linked_vp registry, but keeps the credential "
-            "stored locally. Supports both did:web and did:cheqd identifiers."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "attestation_id": {
-                    "type": "integer",
-                    "description": (
-                        "The local Attestation ID (from get_attestations_of_this_wallet "
-                        "structuredContent.id) to unpublish."
-                    )
-                }
-            },
-            "required": ["attestation_id"]
-        }
-    }
-]
+tools_agent_publish_unpublish = []
 
 tools_agent = (
     tools_agent_receive_credentials
@@ -253,12 +172,6 @@ def _ok_content(blocks: List[Dict[str, Any]], structured: Optional[Dict[str, Any
     return out
 
 
-def admin_message(wallet, message_text, mode):
-    if wallet.always_human_in_the_loop and wallet.notification_email:
-        to = wallet.notification_email
-        subject = f"Agent: {wallet.agent_identifier}"
-        message.message(subject, to, message_text, mode)
-        
 
 def _decode_sd_jwt_local(sd_jwt_token: str) -> Optional[Dict[str, Any]]:
     """
@@ -504,7 +417,7 @@ def _extract_vc_from_jwt_vp(jwt_vp: str) -> Optional[Dict[str, Any]]:
 
     return result
 
-# for admin and agent
+# for agent
 def call_get_attestations_of_this_wallet(
     agent_identifier: str,
     config: Dict[str, Any],
@@ -741,9 +654,9 @@ def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, A
 
 
 
-def call_get_attestations_of_another_agent(agent_identifier: str) -> Dict[str, Any]:
+def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[str, Any]:
     """
-    List attestations (Linked VPs) of an Agent DID.
+    List published attestations (Linked VPs) of an Agent DID.
 
     For each LinkedVerifiablePresentation service:
       * Fetch its verifiable presentation from serviceEndpoint.
@@ -926,13 +839,7 @@ def call_get_attestations_of_another_agent(agent_identifier: str) -> Dict[str, A
 
 
 
-def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
-    """
-    Return a high-level overview of this Agent's identity (DID) and its attached wallet.
-
-    The DID identifies the Agent itself.
-    The wallet is a secure component attached to this Agent that stores credentials.
-    """
+def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
     this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     attestations_list = Attestation.query.filter_by(agent_identifier=agent_identifier).all()
         
@@ -941,11 +848,7 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
             "identifier": agent_identifier,
         },
         "wallet": {
-            "wallet_url": this_wallet.url if this_wallet else None,
-            "number_of_attestations": len(attestations_list),
-            "human_in_the_loop": bool(this_wallet.always_human_in_the_loop) if this_wallet else False,
-            "sign": bool(this_wallet.sign) if this_wallet else False,
-            "receive_credentials": bool(this_wallet.receive_credentials) if this_wallet else False,
+            "number_of_attestations": len(attestations_list)
         },
     }
     if this_wallet.did_document:
@@ -955,16 +858,11 @@ def call_get_this_agent_data(agent_identifier) -> Dict[str, Any]:
             if a.published == 1:
                 nb_published_attestations += 1
         structured["wallet"]["number_of_published_attestations"] = nb_published_attestations
-        structured["wallet"]["publish_unpublish"] = bool(this_wallet.publish_unpublish) if this_wallet else False
 
     if this_wallet:
         text = (
             f"My Agent Identifier is {agent_identifier}. "
-            f"I have an attached wallet at {this_wallet.url} "
             f"with a total of {len(attestations_list)} attestations. "
-            f"{'I need a human in the loop' if this_wallet.always_human_in_the_loop else 'I dont need a human'}."
-            f"{'I can sign payload' if this_wallet.sign else 'I cannot sign payload'}."
-            f"{'I can receive credentials' if this_wallet.receive_credentials else 'I cannot receive credentials'}."
         )
     else:
         text = (
@@ -985,11 +883,7 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
             is_error=True,
         )
     this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
-    if this_wallet.always_human_in_the_loop:
-        return _ok_content(
-            [{"type": "text", "text": "Human in the loop is needed."}],
-            is_error=True,
-        )
+    
     if not this_wallet.receive_credentials:
         return _ok_content(
             [{"type": "text", "text": "Agent cannot receive credentials"}],
@@ -997,7 +891,7 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
         )
 
     message_text = "Agent receives an attestation"
-    admin_message(this_wallet, message_text, config["MODE"])
+    message.admin_message(this_wallet, message_text, config["MODE"])
     
     if isinstance(raw_offer, dict):
         normalized_offer = raw_offer
@@ -1039,124 +933,25 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
     
     # store and publish if consent
     if attestation:
-        if session_config["always_human_in_the_loop"]:
-            structured = {
-                "attestation": attestation
-            }
-            text = "Thank you, I have received the attestation but I cannot store this attestation without the my admin consent."
-            return _ok_content([{"type": "text", "text": text}], is_error=False, structured=structured)
+        published = True if this_wallet.did_document else False
+        result, message = wallet.store_and_publish(attestation, session_config, mode, manager, published=published)
+        if result:
+            message = "Thank you, the attestation has been stored and published successfully."
+            return _ok_content([{"type": "text", "text": message}], is_error=False)
         else:
-            published = True if this_wallet.did_document else False
-            result, message = wallet.store_and_publish(attestation, session_config, mode, manager, published=published)
-            if result:
-                message = "Thank you, the attestation has been stored and published successfully."
-                return _ok_content([{"type": "text", "text": message}], is_error=False)
-            else:
-                message = "Sorry, I have received the attestation but I could not store it."
-                return _ok_content([{"type": "text", "text": text}], is_error=False)
+            message = "Sorry, I have received the attestation but I could not store it."
+            return _ok_content([{"type": "text", "text": text}], is_error=False)
     else:
+        if wallet.log:
+            log.log_wallet_event(
+                wallet_id=agent_identifier,
+                event_type="oidc4vci.accept_offer",
+                details={"has_offer": bool(arguments.get("credential_offer"))},
+                actor=agent_identifier,
+            )
+
         return _ok_content([{"type": "text", "text": text}], is_error=True)
 
-
-def call_describe_wallet4agent() -> Dict[str, Any]:
-    """
-    Self-description tool for the Wallet4Agent MCP server.
-
-    Returns a human-readable explanation plus structured information about:
-      - what the server is,
-      - what a wallet is in this context,
-      - how it relates to AI agents and digital/verifiable credentials.
-    """
-
-    text = (
-        "This is the Wallet4Agent MCP server. It exposes tools for interacting with a "
-        "digital wallet dedicated to AI agents.\n\n"
-        "In this context, a wallet is a secure software component that stores and "
-        "manages digital credentials and verifiable credentials (including W3C VCs "
-        "and SD-JWT VCs) on behalf of a subject: a human, an organization, or an AI "
-        "agent acting for them.\n\n"
-        "The wallet can:\n"
-        "- accept credentials from external issuers via protocols like OIDC4VCI,\n"
-        "- store those credentials as attestations for later use,\n"
-        "- present them to verifiers as verifiable presentations (including Linked "
-        "Verifiable Presentations published in DID Documents), and\n"
-        "- act as the identity and authorization layer for AI agents.\n\n"
-        "AI agents use this wallet as their 'identity and credentials layer' so that "
-        "every action or delegation can be traced back to a responsible human or "
-        "organization, enabling accountability, interoperability, and compliance."
-    )
-
-    structured = {
-        "server": "wallet4agent-mcp",
-        "role": "agent_wallet_and_credential_orchestrator",
-        "wallet_definition": {
-            "short": "Secure store and orchestrator for digital and verifiable credentials.",
-            "details": [
-                "Stores W3C Verifiable Credentials and SD-JWT VCs.",
-                "Receives credentials via OIDC4VCI and similar issuance protocols.",
-                "Presents credentials as verifiable presentations to other parties.",
-                "Binds credentials to humans, organizations, and AI agents via DIDs.",
-            ],
-        },
-        "agent_context": {
-            "purpose": (
-                "Provide AI agents with an attached, accountable identity and "
-                "a portable set of credentials for cross-ecosystem interactions."
-            ),
-            "key_concepts": [
-                "agent wallet",
-                "digital credentials",
-                "verifiable credentials",
-                "proof of delegation / authorization",
-                "Linked Verifiable Presentation",
-            ],
-        },
-    }
-
-    return _ok_content(
-        [{"type": "text", "text": text}],
-        structured=structured,
-    )
-
-
-def call_help_wallet4agent() -> Dict[str, Any]:
-    """
-    Agent tool: serve the up-to-date 'get_started.md' documentation to a developer.
-
-    This reads the markdown file from disk and returns it as text so the LLM
-    (or MCP Inspector) can present the actual, current documentation.
-    """
-    try:
-        with open("documentation/get_started.md", "r", encoding="utf-8") as f:
-            md_text = f.read()
-
-        text = md_text
-        structured = {
-            "topic": "installation_and_integration",
-            "audience": "developer",
-            "format": "markdown",
-            "source": "get_started.md",
-        }
-
-        return _ok_content(
-            [{"type": "text", "text": text}],
-            structured=structured,
-        )
-
-    except Exception as e:
-        # Fallback: simple error message if the file cannot be read
-        fallback_text = (
-            "I tried to load the developer guide 'get_started.md' from the server, "
-            "but an error occurred while reading the file. "
-            "Please check that get_started.md is deployed alongside the MCP server "
-            f"code. (Details: {str(e)})"
-        )
-        return _ok_content(
-            [{"type": "text", "text": fallback_text}],
-            structured={"error": "cannot_read_get_started_md"},
-            is_error=True,
-        )
-        
 
 def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
     message = arguments.get("message", "")
@@ -1170,7 +965,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
             is_error=True,
         )
     message_text = f"Agent signs message: {message}"
-    admin_message(this_wallet, message_text, config["MODE"])
+    message.admin_message(this_wallet, message_text, config["MODE"])
         
     # Prefer injected manager
     manager = config.get("MANAGER")
@@ -1208,7 +1003,7 @@ def call_sign_json_payload(arguments: Dict[str, Any], agent_identifier: str, con
         )
         
     message_text = "Agent signs payload"
-    admin_message(this_wallet, message_text, config["MODE"])
+    message.admin_message(this_wallet, message_text, config["MODE"])
 
     # Prefer injected manager
     manager = config.get("MANAGER")
@@ -1268,7 +1063,7 @@ def call_resolve_agent_identifier(
     if did_document is None:
         msg = f"Unable to resolve Agent Identifier {target}."
         if last_error:
-            logging.warning(f" Last error: {last_error}")
+            logging.warning(" Last error: %s", last_error)
         return _ok_content(
             [{"type": "text", "text": msg}],
             is_error=True,
@@ -1308,152 +1103,3 @@ def call_resolve_agent_identifier(
         structured=structured,
     )
 
-
-def call_publish_attestation(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
-    """
-    Agent tool: publish an existing Attestation as a Linked Verifiable Presentation
-    service in the Agent's DID Document.
-
-    - Keeps the VC in the Attestation row
-    - Updates wallet.linked_vp
-    - Updates DID Document (service entry)
-    - For did:cheqd, also updates the DID on-ledger via Universal Registrar
-    """
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
-    if not this_wallet.publish_unpublish:
-        return _ok_content(
-            [{"type": "text", "text": "Agent cannot publish attestations."}],
-            is_error=True,
-        )
-        
-    message_text = "Agent publishes an attestation"
-    admin_message(this_wallet, message_text, config["MODE"])
-    
-    attestation_id = arguments.get("attestation_id")
-    if attestation_id is None:
-        return _ok_content(
-            [{"type": "text", "text": "Missing 'attestation_id' argument."}],
-            is_error=True,
-        )
-
-    mode = config["MODE"]
-    manager = config["MANAGER"]
-
-    att = Attestation.query.filter_by(id=attestation_id, agent_identifier=agent_identifier).one_or_none()
-    if not att:
-        msg = f"No attestation with id {attestation_id} for Agent {agent_identifier}."
-        logging.warning(msg)
-        return _ok_content([{"type": "text", "text": msg}], is_error=True)
-
-    # Ensure we have a service_id; if not, create one (non-OASF case)
-    service_id = att.service_id
-    if not service_id:
-        local_id = secrets.token_hex(16)
-        service_id = f"{agent_identifier}#{local_id}"
-        att.service_id = service_id
-
-    vc = att.vc
-    vc_format = att.vc_format or "dc+sd-jwt"
-
-    result = linked_vp.publish_linked_vp(
-        service_id=service_id,
-        attestation=vc,
-        server=mode.server,
-        mode=mode,
-        manager=manager,
-        vc_format=vc_format,
-    )
-
-    if not result:
-        msg = f"Failed to publish attestation {attestation_id} as Linked VP."
-        logging.warning(msg)
-        return _ok_content([{"type": "text", "text": msg}], is_error=True)
-
-    att.published = True
-    db.session.commit()
-
-    structured = {
-        "attestation_id": att.id,
-        "agent_identifier": att.agent_identifier,
-        "service_id": service_id,
-        "published": True
-    }
-    text = (
-        f"Attestation #{att.id} has been published as a Linked Verifiable "
-        f"Presentation with service id {service_id}. Anyone can now access and read this attestation"
-    )
-    return _ok_content([{"type": "text", "text": text}], structured=structured)
-
-
-def call_unpublish_attestation(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
-    """
-    Agent tool: unpublish a previously published Attestation.
-
-    - Removes the Linked VP from wallet.linked_vp
-    - Removes the LinkedVerifiablePresentation service from the DID Document
-    - For did:cheqd, also updates the DID on-ledger via Universal Registrar
-    - Keeps the Attestation (VC) stored locally, but sets published=False
-    """
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
-    if not this_wallet.publish_unpublish:
-        return _ok_content(
-            [{"type": "text", "text": "Agent cannot unpublish attestations."}],
-            is_error=True,
-        )
-    
-    message_text = "Agent unpublishes an attestation"
-    admin_message(this_wallet, message_text, config["MODE"])
-    
-    attestation_id = arguments.get("attestation_id")
-    if attestation_id is None:
-        return _ok_content(
-            [{"type": "text", "text": "Missing 'attestation_id' argument."}],
-            is_error=True,
-        )
-
-    mode = config["MODE"]
-    manager = config["MANAGER"]
-
-    att = Attestation.query.filter_by(id=attestation_id, agent_identifier=agent_identifier).one_or_none()
-    if not att:
-        msg = f"No attestation with id {attestation_id} for Agent {agent_identifier}."
-        logging.warning(msg)
-        return _ok_content([{"type": "text", "text": msg}], is_error=True)
-
-    if not att.service_id:
-        msg = (
-            f"Attestation #{att.id} does not have a service_id and is not currently "
-            f"published as a Linked Verifiable Presentation."
-        )
-        logging.info(msg)
-        return _ok_content([{"type": "text", "text": msg}], is_error=True)
-
-    service_id = att.service_id
-
-    result = linked_vp.unpublish_linked_vp(
-        service_id=service_id,
-        server=mode.server,
-        mode=mode,
-        manager=manager,
-    )
-
-    if not result:
-        msg = f"Failed to unpublish attestation {attestation_id}."
-        logging.warning(msg)
-        return _ok_content([{"type": "text", "text": msg}], is_error=True)
-
-    att.published = False
-    db.session.commit()
-
-    structured = {
-        "attestation_id": att.id,
-        "agent_identifier": att.agent_identifier,
-        "service_id": service_id,
-        "published": False,
-        "unpublished": True,
-    }
-    text = (
-        f"Attestation #{att.id} has been unpublished and is no longer exposed "
-        f"as a Linked Verifiable Presentation in the DID Document. Nobody can access to this attestation anymore."
-    )
-    return _ok_content([{"type": "text", "text": text}], structured=structured)

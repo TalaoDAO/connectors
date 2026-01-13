@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "com.wallet4agent/mcp-server",
-  "description": "Wallet4Agent MCP server for decentralized and regulated identity: DIDs, Verifiable Credentials (SD-JWT VC & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, Linked Verifiable Presentations, and verifier flows for data wallets (QR-based proofs of over-18, verified email, and verified identity profile) — enabling trust and auditability for the Agentic Web.",
+  "description": "Wallet4Agent is the identity layer for AI agents in the Agentic Web, aligned with the EUDI Wallet architecture. It enables AI agents to hold DIDs and Verifiable Credentials, receive cryptographic mandates, and act On-Behalf-Of humans and organizations through legally auditable delegation using SD-JWT VC, W3C JSON-LD, OIDC4VCI, OpenID4VP, and Linked Verifiable Presentations.",
   "version": "1.4.0",
   "homepage": "https://wallet4agent.com/",
   "documentation": "https://wallet4agent.com/documentation/get_started",
@@ -41,6 +41,11 @@
     "age verification",
     "email verification",
     "profile verification",
-    "QR"
+    "QR",
+    "EUDI Wallet",
+    "Delegation",
+    "Mandate",
+    "On-Behalf-Of",
+    "Agent Identity"
   ]
 }

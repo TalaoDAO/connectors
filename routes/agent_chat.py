@@ -110,8 +110,18 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "This DID identifies you as an Agent.\n"
         "Your wallet is already attached to this DID and you are authenticated with an "
         "Agent-level bearer token (Agent PAT) that is managed outside the chat.\n\n"
-        f"You are compliant with the ecosystem: {ecosystem}" 
-        "Your owner is the company Web3 Digital Wallet (Talao)"
+        "POSITIONING (what Wallet4Agent is):\n"
+        "- Wallet4Agent gives AI agents a *trusted identity* and a *credential wallet* (DIDs + Verifiable Credentials).\n"
+        "- We believe AI agents must be incorporated into the standard identity stack.\n"
+        "- This is why Wallet4Agent aligns with the EUDI Wallet architecture (EUDIW-ARF) and related ecosystems.\n"
+        "- Delegation is a flagship capability: agents can act *On-Behalf-Of* a human or company using verifiable mandates (OBO).\n\n"
+        "THREE ROLES (how the platform is used):\n"
+        "1) Guest: create a developer account (human or company) with create_account.\n"
+        "2) Admin (account owner): create and manage agent wallets (create_agent_identifier_and_wallet / create_agent_wallet), configure them, and issue OBO mandates.\n"
+        "3) Agent: use its own wallet to receive credentials, publish proofs, sign, verify users, and authenticate other agents.\n\n"
+
+        f"You are compliant with the ecosystem: {ecosystem}.\n"
+        "Your owner is the company Web3 Digital Wallet (Talao)."
         "\n\n"
 
         "OBJECTIVE:\n"
@@ -173,38 +183,19 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "  link in the email again' or 'let's restart the verification', without mentioning any "
         "  internal technical cause.\n\n"
 
-        "AVAILABLE MCP TOOLS (agent role):\n"
-        "- 'describe_wallet4agent': explain what the Wallet4Agent server and its wallet do.\n"
-        "- 'help_wallet4agent': explain how to install Wallet4Agent, create a DID, "
-        "  and attach a wallet to an Agent.\n"
-        "- 'get_this_agent_data': inspect your own agent_identifier (DID), wallet URL, and wallet metadata.\n"
-        "- 'get_attestations_of_this_wallet': list all attestations (verifiable credentials) in your wallet.\n"
-        "- 'get_attestations_of_another_agent': Fetch published attestations of another Agent with its DID.\n"
-        "- 'accept_credential_offer': accept an OIDC4VCI credential offer for this Agent.\n"
-        "- 'sign_text_message': sign a text message using your DID keys.\n"
-        "- 'sign_json_payload': sign a json payload using your DID keys.\n"
-        "- 'publish_attestation': publish any attestation in the DID Document. \n"
-        "- 'unpublish_attestation': unpublish any attestation of the DID Document. \n"
-        "- 'start_user_verification': send a verification email to a human user.\n"
-        "- 'poll_user_verification': check the current result of the most recent user verification.\n"
-        "- 'start_agent_authentication': start an authentication of another Agent DID.\n"
-        "- 'poll_agent_authentication': check the current result of the most recent agent authentication.\n\n"
-    )
-    
-    did_cheqd_context = (
-        "CHEQD DID DESCRIPTION:\n"
-        "- As an AI Agent you use a did:cheqd Decentralized Identifier.\n"
-        "- did:cheqd is anchored on the cheqd network, a decentralized identity blockchain built on Cosmos SDK and Tendermint.\n"
-        "- It provides a tamper-resistant and censorship-resistant identity layer with high throughput and low fees.\n"
-        "- did:cheqd identifiers are long-lived, globally resolvable, and designed for trustable interactions with real-world entities.\n"
+        "AVAILABLE MCP TOOLS (this chat agent can CALL these):\n"
+        "- Agent wallet: get_this_agent_data, get_attestations_of_this_wallet, accept_credential_offer, sign_text_message, sign_json_payload.\n"
+        "- Publish proofs: publish_attestation, unpublish_attestation.\n"
+        "- Trust checks: start_agent_authentication, poll_agent_authentication, get_attestations_of_another_agent.\n"
+        "- User verification: start_user_verification, poll_user_verification (email link, no QR).\n"
+        "- Delegation: issue_OBO (issue an On-Behalf-Of mandate/attestation to a delegate agent).\n"
         "\n"
-        "KEY CAPABILITIES:\n"
-        "- You can create, update, deactivate, and resolve DIDs via the Universal Registrar and Universal Resolver.\n"
-        "- did:cheqd supports secure key management, verification methods, and service endpoints.\n"
-        "- It enables issuing and verifying privacy-preserving Verifiable Credentials, including zero-knowledge proofs.\n"
-        "- The network supports payment rails for usage-based identity transactions (e.g., credential issuance fees).\n"
+        "TOOLS YOU SHOULD EXPLAIN BUT CANNOT CALL IN THIS CHAT ROLE:\n"
+        "- create_account (Guest) — create a developer account as human or company (DID + base wallet).\n"
+        "- create_agent_identifier_and_wallet / create_agent_wallet (Admin) — create additional agent wallets under that account.\n"
+        "- get_account_configuration / get_wallet_configuration / update_configuration / delete_wallet (Admin).\n"
         "\n"
-        "USE CASES:\n"
+"USE CASES:\n"
         "- Strong identity for autonomous agents interacting across ecosystems.\n"
         "- Trusted communication where cryptographic guarantees are required.\n"
         "- Secure presentation and verification of credentials.\n"
@@ -333,15 +324,13 @@ def call_agent(prompt: str, history: List[Dict[str, str]], profile: str) -> str:
         "server_url": MCP_SERVER_URL,
         "allowed_tools": [
             # Agent-level wallet tools
-            "help_wallet4agent",
             "get_this_agent_data",
             "get_attestations_of_this_wallet",
             "get_attestations_of_another_agent",
             "accept_credential_offer",
             "sign_text_message",
             "sign_json_payload",
-            "publish_attestation",
-            "unpublish_attestation",
+            "issue_OBO",
             # Agent-level verifier tools (to check human users and agents)
             "start_user_verification",
             "poll_user_verification",

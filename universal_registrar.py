@@ -6,7 +6,7 @@ import uuid
 from typing import Any, Dict, Optional, Tuple
 import logging
 import requests
-
+from utils.did_document import build_jwk_did_document
 from db_model import Wallet
 from key_manager import TenantKMSManager  # type: ignore
 
@@ -40,60 +40,6 @@ def jwk_to_uncompressed_secp256k1_hex(jwk: Dict[str, Any]) -> str:
     return "04" + x_bytes.hex() + y_bytes.hex()
 
 
-# -------------------------------------------------------------------
-# Generic DID Document builder (JsonWebKey2020 + OIDC4VP / A2A service)
-# -------------------------------------------------------------------
-
-def build_jwk_did_document(
-    did: str,
-    jwk: Dict[str, Any],
-    url: str,
-    agent_card_url: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Build a DID Document using JsonWebKey2020 and your existing service model.
-
-    Conceptual model:
-      - tenant  = DID (did)
-      - key     = verificationMethod (vm_id = did + "#key-1")
-    """
-    vm_id = did + "#key-1"
-    vm = {
-        "id": vm_id,
-        "type": "JsonWebKey2020",
-        "controller": did,
-        "publicKeyJwk": jwk,
-    }
-
-    document: Dict[str, Any] = {
-        "@context": [
-            "https://www.w3.org/ns/did/v1",
-            "https://w3id.org/security/suites/jws-2020/v1"
-        ],
-        "id": did,
-        "controller": [did],
-        "verificationMethod": [vm],
-        "assertionMethod": [vm_id],
-        "authentication": [vm_id],
-        "service": [
-            {
-                "id": did + "#oidc4vp",
-                "type": "OIDC4VP",
-                "serviceEndpoint": url,
-            }
-        ],
-    }
-
-    if agent_card_url:
-        document["service"].append(
-            {
-                "id": did + "#a2a",
-                "type": "A2AService",
-                "serviceEndpoint": agent_card_url,
-            }
-        )
-
-    return document
 
 
 class UniversalRegistrarClient:
@@ -104,8 +50,8 @@ class UniversalRegistrarClient:
     - key    = verificationMethod (vm.id), mapped to an AWS KMS key
 
     It knows how to:
-      - Create did:web using P-256 keys from AWS KMS
-      - Create did:cheqd using Ed25519 from local KMS with 2-step signing
+    - Create did:web using P-256 keys from AWS KMS
+    - Create did:cheqd using Ed25519 from local KMS with 2-step signing
     """
 
     def __init__(self, base_url: str = UNIVERSAL_REGISTRAR_BASE_URL):
@@ -113,11 +59,12 @@ class UniversalRegistrarClient:
 
     def create_did_web(
         self,
-        manager: TenantKMSManager,
+        manager,
+        wallet_identifier,
         mode,
-        agent_card_url: Optional[str] = None,
-        name: Optional[str] = None,
-        domain: str = "wallet4agent.com",
+        agentcard_url,
+        name=None,
+        controller=None
     ) -> Tuple[str, Dict[str, Any], str]:
         """
         Create a did:web remotely using a P-256 key in KMS.
@@ -129,7 +76,7 @@ class UniversalRegistrarClient:
         if not name:
             name = random_numbers
 
-        did = f"did:web:{domain}:{name}"        
+        did = f"did:web:wallet4agent.com:{name}"        
 
         # avoid collision in your Wallet table
         one_wallet = Wallet.query.filter(Wallet.agent_identifier == did).first()
@@ -138,16 +85,18 @@ class UniversalRegistrarClient:
 
         key_spec = "ECC_NIST_P256"
         vm_id = did + "#key-1"
-        url = mode.server + did
 
         # create/fetch key for this verificationMethod
         key_id = manager.create_or_get_key_for_verification_method(vm_id, key_spec)
 
         # get JWK from KMS
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
+        
+        if not controller:
+            controller = did
 
         # build DID Document locally (JsonWebKey2020 + OIDC4VP/A2A)
-        did_document = build_jwk_did_document(did, jwk, url, agent_card_url)
+        did_document = build_jwk_did_document(did, jwk, wallet_identifier, controller, mode, agentcard_url)
 
         # ✅ No call to Universal Registrar here
         return did, did_document, key_id
@@ -174,9 +123,11 @@ class UniversalRegistrarClient:
         
     def create_did_cheqd(
         self,
-        manager: TenantKMSManager,
+        manager,
+        wallet_identifier,
         mode,
-        agent_card_url: Optional[str] = None,
+        agentcard_url,
+        controller=None,
         network: str = "testnet",
     ) -> Tuple[str, Dict[str, Any], str]:
         """
@@ -188,14 +139,17 @@ class UniversalRegistrarClient:
         """
         did, vm_id = self._build_cheqd_did_and_vm(network)
         key_spec = "ED25519"
-        url = mode.server + did
 
         # Key = verificationMethod
         key_id = manager.create_or_get_key_for_verification_method(vm_id, key_spec)
         
         # Build DID Document from the KMS key's JWK
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
-        did_doc = build_jwk_did_document(did, jwk, url, agent_card_url)
+        
+        if not controller:
+            controller = did
+        
+        did_doc = build_jwk_did_document(did, jwk, wallet_identifier, controller, mode, agentcard_url)
         
         # Ensure the key is also an authentication method
         auth = did_doc.get("authentication", [])

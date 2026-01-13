@@ -1,8 +1,7 @@
 
-from flask import Flask, request, jsonify, render_template, redirect, current_app
-from flask_login import current_user, logout_user
+from flask import request, jsonify, render_template, current_app
 import requests
-from urllib.parse import urlencode,parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse
 import pkce
 import logging
 from datetime import datetime
@@ -17,48 +16,26 @@ logging.basicConfig(level=logging.INFO)
 
 def init_app(app):
     
-    # OAuth MCP server endpoint
-    app.add_url_rule('/.well-known/oauth-protected-resource', view_func=protected_resource_metadata, methods=['GET'])
-    app.add_url_rule('/.well-known/oauth-protected-resource/mcp', view_func=protected_resource_metadata, methods=['GET'])
-    
-    # OIDC4VCI wallet endpoint (oauth2 client)
+    # wallet as an oauth2 client in the OIDC4VCI flow 
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
+    app.add_url_rule('/wallets/<wallet_identifier>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
+    app.add_url_rule('/.well-known/openid-configuration/wallets/<wallet_identifier>', view_func=web_wallet_openid_configuration, methods=['GET'])    
     app.add_url_rule('/wallets/<wallet_identifier>/credential_offer', view_func=credential_offer, methods=['GET', 'POST'])
-    app.add_url_rule('/wallets/<wallet_identifier>/callback', view_func=callback, methods=['GET'])
     
-    # OIDC4VP wallet endpoint (Oauth2 authorization server)
+    # wallet as an Oauth2 authorization server in an OIDC4VP flow
     app.add_url_rule('/wallets/<wallet_identifier>/authorize', view_func=authorize, methods=['GET', 'POST'])
     
-    # openid configuration endpoint of the web wallet
-    app.add_url_rule('/wallets/<wallet_identifier>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
-    app.add_url_rule('/.well-known/openid-configuration/wallets/<wallet_identifier>', view_func=web_wallet_openid_configuration, methods=['GET'])
-    
-    # wallet landing page
+    # general purpose wallet landing page
     app.add_url_rule('/wallets/<wallet_identifier>', view_func=wallet_landing_page, methods=['GET'])
-    
-    # user consent for credential offer / transaction_code
-    app.add_url_rule('/wallets/<wallet_identifier>/user/consent', view_func=user_consent, methods=['POST'])
-    app.add_url_rule('/wallets/<wallet_identifier>/user/tx_code', view_func=user_tx_code, methods=['POST'])
     
     return
 
-# MCP server endpoint
-def protected_resource_metadata():
-    # https://www.rfc-editor.org/rfc/rfc9728.html
-    mode = current_app.config["MODE"]
-    config = {
-        "resource": mode.server + "mcp",
-        "bearer_method_supported": ["header"],
-        "tls_client_certificate_bound_access_tokens": True,
-        "authorization_servers": [mode.server]
-    }
-    return jsonify(config)
 
 # openid configuration endpoint for web wallet 
 def web_wallet_openid_configuration(wallet_identifier):
     mode = current_app.config["MODE"]
     config = {
-        "credential_offer_endpoint": mode.server  + "wallets/" + wallet_identifier + "/credential_offer",
+        "credential_offer_endpoint": mode.server + "wallets/" + wallet_identifier + "/credential_offer",
         "authorization_endpoint": mode.server + "wallets/" + wallet_identifier + "/authorize"
     }
     return jsonify(config)
@@ -67,7 +44,10 @@ def web_wallet_openid_configuration(wallet_identifier):
 # endpoint for wallet landing page
 def wallet_landing_page(wallet_identifier):
     w = get_wallet_by_wallet_identifier(wallet_identifier)
-    message = "This data wallet is controlled by the AI Agent :" + w.agent_identifier + "."
+    if w.type in ["human", "company"]:
+        message = f"This wallet is owned by: {w.owner}"
+    else:
+        message = "This data wallet is owned by:" + w.agent_identifier + "."
     return render_template("wallet/session_screen.html", message=message, title="Welcome !")
 
 
@@ -354,8 +334,6 @@ def build_session_config(agent_id: str, credential_offer: dict, mode):
         "wallet_identifier": this_wallet.wallet_identifier,
         "wallet_url": this_wallet.url, # not used
         "wallet_profile": this_wallet.ecosystem_profile,
-        "admins_login": json.loads(this_wallet.admins_login),
-        "always_human_in_the_loop": this_wallet.always_human_in_the_loop,
         "server": mode.server,
         "tx_code": tx_code,
         "tx_code_description": tx_code_description
@@ -393,283 +371,103 @@ def wallet(agent_id, credential_offer, mode, manager):
 def wallet_route():
     return render_template("home.html")
 
+def is_api_request() -> bool:
+    # 1) Content-Type indicates JSON payload (common for POST APIs)
+    if request.is_json or (request.mimetype == "application/json"):
+        return True
 
-# endpoint to request transaction id to user and get attestation in a pre authorzed flow with human in the loop
-def user_tx_code(wallet_identifier):
-    w = get_wallet_by_wallet_identifier(wallet_identifier)
-    agent_identifier = w.agent_identifier
-    red = current_app.config["REDIS"]
-    manager = current_app.config["MANAGER"]
-    mode = current_app.config["MODE"]
-    session_id = request.form["session_id"]
-    raw = red.get(session_id)
-    if not raw:
-        return render_template("wallet/session_expired.html")
-    red.delete(session_id)
-    session_config = json.loads(raw)
-    session_config["tx_code_value"] = request.form.get("tx_code")
-    sd_jwt_vc, text = code_flow(session_config, mode, manager)
-    logout_user()
-    if sd_jwt_vc:
-        return render_template("wallet/user_consent.html", wallet_did=agent_identifier, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
-    else:
-        logging.warning("sd jwt is missing %s", text)
-        message = "The attestation cannot be issued"
-        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
- 
+    # 2) Your API routes live under /mcp (adjust to your prefix)
+    if request.path.startswith("/mcp"):
+        return True
+
+    # 3) Client explicitly asks for JSON
+    accept = request.headers.get("Accept", "")
+    if "application/json" in accept:
+        return True
+
+    # 4) Optional explicit override
+    if request.args.get("format") == "json":
+        return True
+
+    return False
+
+def respond(message: str, *, status: int = 200, title: str = "Info"):
+    if is_api_request():
+        return jsonify({"message": message}), status
+    return render_template("wallet/session_screen.html", message=message, title=title), status
+
     
-# credential offer endpoint
 def credential_offer(wallet_identifier):
-    w = get_wallet_by_wallet_identifier(wallet_identifier)
-    agent_identifier = w.agent_identifier
-    red = current_app.config["REDIS"]
+    this_wallet = Wallet.query.filter(Wallet.wallet_identifier == wallet_identifier).first()
+    if not this_wallet:
+        return respond("Wallet not found", status=404, title="Sorry!")
+
     mode = current_app.config["MODE"]
     manager = current_app.config["MANAGER"]
-    
-    # if user is logged -> human in the loop
-    if current_user.is_authenticated:
-        logging.info("user is now logged")
-        session_id = request.args.get("session_id")
-        if not session_id:
-            logout_user()
-            message = "This session expired"
-            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-        raw = red.get(session_id)
-        if not raw:
-            logout_user()
-            logging.warning("session expired")
-            message = "This attestation offer has expired"
-            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-        session_config = json.loads(raw.decode())
-        if session_config["grant_type"] == "authorization_code":
-            redirect_uri = build_authorization_request(session_config, red, mode)
-            # send authorization request to issuer
-            return redirect(redirect_uri)
-        
 
-        # the user is logged, it is a pre authorized code flow and we ask user for consent 
-        else:
-            # exit point to get transaction id from human
-            if session_config["tx_code"]:
-                return render_template("wallet/tx_code.html", session_id=session_id, wallet_did=agent_identifier)
-            logout_user()   
-            sd_jwt_vc, text = code_flow(session_config, mode, manager)
-            if sd_jwt_vc:
-                return render_template("wallet/user_consent.html", wallet_did=agent_identifier, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
-            else:
-                logging.warning("sd jwt is missing %s", text)
-                message = "The attestation cannot be issued"
-                return render_template("wallet/session_screen.html", message=text, title="Sorry !")
-    
-    # First time, user is not logged
-    logging.info("user is not logged") 
     # get credential offer
-    if credential_offer_uri := request.args.get('credential_offer_uri'):
+    if credential_offer_uri := request.args.get("credential_offer_uri"):
+        logging.info("credential offer uri received in wallet")
         try:
-            offer = requests.get(credential_offer_uri, timeout=10).json()
+            raw = requests.get(credential_offer_uri, timeout=10)
+            offer = raw.json()
         except Exception as e:
             logging.warning("session expired %s", str(e))
-            message = "The attestation offer has expired"
-            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    elif offer := request.args.get('credential_offer'):
+            return respond("The attestation offer has expired", status=400, title="Sorry!")
+    elif offer := request.args.get("credential_offer"):
         try:
             offer = json.loads(offer)
         except Exception as e:
             logging.warning("session expired %s", str(e))
-            message = "The attestation offer has expired"
-            return render_template("wallet/session_screen.html", message=message, title="Sorry !")
+            return respond("The attestation offer has expired", status=400, title="Sorry!")
     else:
         logging.warning("incorrect VC format")
-        message = "This credential format is not supported."
-        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    
-    # build session config and store it in memory for next call to the same endpoint
-    this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
-    if not this_wallet:
-        message = "Wallet not found"
-        return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
-    
-    session_config, text = build_session_config(this_wallet.agent_identifier, offer, mode)    
+        return respond("This credential format is not supported.", status=400, title="Sorry!")
+
+    logging.info("credential offer received by wallet = %s", offer)
+
+    session_config, text = build_session_config(this_wallet.agent_identifier, offer, mode)
     if not session_config:
-        logging.warning(" session config expired %s", text)
-        message = "The attestation offer has expired"
-        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    
-    # if human is in the loop, wallet MUST redirect human to log in the agent wallet
-    if session_config["always_human_in_the_loop"]:
-        session_id = secrets.token_hex(16)
-        red.setex(session_id, 1000, json.dumps(session_config))
-        return redirect("/register?session_id=" + session_id)
-    
-    # if human not in the loop
-    # it is an authorization code flow -> it is an exit point 
-    if session_config["grant_type"] == "authorization_code":
-        redirect_uri = build_authorization_request(session_config, red, mode)
-        # send authorization request to issuer
-        return redirect(redirect_uri)
-    
-    # it tx_code is required but human not in the loop.
-    if session_config["tx_code"]:
-        message = "This attestation cannot be issued as it requires a secret code and human is not in the loop."
-        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-    
-    # get attestation
-    attestation, message = code_flow(session_config, mode, manager)
-    
-    # store the attestation
+        logging.warning("session config expired %s", text)
+        return respond("The attestation offer has expired", status=400, title="Sorry!")
+
+    if session_config.get("grant_type") != "urn:ietf:params:oauth:grant-type:pre-authorized_code":
+        logging.warning("This grant type not supported %s", session_config.get("grant_type"))
+        return respond("This grant is not supported", status=400, title="Sorry!")
+
+    attestation, _ = code_flow(session_config, manager)
+
     if attestation:
-        result, message = store_and_publish(attestation, session_config, mode, manager, published=True)
-        if result:
-            message = "Attestation has been issued, stored and published successfully"
-            return render_template("wallet/session_screen.html", message=message, title="Congrats !")
+        if session_config.get("credential_configuration_id") in ["OnBehalfOf", "OnBehalfOfDelegation"]:
+            published = this_wallet.publish_OBO
         else:
-            message = "Attestation has been issued but not stored"
-            return render_template("wallet/session_screen.html", message=message, title="Congrats !")
-    
+            published = this_wallet.publish_unpublish
+
+        if not this_wallet.agent_identifier.startswith("did:"):
+            published = False
+
+        result, _ = store_and_publish(attestation, session_config, mode, manager, published=published)
+        if result:
+            return respond("Attestation has been issued, stored and published successfully", title="Congrats!")
+        return respond("Attestation has been issued but not stored", status=200, title="Congrats!")
+
     logging.warning("no attestation")
-    message = "The attestation issuance failed"
-    return render_template("wallet/session_screen.html", message=message, title="Sorry !")
+    return respond("The attestation issuance failed", status=500, title="Sorry!")
 
 
-# route to request user consent then store the VC
-def user_consent(wallet_identifier):
-    mode = current_app.config["MODE"]
-    decision = request.form.get('decision')
-    if decision == "reject":
-        message = "Attestation has been rejected"
-        return render_template("wallet/session_screen.html", message=message, title="Well done!") 
 
-    red = current_app.config["REDIS"]
-    manager = current_app.config["MANAGER"]
-    attestation = request.form.get("sd_jwt_vc")
-    session_id = request.form.get("session_id")
-    public_url = request.form.get("publish_scope") or None
-    try:
-        raw = red.get(session_id)
-        if not raw:
-            raise ValueError("Session expired or not found")
-        session_config = json.loads(raw.decode())
-    except Exception as e:
-        logging.exception("User consent session issue: %s", str(e))
-        message = "This attestation session has expired. Please start again from the attestation offer."
-        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
-
-    if public_url == "public":
-        result, message = store_and_publish(attestation, session_config, mode,  manager, published=True)
-        if result:
-            message = "Attestation has been issued, stored an published successfully"
-            return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
-        else:
-            logging.warning(message)
-            message = "Attestation cannot be issued"
-            return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
-            
-    else:
-        result, message = store_and_publish(attestation, session_config, mode, manager, published=False)
-        if result:
-            message = "Attestation has been issued and stored successfully"
-            return render_template("wallet/session_screen.html", message=message, title= "Congrats !") 
-        else:
-            logging.warning("attestation cannot be stored %s", message)
-            return render_template("wallet/session_screen.html", message=message, title= "Sorry !")
-
-
-def build_authorization_request(session_config, red, mode) -> str:
-    authorization_endpoint = session_config['authorization_endpoint']
-    data = {
-        "redirect_uri": mode.server + "wallets/"  + session_config["wallet_identifier"] + "/callback",
-        "client_id": session_config["agent_identifier"],
-        "scope": session_config["scope"],
-        "response_type": "code",
-        "code_challenge": session_config["code_challenge"],
-        "code_challenge_method": "S256",
-        "state": session_config["state"] # wallet value if needed
-    }
-    if session_config.get("issuer_state"):
-        data["issuer_state"] = session_config["issuer_state"]
-    red.setex(session_config["state"], 1000, json.dumps(session_config))
-    return f"{authorization_endpoint}?{urlencode(data)}"
-
-
-# callback of the wallet as a client for OIDC4VCI authorization code flow
-def callback(wallet_identifier):
-    w = get_wallet_by_wallet_identifier(wallet_identifier)
-    agent_identifier = w.agent_identifier
-    logging.info('This is an authorized code flow')
-    red = current_app.config["REDIS"]
-    mode = current_app.config["MODE"]
-    manager = current_app.config["MANAGER"]
-    code = request.args.get('code')
-    error = request.args.get("error", "")
-    error_description = request.args.get("error_description", "")
-    session_id = request.args.get("state")
-    if error:
-        logging.warning("error %s error_description %s", error, error_description)
-        message = "The authorization response cannot be processed (session expired or invalid callback)."
-        return render_template(
-            "wallet/session_screen.html",
-            message=message,
-            title="Sorry !"
-        )
-    if not code:
-        logging.warning("no code is the callbcak")
-        # No code and no explicit error → malformed request
-        message = "The authorization response cannot be processed (session expired or invalid callback)."
-        return render_template(
-            "wallet/session_screen.html",
-            message=message,
-            title="Sorry !"
-        )
-    try:
-        raw = red.get(session_id)
-        if not raw:
-            raise ValueError("Session not found or expired")
-        session_config = json.loads(raw.decode())
-    except Exception as e:
-        logging.warning("Callback issue: %s", e)
-        message = "The authorization response cannot be processed (session expired or invalid callback)."
-        return render_template(
-            "wallet/session_screen.html",
-            message=message,
-            title="Sorry !"
-        )
-    # update session config with code from AS
-    session_config["code"] = code
-    logout_user()    
-    
-    # request token and credential
-    sd_jwt_vc, text = code_flow(session_config, mode, manager)
-    
-    if sd_jwt_vc:
-        return render_template("wallet/user_consent.html", wallet_did=agent_identifier, sd_jwt_vc=sd_jwt_vc, title="Consent to Accept & Publish Attestation", session_id=session_id)
-    else:
-        logging.warning("sd jwt is missing %s", text)
-        message = "The attestation cannot be issued"
-        return render_template("wallet/session_screen.html", message=text, title="Sorry !")
-    
-
-
-def token_request(session_config, mode):
+def token_request(session_config):
     token_endpoint = session_config['token_endpoint']
     grant_type = session_config["grant_type"]
-
-    data = {"grant_type": grant_type, "client_id": session_config["agent_identifier"]}
+    data = {
+        "grant_type": grant_type,
+        "client_id": session_config["agent_identifier"]
+    }
 
     if grant_type == 'urn:ietf:params:oauth:grant-type:pre-authorized_code':
         data["pre-authorized_code"] = session_config["code"]
-        # optional: only when required
-        if session_config.get("tx_code") and session_config.get("tx_code_value"):
-            data["tx_code"] = session_config["tx_code_value"]
-
-
-    elif grant_type == 'authorization_code':
-        data.update({
-            "code": session_config["code"],
-            "code_verifier": session_config["code_verifier"],
-            "redirect_uri": mode.server + "wallets/" + session_config["wallet_identifier"] + "/callback"
-        })
     else:
-        return None, "grant type is unknown"
+        return None, "grant type is not supported"
 
     try:
         resp_json = requests.post(token_endpoint, headers={'Content-Type': 'application/x-www-form-urlencoded'}, data=data, timeout=10).json()
@@ -755,9 +553,9 @@ def build_proof_of_key_ownership(session_config, nonce, manager):
 
 
 # process code flow
-def code_flow(session_config, mode, manager):
+def code_flow(session_config, manager):
     # access token request
-    token_endpoint_response, text = token_request(session_config, mode)
+    token_endpoint_response, text = token_request(session_config)
     logging.info('token endpoint response = %s', token_endpoint_response)
     
     if not token_endpoint_response:

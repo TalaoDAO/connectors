@@ -4,7 +4,7 @@
   "id": "wallet4agent-mcp",
   "version": "1.4.0",
   "protocolVersion": "2025-06-18",
-  "description": "Wallet4Agent MCP Server provides decentralized and regulated identity tools for AI Agents, Companies, and Users — powered by DIDs, Verifiable Credentials (SD-JWT & W3C JSON-LD), OIDC4VCI issuance, OpenID4VP verification, Linked Verifiable Presentations, and QR-based verifier flows for data wallets (proof of being over 18, verified email, and verified identity profile).",
+  "description": "Wallet4Agent MCP Server provides trusted digital identity for AI agents, allowing them to hold DIDs, Verifiable Credentials, and cryptographic mandates aligned with the EUDI Wallet architecture. It enables agents to receive attestations, present proofs, and act On-Behalf-Of humans or organizations through legally auditable delegation using OIDC4VCI, OpenID4VP, SD-JWT VC, and Linked Verifiable Presentations.",
   "homepage": "https://wallet4agent.com",
   "license": "Apache-2.0",
   "maintainer": {
