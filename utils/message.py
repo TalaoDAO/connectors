@@ -18,7 +18,7 @@ HTML_templates = {
     'verification_en' : 'templates/verification_en.html'
 } 
 
-def messageHTML(subject, to, HTML_key, format_dict, mode)  :
+def messageHTML(subject, to, HTML_key, format_dict, mode):
 	password = mode.smtp_password
 	fromaddr = "relay@talao.io"
 	toaddr = [to]
@@ -51,11 +51,11 @@ def messageHTML(subject, to, HTML_key, format_dict, mode)  :
 
 	# sending the mail
 	try:
-		s.sendmail(msg['from'],  msg["To"].split(","), text)
+		s.sendmail(msg['From'],  msg["To"].split(","), text)
 		logging.info('email sent')
 		s.quit()
 		return True
-	except:
+	except Exception:
 		logging.error('sending mail')
 		s.quit()
 		return False
@@ -84,7 +84,7 @@ def message(subject, to, messagetext, mode) :
 
 	# sending the mail
 	try:
-		s.sendmail(msg['from'],  msg["To"].split(","), text)
+		s.sendmail(msg['From'],  msg["To"].split(","), text)
 	except Exception:
 		logging.error('sending mail')
 		return False

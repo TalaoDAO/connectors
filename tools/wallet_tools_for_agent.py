@@ -954,9 +954,9 @@ def call_accept_credential_offer( arguments: Dict[str, Any], agent_identifier: s
 
 
 def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, config: dict) -> Dict[str, Any]:
-    message = arguments.get("message", "")
-    if not isinstance(message, str):
-        message = str(message)
+    this_message = arguments.get("message", "")
+    if not isinstance(this_message, str):
+        this_message = str(this_message)
     
     this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
     if not this_wallet.sign:
@@ -964,7 +964,7 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
             [{"type": "text", "text": "Agent cannot sign."}],
             is_error=True,
         )
-    message_text = f"Agent signs message: {message}"
+    message_text = f"Agent signs message: {this_message}"
     message.admin_message(this_wallet, message_text, config["MODE"])
         
     # Prefer injected manager
@@ -974,12 +974,12 @@ def call_sign_text_message(arguments: Dict[str, Any], agent_identifier: str, con
     try:
         # lazily create or fetch tenant key
         key_id = manager.create_or_get_key_for_tenant(vm_id)
-        sig, _ = manager.sign_message(key_id, message.encode("utf-8"))
+        sig, _ = manager.sign_message(key_id, this_message.encode("utf-8"))
         sig_b64 = base64.b64encode(sig).decode("ascii")
 
         structured = {
             "agent_identifier": agent_identifier,
-            "message": message,
+            "message": this_message,
             "signature_base64": sig_b64,
         }
         text = f"Signed message for Agent {agent_identifier}. Base64 signature: {sig_b64}"
