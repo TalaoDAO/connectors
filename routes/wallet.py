@@ -44,6 +44,9 @@ def web_wallet_openid_configuration(wallet_identifier):
 # endpoint for wallet landing page
 def wallet_landing_page(wallet_identifier):
     w = get_wallet_by_wallet_identifier(wallet_identifier)
+    if not w:
+        message = "Wallet not found."
+        return render_template("wallet/session_screen.html", message=message, title="Sorry !")
     if w.type in ["human", "company"]:
         message = f"This wallet is owned by: {w.owner}"
     else:
