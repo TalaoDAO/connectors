@@ -82,7 +82,7 @@ def create_app() -> Flask:
     }
 
     # ---- App-wide config values (shared deps) ----
-   
+    app.config["MYENV"] = myenv
     app.config["MODE"] = mode
     app.config["REDIS"] = red
     app.config["API_LIFE"] = DEFAULT_API_LIFE
