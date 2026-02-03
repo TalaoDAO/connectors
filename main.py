@@ -47,12 +47,13 @@ def create_app() -> Flask:
     # ---- Security / secrets ----
     
     # ---- Sessions (server-side via Redis) ----
+    
     app.config.update(
+        SESSION_TYPE="redis",
+        SESSION_REDIS=red,
         SESSION_PERMANENT=True,
         SESSION_COOKIE_NAME="connectors",
-        SESSION_TYPE="redis",
         PERMANENT_SESSION_LIFETIME=timedelta(minutes=int(os.getenv("SESSION_MINUTES", "30"))),
-        SESSION_FILE_THRESHOLD=100,  # unused with redis, but OK to leave
     )
 
     # ---- App metadata / UI helpers ----
