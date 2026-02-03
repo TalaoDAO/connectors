@@ -645,6 +645,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], owner_ide
         url=wallet_url,
         notification_email=owner_wallet.notification_email,
     )
+    agent_pat = "N/A"
     if mcp_authentication == "OAuth 2.0 Client Credentials Grant":
         client_secret = secrets.token_urlsafe(64)
         wallet.client_secret_hash = oidc4vc.hash_client_secret(client_secret)

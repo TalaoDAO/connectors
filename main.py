@@ -82,10 +82,8 @@ def create_app() -> Flask:
     }
 
     # ---- App-wide config values (shared deps) ----
-    app.config["MYENV"] = myenv
+   
     app.config["MODE"] = mode
-    app.config["SESSION_TYPE"] = "redis"
-    app.config["SESSION_REDIS"] = red
     app.config["REDIS"] = red
     app.config["API_LIFE"] = DEFAULT_API_LIFE
     app.config["GRANT_LIFE"] = DEFAULT_GRANT_LIFE
@@ -108,6 +106,7 @@ def create_app() -> Flask:
 
     # ---- Init extensions bound to app ----
     db.init_app(app)
+    
     Session(app)
     QRcode(app)
 
