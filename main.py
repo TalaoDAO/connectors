@@ -57,7 +57,7 @@ def create_app() -> Flask:
     )
 
     # ---- App metadata / UI helpers ----
-    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.4")
+    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.4.1")
     try:
         app.jinja_env.globals["Created"] = os.path.getctime(__file__)
     except Exception:
