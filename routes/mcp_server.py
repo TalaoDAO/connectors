@@ -766,6 +766,19 @@ def init_app(app):
                                         "error":{"code":-32001,"message":"Unauthorized: same agent"}})
                 out = verifier_tools.call_start_agent_authentication(target_agent, identifier, config())
             
+            elif name == "process_agent_authentication":
+                if role != "agent":
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
+                if not arguments.get("agent_identifier"):
+                    return {"jsonrpc":"2.0","id":req_id,
+                                "error":{"code":-32001,"message":"Unauthorized: agent_identifier missing"}}
+                target_agent = arguments.get("agent_identifier")
+                if target_agent == identifier:
+                    return jsonify({"jsonrpc":"2.0","id":req_id,
+                                        "error":{"code":-32001,"message":"Unauthorized: same agent"}})
+                out = verifier_tools.call_process_agent_authentication(arguments, identifier, config())
+
             elif name == "poll_user_verification":
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,

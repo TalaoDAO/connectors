@@ -34,56 +34,6 @@ def init_app(app):
     app.add_url_rule('/verification_email/<url_id>',  view_func=verification_email, methods=['GET'])
     return
 
-"""
-def _b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
-
-def _json_compact(obj) -> bytes:
-    # Canonical-ish JSON (no spaces, stable key order)
-    return json.dumps(obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
-
-
-def build_jwt_request(account, credential_id, jwt_request, client_id_scheme) -> str:
-    with open("keys.json", "r") as f:
-        credential = json.loads(f.read())["credentials"][0]    
-    private_key = credential.get("key")
-    if not credential:
-        return None
-
-    header = {"typ": "oauth-authz-req+jwt"}  # RFC 9101 / OpenID specs
-    if client_id_scheme == "x509_san_dns":
-        header["x5c"] = credential.get("x5c")
-        public_key = credential.get("public_key")
-        header["alg"] = oidc4vc.alg(public_key)
-    elif client_id_scheme == "verifier_attestation":
-        header["jwt"] = credential.get("verifier_attestation")
-        public_key = credential.get("public_key")
-        header["alg"] = oidc4vc.alg(public_key)
-    elif client_id_scheme == "redirect_uri":
-        header["alg"] = "none"
-    else:  # DID by default
-        public_key = credential.get("public_key")
-        header["alg"] = oidc4vc.alg(public_key)
-        header["kid"] = credential.get("verification_method")
-
-    payload = {
-        "aud": "https://self-issued.me/v2",
-        "exp": int(datetime.timestamp(datetime.now() + timedelta(seconds=1000))),
-        **jwt_request,
-    }
-
-    if header["alg"] == "none":
-        # Use the 2-segment unsecured form: <header>.<payload>
-        h = _b64url(_json_compact(header))
-        p = _b64url(_json_compact(payload))
-        return f"{h}.{p}."
-    else:
-        # Your existing signer for JWS
-        priv = jwk.JWK(**private_key)
-        tok = jwt.JWT(header=header, claims=payload)
-        tok.make_signed_token(priv)
-        return tok.serialize()
-"""
 
 # build the authorization request for user                                   
 def user_verification(agent_identifier, mcp_scope, red, mode, manager):
@@ -119,7 +69,7 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         "client_id": client_id,
         "iss": agent_identifier,
         "response_type": "vp_token",
-        "response_uri": mode.server + "/verifier/" + wallet_identifier + "/response",
+        "response_uri": mode.server + "/verifier/response",
         "response_mode": "direct_post",
         "nonce": nonce
     }
@@ -186,7 +136,7 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
         "client_id": agent_identifier,
-        "request_uri": mode.server + "verifier/" + wallet_identifier + "/request_uri/" + stream_id 
+        "request_uri": mode.server + "verifier/request_uri/" + stream_id 
     }
     if request_uri_method:
         authorization_request_for_qrcode["request_uri_method"] = request_uri_method
@@ -210,7 +160,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     wallet = Wallet.query.filter_by(agent_identifier=agent_identifier).first()
     if not wallet:
         return
-    wallet_identifier = wallet.wallet_identifier
+    wallet_identifier = wallet.wallet_identifier  # unique
     
     authentication_request_id = str(uuid.uuid4())
     nonce = str(uuid.uuid4())
@@ -220,7 +170,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
         "client_id": agent_identifier,
         "iss": agent_identifier, # TODO
         "response_type": "id_token",
-        "response_uri": mode.server + "verifier/" + wallet_identifier + "/response",
+        "response_uri": mode.server + "verifier/response",
         "response_mode": "direct_post",
         "nonce": nonce,
         "aud": target_agent,
@@ -230,7 +180,8 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     # store data in redis attached to the nonce to bind with the wallet response
     data = {
         "request_type": "agent_authentication",
-        "target": target_agent,
+        "target_agent": target_agent,
+        "target_wallet": wallet_identifier,
         "agent": agent_identifier,
         "authentication_request_id": authentication_request_id
     }
@@ -260,12 +211,14 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
     # QRCode preparation with authorization_request_displayed
     authorization_request_for_qrcode = { 
         "client_id": agent_identifier,
-        "request_uri": mode.server + "verifier/" + wallet_identifier + "/request_uri/" + stream_id 
+        "request_uri": mode.server + "verifier/request_uri/" + stream_id 
     }
     logging.info("authorization request = %s", json.dumps(authorization_request, indent= 4)  )
 
     oidc4vp_request = "openid-vc://?" + urlencode(authorization_request_for_qrcode)
     return {
+        "target_agent": target_agent,
+        "target_wallet": wallet_identifier,
         "oidc4vp_request": oidc4vp_request,
         "authentication_request_id": authentication_request_id
     }

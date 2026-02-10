@@ -1,7 +1,8 @@
-from flask import render_template, current_app
+from flask import render_template, current_app, Response
 import logging
 from flask_login import current_user, logout_user
 import markdown
+import os
 
 logging.basicConfig(level=logging.INFO)
 
@@ -12,9 +13,32 @@ def init_app(app):
     app.add_url_rule('/pricing',  view_func=pricing, methods = ['GET', 'POST'])
     app.add_url_rule('/logout',  view_func=logout, methods = ['GET', 'POST'])
     app.add_url_rule("/documentation/<page>", view_func=show_markdown_page, methods=['GET'])
+    app.add_url_rule("/documentation/raw/<page>", view_func=documentation_raw, methods=['GET'])
+
     app.add_url_rule('/debug/<debug_mode>',  view_func=debug, methods = ['GET', 'POST'])
     return
 
+
+def documentation_raw(page):
+    # basic safety: allow only simple names like "guide", "stack"
+    if not page.replace("-", "").replace("_", "").isalnum():
+        abort(404)
+
+    md_path = os.path.join("documentation", f"{page}.md")
+    if not os.path.exists(md_path):
+        abort(404)
+
+    with open(md_path, "r", encoding="utf-8") as f:
+        md = f.read()
+
+    return Response(
+        md,
+        mimetype="text/markdown; charset=utf-8",
+        headers={
+            # Forces download with a nice filename
+            "Content-Disposition": f'attachment; filename="{page}.md"'
+        },
+    )
 
 def home():
     return render_template("home.html", user=current_user)

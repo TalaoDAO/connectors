@@ -160,7 +160,9 @@ class UniversalRegistrarClient:
         # 1st call: ask driver to prepare signPayload
         initial_body = {
             "didDocument": did_doc,
-            "options": {"network": network},
+            "options": {
+                "network": network,
+            },
             "secret": {},
         }
 

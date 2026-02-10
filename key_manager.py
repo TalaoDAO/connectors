@@ -69,6 +69,7 @@ def kms_init(myenv):
         )
         manager = TenantKMSManager(boto3_session=assumed_sess, region_name="eu-west-3")
         return manager
+        
     else:
         manager = TenantKMSManager(region_name=REGION)
         return manager

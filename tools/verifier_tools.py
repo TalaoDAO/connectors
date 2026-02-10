@@ -4,6 +4,7 @@ import logging
 from routes import verifier
 from utils import message
 import requests
+import time
 
 RESOLVER_LIST = [
     'https://unires:test@unires.talao.co/1.0/identifiers/',
@@ -73,35 +74,12 @@ tools_agent: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "poll_agent_authentication",
+        "name": "process_agent_authentication",
         "description": (
-            "Poll the current authentication status for a previously started "
-            "agent-to-agent authentication. "
-            "You MUST provide the exact authentication_request_id that was "
-            "returned by start_agent_authentication. "
-            "Never derive or guess this value from the agent DID."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "authentication_request_id": {
-                    "type": "string",
-                    "description": (
-                        "The authentication_request_id returned in structuredContent "
-                        "by start_agent_authentication. It is not the agent identifier."
-                    )
-                }
-            },
-            "required": ["authentication_request_id"]
-        }
-    },
-    {
-        "name": "start_agent_authentication",
-        "description": (
-            "Start another agent authentication. This process is very fast and does "
-            "not require user interaction. Immediately after calling this tool, "
-            "the Agent SHOULD call poll_agent_authentication with the returned "
-            "authentication_request_id to obtain the result."
+            "Start an agent-to-agent authentication and immediately poll for the result. "
+            "This is usually fast and does not require user interaction. "
+            "The tool will poll 3 times maximum with a short pause between polls "
+            "and returns as soon as the authentication is verified or denied."
         ),
         "inputSchema": {
             "type": "object",
@@ -113,7 +91,7 @@ tools_agent: List[Dict[str, Any]] = [
             },
             "required": ["agent_identifier"]
         }
-    },
+    }
 ]
 
 
@@ -225,11 +203,13 @@ def call_start_agent_authentication(
     # Base flow info stored as structuredContent
     flow: Dict[str, Any] = {
         "target_agent": target_agent,
+        "target_wallet": data.get("target_wallet"),
         "authentication_request_id": authentication_request_id,
         "request_sent": False,
     }
     if myenv != "local":
         # 2. Resolve DID Document of the targeted agent to get the agent endpoint
+        r = None
         for res in RESOLVER_LIST:
             try:
                 r = requests.get(res + target_agent, timeout=10)
@@ -237,6 +217,15 @@ def call_start_agent_authentication(
                 break
             except Exception:
                 pass
+            
+        if not r:
+            logging.exception("Failed to resolve DID Document for %s", target_agent)
+            return _ok_content(
+                [{"type": "text", "text": f"Failed to resolve DID Document for {target_agent}"}],
+                structured=flow,
+                is_error=True,
+            )
+            
         try:
             did_doc = r.json().get('didDocument')
         except Exception:
@@ -265,7 +254,7 @@ def call_start_agent_authentication(
                 is_error=True,
             )
     else: # for testing
-        oidc4vp_endpoint = mode.server + "wallet/" + target_agent 
+        oidc4vp_endpoint = mode.server + "wallets/" + data.get("target_wallet")
 
     # 2. Fetch authorization_endpoint from well-known endpoint
     try:
@@ -308,6 +297,10 @@ def call_start_agent_authentication(
         success = auth_resp.ok
     except Exception as e:
         logging.exception("Failed to call authorization_endpoint %s: %s", authorization_endpoint, str(e))
+        flow = {
+            "target_agent": target_agent,
+            "request_sent": False,
+        }
         return _ok_content(
             [{"type": "text", "text": f"Failed to send authentication request to the other agent: {target_agent}."}],
             structured=flow,
@@ -407,3 +400,62 @@ def call_poll_agent_authentication(arguments: Dict[str, Any], agent_identifier, 
     text_blocks.append({"type": "text", "text": text})
 
     return _ok_content(text_blocks, structured=structured)
+
+
+def call_process_agent_authentication(arguments: Dict[str, Any], agent_identifier, config: dict) -> Dict[str, Any]:
+    """
+    Start agent-to-agent authentication and poll for the result a few times.
+    Returns a single tool response (content + structuredContent).
+    """
+    target_agent = arguments.get("agent_identifier")
+    max_polls = 3
+    poll_delay_seconds = 0.5
+
+    # 1) Start authentication
+    start_out = call_start_agent_authentication(target_agent, agent_identifier, config)
+
+    # If start failed, return immediately
+    if start_out.get("isError"):
+        return start_out
+
+    start_struct = start_out.get("structuredContent") or {}
+    authentication_request_id = start_struct.get("authentication_request_id")
+
+    if not authentication_request_id:
+        # Defensive: should never happen, but avoids crashing
+        return _ok_content(
+            [{"type": "text", "text": "Authentication was started but no authentication_request_id was returned."}],
+            structured=start_struct,
+            is_error=True,
+        )
+
+    # 2) Poll a few times
+    last_poll_out: Optional[Dict[str, Any]] = None
+    for i in range(max_polls):
+        poll_args = {"authentication_request_id": authentication_request_id}
+        poll_out = call_poll_agent_authentication(poll_args, agent_identifier, config)
+        last_poll_out = poll_out
+
+        poll_struct = poll_out.get("structuredContent") or {}
+        status = poll_struct.get("status", "pending")
+
+        # If finished, return immediately (keep structuredContent from poll)
+        if status in ("verified", "denied"):
+            return poll_out
+
+        # otherwise wait then retry (unless this was the last attempt)
+        if i < max_polls - 1 and poll_delay_seconds > 0:
+            time.sleep(poll_delay_seconds)
+
+    # Still pending/not_found after polling: return the last poll output,
+    # but enrich structuredContent with start info for debugging/traceability.
+    if last_poll_out is None:
+        return start_out
+
+    merged_struct = dict(start_struct)
+    merged_struct.update(last_poll_out.get("structuredContent") or {})
+    merged_struct["polled"] = max_polls
+    merged_struct["poll_delay_seconds"] = poll_delay_seconds
+
+    # Keep the last poll human message, but attach merged structured content
+    return _ok_content(last_poll_out.get("content", []), structured=merged_struct, is_error=bool(last_poll_out.get("isError")))

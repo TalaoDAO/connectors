@@ -56,6 +56,8 @@
       padding:.4rem .7rem;background:var(--card);color:var(--text);
       border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);z-index:1000;
     }
+    .toc nav a.depth-1{padding-left:.5rem;font-weight:600}
+
 
     /* Header */
     header.page{
@@ -250,7 +252,8 @@
           Page: <strong>{{ page }}</strong>
         </div>
         <!-- Adjust href if your .md is served from another path -->
-        <a class="download-link" href="/documentation/{{ page }}.md" download>
+         <a href="/documentation/raw/{{ page }}" download>
+
           ⬇ Download Markdown
         </a>
       </div>
@@ -270,7 +273,11 @@
       const nav = document.getElementById('tocNav');
       if (!content || !nav) return;
 
-      const headings = content.querySelectorAll('h2, h3');
+      const headings = Array.from(content.querySelectorAll('h1, h2, h3'))
+      // Skip the page title (first H1) so the TOC starts at “1. …”
+      .filter((h, idx) => !(h.tagName === 'H1' && idx === 0));
+
+
       if (!headings.length) {
         nav.innerHTML = '<p class="muted">No headings to display.</p>';
         return;
@@ -278,7 +285,7 @@
 
       const map = [];
       headings.forEach((h, index) => {
-        const level = h.tagName === 'H2' ? 2 : 3;
+        const level = h.tagName === 'H1' ? 1 : (h.tagName === 'H2' ? 2 : 3);
         if (!h.id) {
           h.id = 'section-' + index;
         }

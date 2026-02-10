@@ -83,23 +83,23 @@ tools_agent_sign = [
 
     
 tools_agent_others = [
-    {
-        "name": "resolve_agent_identifier",
-        "description": (
-            "Resolve an Agent identifier (DID) and summarize its DID Document. "
-            "Useful to understand another Agent's public keys, services and Linked VPs."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "agent_identifier": {
-                    "type": "string",
-                    "description": "The DID of the Agent to resolve (e.g. did:web:wallet4agent.com:xyz)."
-                }
-            },
-            "required": ["agent_identifier"]
-        }
-    },
+    #{
+    #    "name": "resolve_agent_identifier",
+    #    "description": (
+    #        "Resolve an Agent identifier (DID) and summarize its DID Document. "
+    #        "Useful to understand another Agent's public keys, services and Linked VPs."
+    #    ),
+    #    "inputSchema": {
+    #        "type": "object",
+    #       "properties": {
+    #            "agent_identifier": {
+    #                "type": "string",
+    #                "description": "The DID of the Agent to resolve (e.g. did:web:wallet4agent.com:xyz)."
+    #            }
+    #        },
+    #        "required": ["agent_identifier"]
+    #    }
+    #},
     {
         "name": "get_this_wallet_data",
         "description": (
@@ -639,9 +639,9 @@ def _extract_sd_jwt_payload_from_data_uri(data_uri: str) -> Optional[Dict[str, A
     # --- Build result in the same shape as _extract_vc_from_jwt_vp ---
     result: Dict[str, Any] = {
         "vc": vc_data,
-        "vc_jwt": issuer_jwt,
-        "vc_valid": (status == "valid"),
-        "vc_validity_status": status,
+        #"vc_jwt": issuer_jwt,
+        "valid": (status == "valid"),
+        #"vc_validity_status": status,
     }
     if reasons:
         result["vc_validity_reasons"] = reasons
@@ -685,7 +685,7 @@ def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[s
         except Exception as e:
             logging.exception("Failed to resolve DID via %s", url)
             last_exception = e
-
+    
     if did_doc is None:
         logging.warning("Failed to resolve DID %s via all resolvers", agent_identifier)
         text = f"Could not resolve DID {agent_identifier} using Universal Resolver."
@@ -724,6 +724,10 @@ def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[s
         # 2.a Fetch VP from serviceEndpoint (if HTTP(S))
         vp_json: Optional[Dict[str, Any]] = None
         vp_jwt: Optional[str] = None
+        
+        # manage only the first service endpoint
+        if isinstance(service_endpoint, list):
+            service_endpoint = service_endpoint[0]
 
         if isinstance(service_endpoint, str):
             if service_endpoint.startswith("data:"):
@@ -731,7 +735,7 @@ def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[s
                 vp_json = None
             else:
                 try:
-                    logging.info("Fetching VP from serviceEndpoint %s", service_endpoint)
+                    logging.info("Fetching VP from serviceEndpoint %s", service_endpoint) 
                     resp = requests.get(service_endpoint, timeout=10)
                     resp.raise_for_status()
                     body = (resp.text or "").strip()
@@ -761,6 +765,7 @@ def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[s
                 except Exception:
                     logging.exception("Failed to fetch serviceEndpoint %s", service_endpoint)
 
+
         # 2.b Decide representation based on VCDM 2.0 types / envelope
 
         # Case 1: JSON-LD VP / Enveloped VP JSON object
@@ -785,8 +790,10 @@ def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[s
                 if "EnvelopedVerifiablePresentation" in vp_type_list:
                     data_uri = vp_json.get("id")
                     payload = None
+                    #print("data uri = ", data_uri)
                     if isinstance(data_uri, str) and data_uri.startswith("data:"):
                         payload = _extract_sd_jwt_payload_from_data_uri(data_uri)
+                    print("payload = ", payload)
 
                     if payload is not None:
                         attestation.update(payload)
@@ -816,7 +823,6 @@ def call_get_published_attestations_of_an_agent(agent_identifier: str) -> Dict[s
                 attestation.update(payload)
             else:
                 attestation["raw"] = service_endpoint
-
         else:
             # We couldn't fetch or parse a VP; keep meta only
             attestation["format"] = "unavailable"
@@ -846,8 +852,12 @@ def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
     structured = {
         "agent": {
             "identifier": agent_identifier,
+            "type": this_wallet.type,
+            "owner": this_wallet.owner
         },
         "wallet": {
+            "identifier": this_wallet.wallet_identifier,
+            "url": this_wallet.url,
             "number_of_attestations": len(attestations_list)
         },
     }
@@ -863,6 +873,7 @@ def call_get_this_wallet_data(agent_identifier) -> Dict[str, Any]:
         text = (
             f"My Agent Identifier is {agent_identifier}. "
             f"with a total of {len(attestations_list)} attestations. "
+            f"My owner is {this_wallet.owner}"
         )
     else:
         text = (

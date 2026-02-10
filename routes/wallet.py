@@ -20,6 +20,7 @@ def init_app(app):
     app.add_url_rule('/', view_func=wallet_route, methods=['GET'])
     app.add_url_rule('/wallets/<wallet_identifier>/.well-known/openid-configuration', view_func=web_wallet_openid_configuration, methods=['GET'])
     app.add_url_rule('/.well-known/openid-configuration/wallets/<wallet_identifier>', view_func=web_wallet_openid_configuration, methods=['GET'])    
+    
     app.add_url_rule('/wallets/<wallet_identifier>/credential_offer', view_func=credential_offer, methods=['GET', 'POST'])
     
     # wallet as an Oauth2 authorization server in an OIDC4VP flow
@@ -71,8 +72,13 @@ def authorize(wallet_identifier):
     5. POST (direct_post) the id_token ONLY to the response_uri endpoint.
     """
     manager = current_app.config["MANAGER"]
-    w = get_wallet_by_wallet_identifier(wallet_identifier)
-    agent_identifier = w.agent_identifier
+    
+    this_wallet = Wallet.query.filter(Wallet.wallet_identifier == wallet_identifier).first()
+    if not this_wallet:
+        logging.warning("wallet not found %s", wallet_identifier)
+        return jsonify("wallet not found"), 401
+        
+    agent_identifier = this_wallet.agent_identifier
 
     # 1. Get request / request_uri parameters
     req_jwt = request.args.get("request") or request.form.get("request")

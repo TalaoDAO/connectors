@@ -57,7 +57,7 @@ def create_app() -> Flask:
     )
 
     # ---- App metadata / UI helpers ----
-    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.2")
+    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.4")
     try:
         app.jinja_env.globals["Created"] = os.path.getctime(__file__)
     except Exception:
@@ -268,7 +268,7 @@ def create_app() -> Flask:
     # service endpoint for linked vp
     @app.get('/service/<agent_identifier>/<id>')
     def service(agent_identifier, id):
-        this_wallet = Wallet.query.filter(Wallet.wallet_identifier == agent_identifier).first()
+        this_wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
         service = json.loads(this_wallet.linked_vp).get(id)
         if service:
             headers = {
@@ -278,6 +278,8 @@ def create_app() -> Flask:
             return Response(json.dumps(service), headers=headers)
         else:
             return jsonify({"error": "linked VP Not found"}), 401
+    
+    
     
     return app
 
