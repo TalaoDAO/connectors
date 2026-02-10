@@ -136,7 +136,7 @@ tools_admin = [
                     "type": "string",
                     "description": "Optional DID Method, did:web (DNS based) by default or did:cheqd (blockchain based)",
                     "enum": ["did:web", "did:cheqd"],
-                    "default": "did:web"
+                    "default": "did:cheqd"
                 },
                 "agentcard_url": {
                     "type": "string",
