@@ -86,6 +86,7 @@ def create_app() -> Flask:
     app.config["MYENV"] = myenv
     app.config["MODE"] = mode
     app.config["REDIS"] = red
+    app.config["KEY_BACKEND"] = "local"
     app.config["API_LIFE"] = DEFAULT_API_LIFE
     app.config["GRANT_LIFE"] = DEFAULT_GRANT_LIFE
     app.config["ACCEPTANCE_TOKEN_LIFE"] = DEFAULT_ACCEPTANCE_TOKEN_LIFE

@@ -36,11 +36,12 @@ def init_app(app):
 
 
 # build the authorization request for user                                   
-def user_verification(agent_identifier, mcp_scope, red, mode, manager):
+def user_verification(agent_identifier, red, mode, manager):
     # configure verifier from ecosystem profile
     wallet = Wallet.query.filter(Wallet.agent_identifier == agent_identifier).first()
-    wallet_identifier = wallet.wallet_identifier
+    #wallet_identifier = wallet.wallet_identifier
     profile = wallet.ecosystem_profile
+    logging.info("profile  %s", profile)
     request_uri_method = None 
     if profile == "DIIP V4":
         request_uri_method = "get"
@@ -69,7 +70,7 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         "client_id": client_id,
         "iss": agent_identifier,
         "response_type": "vp_token",
-        "response_uri": mode.server + "/verifier/response",
+        "response_uri": mode.server + "verifier/response",
         "response_mode": "direct_post",
         "nonce": nonce
     }
@@ -81,35 +82,21 @@ def user_verification(agent_identifier, mcp_scope, red, mode, manager):
         else:
             path = "dcql_query/"
             presentation_claim = "dcql_query"
-        fallback_presentation = json.load(open( path + "raw.json", "r"))
-        if mcp_scope in ["email", "phone", "profile", "over18", "raw"]:
-            authorization_request[presentation_claim] = json.load(open(path + mcp_scope + ".json", "r"))
-        elif mcp_scope == "wallet_identifier":
-            authorization_request['scope'] = 'openid'
-            authorization_request["response_type"] = "id_token"
-            authorization_request.pop("client_metadata", None)
-        else:
-            authorization_request[presentation_claim] = fallback_presentation
         
+        authorization_request[presentation_claim] = json.load(open(path + "profile.json", "r"))
         if request_uri_method:
             authorization_request["request_uri_method"] = request_uri_method
-        
         authorization_request['aud'] = 'https://self-issued.me/v2'
         
         if draft < 23:
             authorization_request["client_id_scheme"] = "did"
-
-    # SIOPV2
-    if 'id_token' in response_type:
-        authorization_request['scope'] = 'openid'
     
     # store data in redis attached to the nonce to bind with the wallet response
     verification_request_id = str(uuid.uuid4())
     data = { 
         "request_type": "user_verification",
         "agent": agent_identifier,
-        "verification_request_id": verification_request_id,
-        "mcp_scope": mcp_scope
+        "verification_request_id": verification_request_id
     }
     data.update(authorization_request)
     red.setex(nonce, QRCODE_LIFE, json.dumps(data))
@@ -223,7 +210,7 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
         "authentication_request_id": authentication_request_id
     }
     
-# endpoint
+# endpoint to display the verifier QR code
 def verification_email(url_id):
     red = current_app.config["REDIS"]
     try:
@@ -246,6 +233,7 @@ def verifier_request_uri(stream_id):
         "Cache-Control": "no-cache"
     }
     return Response(payload, headers=headers)
+
 
 def get_format(vp, type="vp"):
     if not vp:
@@ -405,13 +393,8 @@ async def verifier_response():
 
     # wallet data received for user verification
     if request_type == "user_verification":
-        wallet_data = {"scope": nonce_data["mcp_scope"]}
-        if nonce_data["mcp_scope"] == "wallet_identifier":
-            wallet_data["wallet_identifier"] = sub
-        elif nonce_data["mcp_scope"] == "raw":
-            wallet_data["raw"] = request.form 
-        else:
-            wallet_data.update(claims)   
+        wallet_data = {"scope": "profile"}
+        wallet_data.update(claims)   
         # Store user data in Redis
         red.setex(request_id + "_wallet_data", POLL_LIFE, json.dumps(wallet_data))
         # fallback

@@ -740,11 +740,6 @@ def init_app(app):
                 if role != "agent":
                     return {"jsonrpc":"2.0","id":req_id,
                                 "error":{"code":-32001,"message":"Unauthorized: unauthorized token "}}
-                scope = arguments.get("scope")
-                # For public test profiles, simplest rule: token must equal verifier_id
-                if scope not in {"over18","profile"}:
-                    return jsonify({"jsonrpc":"2.0","id":req_id,
-                                        "error":{"code":-32001,"message":"Unauthorized: scope missing or not supported"}})
                 out = verifier_tools.call_start_user_verification(arguments, identifier, config())
             
             elif name == "register_wallet_as_chat_agent":

@@ -95,6 +95,37 @@
       color: #a5b4fc;
       text-decoration: none;
     }
+
+    /* Responsive behavior:
+   - default (mobile): show button, hide QR
+   - desktop (>= 768px): show QR, hide button
+*/
+.mobile-only { display: block; }
+.desktop-only { display: none; }
+
+@media (min-width: 768px) {
+  .mobile-only { display: none; }
+  .desktop-only { display: block; }
+}
+
+.qr-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 10px;
+}
+
+.qr {
+  padding: 12px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+}
+
+.qr canvas, .qr img {
+  display: block;
+}
+
   </style>
 </head>
 <body>
@@ -102,10 +133,21 @@
     <h1>Open your wallet</h1>
     <div class="subtitle">Tap the button below to start your verification in your wallet app.</div>
 
-    <button id="openWallet" class="primary-btn">
-      Open in wallet
-    </button>
-    <div id="status" class="status"></div>
+    <!-- Mobile CTA -->
+    <div class="mobile-only">
+      <button id="openWallet" class="primary-btn">Open in wallet</button>
+      <div id="status" class="status"></div>
+    </div>
+
+    <!-- Desktop QR -->
+    <div class="desktop-only">
+      <div class="subtitle">Scan this QR code with your wallet app to start verification.</div>
+      <div class="qr-wrap">
+        <div id="qrcode" class="qr"></div>
+      </div>
+      <div class="status">If you can’t scan, copy the link below.</div>
+    </div>
+
 
     <div class="divider"></div>
 
@@ -121,40 +163,54 @@
       Powered by <a href="https://wallet4agent.com/" target="_blank" rel="noopener noreferrer">wallet4agent</a>
     </div>
   </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
 
- <script>
+<script>
   // Flask passes "uri" to this template: render_template("email_verification.html", uri=uri)
-  // Safely inject it as a JS string:
   const openidVcUri = {{ uri|tojson }};
 
   const statusEl = document.getElementById("status");
   const rawUriEl = document.getElementById("rawUri");
   const openBtn = document.getElementById("openWallet");
+  const qrEl = document.getElementById("qrcode");
 
   if (!openidVcUri) {
-    statusEl.textContent = "Missing verification link. Please return to your email and try again.";
+    if (statusEl) statusEl.textContent = "Missing verification link. Please return to your email and try again.";
   } else {
     rawUriEl.textContent = openidVcUri;
   }
 
-  openBtn.addEventListener("click", function () {
-    if (!openidVcUri) {
-      statusEl.textContent = "No verification link found.";
-      return;
-    }
+  // Mobile button behavior
+  if (openBtn) {
+    openBtn.addEventListener("click", function () {
+      if (!openidVcUri) {
+        statusEl.textContent = "No verification link found.";
+        return;
+      }
 
-    statusEl.textContent = "Trying to open your wallet…";
+      statusEl.textContent = "Trying to open your wallet…";
+      window.location.href = openidVcUri;
 
-    // Try to open the wallet app (this is triggered by a user tap, which is required on mobile)
-    window.location.href = openidVcUri;
+      setTimeout(function () {
+        statusEl.textContent =
+          "If your wallet did not open, please follow the instructions below or check that your wallet app is installed.";
+      }, 2500);
+    });
+  }
 
-    // After a short delay, show a gentle hint (in case nothing happened)
-    setTimeout(function () {
-      statusEl.textContent =
-        "If your wallet did not open, please follow the instructions below or check that your wallet app is installed.";
-    }, 2500);
-  });
+  function renderQrWithLib(uri) {
+    if (!qrEl) return;
+    qrEl.innerHTML = "";
+    // global QRCode from qrcodejs
+    new QRCode(qrEl, { text: uri, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  }
+
+  if (openidVcUri && qrEl) {
+    renderQrWithLib(openidVcUri);
+  }
 </script>
+
+
 
 </body>
 </html>

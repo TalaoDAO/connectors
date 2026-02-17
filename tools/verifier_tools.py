@@ -29,16 +29,6 @@ tools_agent: List[Dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "scope": {
-                    "type": "string",
-                    "description": (
-                        "What should be verified in the user's wallet. "
-                        "'profile' is first name, last name and birth date; "
-                        "'over18' is a proof that the user is older than 18."
-                    ),
-                    "enum": ["over18", "profile"],
-                    "default": "profile"
-                },
                 "user_email": {
                     "type": "string",
                     "description": (
@@ -48,7 +38,7 @@ tools_agent: List[Dict[str, Any]] = [
                     )
                 }
             },
-            "required": ["scope", "user_email"]
+            "required": ["user_email"]
         }
     },
     {
@@ -118,11 +108,10 @@ def call_start_user_verification(arguments: Dict[str, Any], agent_identifier, co
     mode = config["MODE"]
     manager = config["MANAGER"]
 
-    scope = arguments.get("scope")
     user_email = arguments.get("user_email")
 
     # Create OIDC4VP request & internal verification_request_id
-    data = verifier.user_verification(agent_identifier, scope, red, mode, manager)
+    data = verifier.user_verification(agent_identifier, red, mode, manager)
     if not data:
         return _ok_content(
             [{"type": "text", "text": "Server error while preparing verification."}],
@@ -148,7 +137,7 @@ def call_start_user_verification(arguments: Dict[str, Any], agent_identifier, co
 
     # Structured info (for the LLM / tools, not for user UI)
     flow: Dict[str, Any] = {
-        "scope": scope,
+        "scope": "profile",
         "user_email": user_email,
         "email_sent": success,
         "verification_request_id": verification_request_id,

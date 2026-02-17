@@ -1,6 +1,7 @@
 # tenant_kms.py
 
 import json
+import os
 import time
 import re
 import base64
@@ -12,10 +13,13 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
 from jwcrypto import jwk, jws 
 import logging
 from typing import Dict, Any, Tuple, Optional
 from kms_model import Key, db, encrypt_json, decrypt_json
+from flask import current_app
 
 REGION = "eu-west-3"   # Paris
 KEY_SPEC = "ECC_NIST_P256"  # or "ECC_SECG_P256K1" if you want Ethereum-style keys
@@ -34,7 +38,8 @@ def key_spec_from_verification_method(vm: Dict[str, Any]) -> str:
     elif crv == "secp256k1":
         return "ECC_SECG_P256K1"
     elif crv == "Ed25519":
-        return "ED25519"
+        raise ValueError("Ed25519 keys are local-only in this deployment (did:cheqd).")
+        #return "ED25519"
 
     vm_type = vm.get("type")
     if vm_type == "EcdsaSecp256k1VerificationKey2019":
@@ -256,30 +261,98 @@ class TenantKMSManager:
         return None
 
     # -------- core / legacy: tenant-level key (DID) --------
-
     def create_or_get_key_for_tenant(self, vm_id, description=None, key_spec: str = None):
-        if not vm_id.startswith("did:web:"):
-            if "#" not in vm_id:
-                vm_id = vm_id + "#key-1"
-            # test if it exist
-            key_exist = Key.query.filter(Key.key_id == vm_id).one_or_none()
+        """
+        Design rules:
+        - did:cheqd => always local DB + Ed25519 (EdDSA)
+        - did:web   => local DB uses ES256 (P-256 EC) OR prod uses AWS KMS ES256
+
+        Backend selection:
+        KEY_BACKEND = "local" | "kms" | "auto" (default: auto)
+
+        Returns:
+        - local: returns vm_id (verification method id) and stores JWK in DB
+        - kms:   returns KMS KeyId (uuid/alias)
+        - auto:  DB if exists; else KMS
+        """
+        # Normalize vm_id to always include fragment
+        if "#" not in vm_id:
+            vm_id = vm_id + "#key-1"
+
+        # did:cheqd is ALWAYS local (per your requirement)
+        if vm_id.startswith("did:cheqd:"):
+            backend = "local"
+        else:
+            backend = None
+            try:
+                backend = (current_app.config.get("KEY_BACKEND") or "").strip().lower()
+            except Exception:
+                backend = None
+            if not backend:
+                backend = (os.getenv("KEY_BACKEND", "auto") or "auto").strip().lower()
+            if backend not in ("local", "kms", "auto"):
+                logging.warning("Unknown KEY_BACKEND=%r; falling back to 'auto'", backend)
+                backend = "auto"
+
+        def _get_or_create_local_key(vm_id_to_use: str) -> str:
+            key_exist = Key.query.filter(Key.key_id == vm_id_to_use).one_or_none()
             if key_exist:
-                logging.info("Key exists")
-                return vm_id
-            # create a new key
-            ed_jwk = jwk.JWK.generate(kty="OKP", crv="Ed25519")
-            private_key = ed_jwk.export(private_key=True, as_dict=True)
-            private_key["kid"] = vm_id  # ed_jwk.thumbprint()
-            key_data = encrypt_json(private_key)
+                logging.info("Local key exists for %s", vm_id_to_use)
+                return vm_id_to_use
+
+            # did:cheqd => Ed25519
+            if vm_id_to_use.startswith("did:cheqd:"):
+                ed = jwk.JWK.generate(kty="OKP", crv="Ed25519")
+                priv = ed.export(private_key=True, as_dict=True)
+                priv["kid"] = vm_id_to_use
+
+            # did:web => ES256 (P-256)
+            elif vm_id_to_use.startswith("did:web:"):
+                priv_key = ec.generate_private_key(ec.SECP256R1())
+                nums = priv_key.private_numbers()
+                pub = nums.public_numbers
+
+                priv = {
+                    "kty": "EC",
+                    "crv": "P-256",
+                    "x": b64url(pub.x.to_bytes(32, "big")),
+                    "y": b64url(pub.y.to_bytes(32, "big")),
+                    "d": b64url(nums.private_value.to_bytes(32, "big")),
+                    "kid": vm_id_to_use,
+                }
+            else:
+                # If you ever have other DID methods, decide what you want here
+                raise ValueError(f"Unsupported DID method for local keys: {vm_id_to_use}")
+
+            key_data = encrypt_json(priv)
             new_key = Key(
-                key_id=vm_id,
-                key_data=key_data
+                key_id=vm_id_to_use,
+                key_data=key_data,
+                type="P-256"
             )
             db.session.add(new_key)
             db.session.commit()
-            return vm_id
-            
-        key_spec_to_use = key_spec or KEY_SPEC
+            logging.info("Created local key for %s (kty=%s crv=%s)", vm_id_to_use, priv.get("kty"), priv.get("crv"))
+            return vm_id_to_use
+
+        # Forced local
+        if backend == "local":
+            return _get_or_create_local_key(vm_id)
+
+        # Auto: prefer local if present
+        if backend == "auto":
+            key_exist = Key.query.filter(Key.key_id == vm_id).one_or_none()
+            if key_exist:
+                logging.info("AUTO backend: using existing local key for %s", vm_id)
+                return vm_id
+
+        # KMS path (only expected for did:web in your design)
+        if not vm_id.startswith("did:web:"):
+            # If KEY_BACKEND=kms but not did:web, you said cheqd is always local.
+            # So refuse early to avoid confusing KMS calls with non-web methods.
+            raise ValueError(f"KMS backend not allowed for {vm_id}. did:cheqd must be local.")
+
+        key_spec_to_use = key_spec or KEY_SPEC  # should be ECC_NIST_P256 in your prod setup
         alias_name = alias_for_tenant(vm_id, key_spec_to_use)
 
         existing_alias = self.alias_exists(alias_name)
@@ -296,10 +369,7 @@ class TenantKMSManager:
             admin_role_arn=KMS_ADMIN_ROLE_ARN
         )
 
-        logging.info(
-            "Creating KMS key for tenant/key %s with KeySpec=%s",
-            vm_id, key_spec_to_use
-        )
+        logging.info("Creating KMS key for %s with KeySpec=%s", vm_id, key_spec_to_use)
         resp = self.kms.create_key(
             Policy=json.dumps(initial_policy),
             KeySpec=key_spec_to_use,
@@ -329,16 +399,11 @@ class TenantKMSManager:
             existing_alias = self.alias_exists(alias_name)
             if existing_alias and existing_alias.get("TargetKeyId"):
                 return existing_alias["TargetKeyId"]
-            else:
-                raise
+            raise
 
-        # Tag the key; for VM ids this tag will be the VM id, for DID-level keys it is the DID
         safe_tag = sanitize_tag_value(vm_id)
         try:
-            self.kms.tag_resource(
-                KeyId=key_id,
-                Tags=[{"TagKey": "tenant_did", "TagValue": safe_tag}]
-            )
+            self.kms.tag_resource(KeyId=key_id, Tags=[{"TagKey": "tenant_did", "TagValue": safe_tag}])
         except Exception as e:
             logging.warning("Warning: failed tagging key: %s", str(e))
 
@@ -360,6 +425,8 @@ class TenantKMSManager:
         """
 
         vm_id = vm["id"]
+        if vm_id.startswith("did:cheqd"):
+            return
         key_spec = key_spec_from_verification_method(vm)
         alias_name = alias_for_tenant(vm_id, key_spec)
 
@@ -407,6 +474,8 @@ class TenantKMSManager:
           - vm["publicKeyJwk"]["crv"] or a known 'type' to infer KeySpec
         """
         vm_id = vm["id"]
+        if "#" not in vm_id:
+            vm_id = vm_id + "#key-1"
         if vm_id.startswith("did:cheqd"):
             return vm_id
         
@@ -416,22 +485,57 @@ class TenantKMSManager:
         return md["KeyMetadata"]["KeyId"]
 
     # -------- utilities: public key & signatures --------
+    def get_public_key_pem(self, key_id: str) -> str:
+        """
+        KMS-only: returns the public key PEM for a KMS key id / alias / ARN.
 
-    def get_public_key_pem(self, key_id):
+        If you pass a local DB key id (e.g., did:cheqd / did:web local), this will raise
+        a clear error instead of trying KMS and failing later.
+        """
+        key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
+        if key_in_db is not None:
+            raise ValueError(
+                f"get_public_key_pem() is KMS-only, but key_id={key_id} exists in local DB. "
+                f"Use get_public_key_jwk() for local keys (or implement local->PEM conversion)."
+            )
+
         resp = self.kms.get_public_key(KeyId=key_id)
-        der = resp["PublicKey"]
-        pubkey = load_der_public_key(der)
-        pem = pubkey.public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
-        return pem.decode(), pubkey
+        pub_key_der = resp["PublicKey"]
+        pub_key = serialization.load_der_public_key(pub_key_der)
+        return pub_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode("utf-8")
+
+        
 
     def get_public_key_jwk(self, key_id):
-        # check for local key
+        """
+        Returns (jwk_dict, kid, alg)
+
+        Local DB:
+        - OKP/Ed25519 => EdDSA
+        - EC/P-256    => ES256
+
+        KMS:
+        - expects EC keys => ES256/ES256K depending on KeySpec
+        """
         key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
         if key_in_db:
             key = decrypt_json(key_in_db.key_data)
-            key.pop("d")
-            return key, key["kid"], "EdDSA"
-            
+            key.pop("d", None)
+
+            kty = key.get("kty")
+            crv = key.get("crv")
+
+            if kty == "OKP" and crv == "Ed25519":
+                return key, key["kid"], "EdDSA"
+            if kty == "EC" and crv == "P-256":
+                return key, key["kid"], "ES256"
+
+            raise ValueError(f"Unsupported local JWK type: kty={kty} crv={crv}")
+
+        # KMS
         md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]
         key_spec = md["KeySpec"]
         alg, crv = _spec_to_alg_and_crv(key_spec)
@@ -444,107 +548,116 @@ class TenantKMSManager:
             raise ValueError("KMS public key is not EC")
 
         numbers = pubkey.public_numbers()
-        x_bytes = numbers.x.to_bytes(32, "big")
-        y_bytes = numbers.y.to_bytes(32, "big")
+        size = 32  # P-256 and secp256k1
+        x_bytes = numbers.x.to_bytes(size, "big")
+        y_bytes = numbers.y.to_bytes(size, "big")
 
-        jwk = {
-            "kty": "EC",
-            "crv": crv,
-            "x": b64url(x_bytes),
-            "y": b64url(y_bytes),
-        }
+        jwk_dict = {"kty": "EC", "crv": crv, "x": b64url(x_bytes), "y": b64url(y_bytes)}
 
         thumb_input = json.dumps(
-            {"crv": jwk["crv"], "kty": jwk["kty"], "x": jwk["x"], "y": jwk["y"]},
+            {"crv": jwk_dict["crv"], "kty": jwk_dict["kty"], "x": jwk_dict["x"], "y": jwk_dict["y"]},
             separators=(",", ":"), sort_keys=True
         ).encode("utf-8")
         kid = b64url(hashlib.sha256(thumb_input).digest())
 
-        return jwk, kid, alg
+        return jwk_dict, kid, alg
+
 
     def sign_message(self, key_id, message_bytes: bytes) -> Tuple[bytes, Tuple[int, int]]:
-        digest = hashlib.sha256(message_bytes).digest()
-        
-        if not key_id.startswith("did:web:"):
-            # --- Local Ed25519 path using jwcrypto ---
-            key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
-            if key_in_db is None:
-                raise ValueError(f"No local key found for key_id={key_id}")
+        """
+        Local DB:
+        - Ed25519: returns raw 64-byte signature, ("","")
+        - ES256:   returns DER signature, (r,s)
 
-            # decrypt_json should return the JWK (dict or JSON string)
+        KMS:
+        - ES256/ES256K: returns DER signature, (r,s)
+        """
+        key_in_db = Key.query.filter(Key.key_id == key_id).one_or_none()
+
+        if key_in_db is not None:
             jwk_data = decrypt_json(key_in_db.key_data)
-            jwk_json = json.dumps(jwk_data)
-            jwk_key = jwk.JWK.from_json(jwk_json)
+            kty = jwk_data.get("kty")
+            crv = jwk_data.get("crv")
 
-            # Export full JWK and pull out the private component "d"
-            full_jwk = json.loads(jwk_key.export(private_key=True))
-            priv_bytes = _b64url_decode(full_jwk["d"])
+            # ---- Local Ed25519 (did:cheqd) ----
+            if kty == "OKP" and crv == "Ed25519":
+                jwk_json = json.dumps(jwk_data) if not isinstance(jwk_data, str) else jwk_data
+                jwk_key = jwk.JWK.from_json(jwk_json)
+                full_jwk = json.loads(jwk_key.export(private_key=True))
+                priv_bytes = _b64url_decode(full_jwk["d"])
 
-            # Build an Ed25519 private key from the raw private key bytes
-            private_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
+                private_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
+                signature = private_key.sign(message_bytes)
+                return signature, ("", "")
 
-            # Ed25519 signs the *raw* message (no external hashing)
-            signature = private_key.sign(message_bytes)  # 64 bytes
+            # ---- Local ES256 (did:web local testing) ----
+            if kty == "EC" and crv == "P-256":
+                d = int.from_bytes(_b64url_decode(jwk_data["d"]), "big")
+                x = int.from_bytes(_b64url_decode(jwk_data["x"]), "big")
+                y = int.from_bytes(_b64url_decode(jwk_data["y"]), "big")
 
-            return signature, ("", "")
-    
+                private_numbers = ec.EllipticCurvePrivateNumbers(
+                    private_value=d,
+                    public_numbers=ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
+                )
+                private_key = private_numbers.private_key()
+
+                der_sig = private_key.sign(message_bytes, ec.ECDSA(hashes.SHA256()))
+                r, s = decode_dss_signature(der_sig)
+                return der_sig, (r, s)
+
+            raise ValueError(f"Unsupported local key type for signing: kty={kty} crv={crv}")
+
+        # ---- AWS KMS ES256/ES256K ----
+        digest = hashlib.sha256(message_bytes).digest()
         resp = self.kms.sign(
             KeyId=key_id,
             Message=digest,
             MessageType="DIGEST",
             SigningAlgorithm="ECDSA_SHA_256",
         )
-        signature = resp["Signature"]
-        r, s = decode_dss_signature(signature)
-        return signature, (r, s)
+        der_sig = resp["Signature"]
+        r, s = decode_dss_signature(der_sig)
+        return der_sig, (r, s)
 
     
     def sign_jwt_with_key(self, key_id, header: dict, payload: dict) -> str:
         """
         Sign a JWT with either:
-        - a local Ed25519 key stored in the DB (local=True, alg=EdDSA), or
-        - an EC key in AWS KMS (local=False, alg=ES256/ES256K).
-
+        - Local Ed25519 key stored in DB (EdDSA), or
+        - AWS KMS EC key (ES256 / ES256K).
         key_id:
-        - local=True  -> DID / verificationMethod.id used as Key.key_id
-        - local=False -> KMS key id or alias
+        - local: DID / verificationMethod.id used as Key.key_id
+        - kms:   KMS key id / alias / arn
         """
-        # --- Figure out alg & JWK (works for both local and KMS) ---
+        # Figure out alg & JWK (works for both local and KMS)
         jwk_dict, kid, alg_from_key = self.get_public_key_jwk(key_id)
 
         # Header defaults
-        if "alg" not in header:
-            header["alg"] = alg_from_key  # "EdDSA" for local Ed25519, ES256/ES256K for KMS
+        header = dict(header or {})
+        header.setdefault("alg", alg_from_key)
         header.setdefault("typ", "JWT")
-        # You can also set kid if you want:
-        # header.setdefault("kid", kid)
+        header.setdefault("kid", kid)
 
-        # --- Build signing input ---
+        # Build signing input
         encoded_header = b64url_json(header)
         encoded_payload = b64url_json(payload)
         signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
 
-        # --- Local Ed25519 path (EdDSA) ---
-        if not key_id.startswith("did:web:"):
-            # sign_message() will use the local Ed25519 key when local=True
-            signature, _ = self.sign_message(key_id, signing_input)
-
-            # For EdDSA/Ed25519, JOSE signature is just the 64 raw bytes, base64url-encoded
-            jose_sig = b64url(signature)
-
+        # Branch based on algorithm (robust; no key_id prefix assumptions)
+        if header["alg"] == "EdDSA":
+            sig, _ = self.sign_message(key_id, signing_input)
+            jose_sig = b64url(sig)  # 64 raw bytes for Ed25519
             return f"{encoded_header}.{encoded_payload}.{jose_sig}"
 
-        # --- KMS EC path (ES256 / ES256K) ---
-        # Still use describe_key for EC KMS keys if you need the KeySpec; not strictly required
-        md = self.kms.describe_key(KeyId=key_id)["KeyMetadata"]
-        key_spec = md["KeySpec"]
-        alg, _crv = _spec_to_alg_and_crv(key_spec)  # kept for sanity/logging; header["alg"] already set
-
+        # KMS ECDSA (ES256 / ES256K): convert DER -> JOSE (r||s)
         der_sig, (r, s) = self.sign_message(key_id, signing_input)
 
-        # Convert DER ECDSA sig to JOSE format: r || s (32 bytes each, big-endian)
-        r_bytes = r.to_bytes(32, "big")
-        s_bytes = s.to_bytes(32, "big")
+        # Determine byte length from alg (P-256 and secp256k1 are 32 bytes)
+        # If you later support P-384/P-521, adjust sizes accordingly.
+        size = 32
+        r_bytes = r.to_bytes(size, "big")
+        s_bytes = s.to_bytes(size, "big")
         jose_sig = b64url(r_bytes + s_bytes)
 
         return f"{encoded_header}.{encoded_payload}.{jose_sig}"
