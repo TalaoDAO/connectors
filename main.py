@@ -21,6 +21,7 @@ logging.basicConfig(level=logging.INFO)
 DEFAULT_API_LIFE = 5000
 DEFAULT_GRANT_LIFE = 5000
 DEFAULT_ACCEPTANCE_TOKEN_LIFE = 28 * 24 * 60 * 60
+VERSION = "0.5.1"
 
     
 def create_app() -> Flask:
@@ -57,7 +58,7 @@ def create_app() -> Flask:
     )
 
     # ---- App metadata / UI helpers ----
-    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.5.0")
+    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", VERSION)
     try:
         app.jinja_env.globals["Created"] = os.path.getctime(__file__)
     except Exception:
