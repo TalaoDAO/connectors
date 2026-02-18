@@ -122,7 +122,7 @@ def call_start_user_verification(arguments: Dict[str, Any], agent_identifier, co
     url_id = data.get("url_id")  # internal reference used by email page
     verification_request_id = data.get("verification_request_id")
     email_page_link = mode.server + "verification_email/" + url_id
-
+    
     # Send email
     success = message.messageHTML(
         subject="Your verification link",
@@ -342,16 +342,9 @@ def call_poll_user_verification(arguments: Dict[str, Any], agent_identifier, con
             "approve the request in the identity wallet."
         )
     elif status == "verified":
-        if scope == "over18":
-            text = "User age has been verified as over 18."
-        elif scope == "profile":
-            text = "The user identity profile has been verified from his wallet. User data received: " + json.dumps(claims)
-        elif scope == "wallet_identifier" and claims.get("wallet_identifier"):
-            text = f"The user wallet identifier has been verified: {claims.get('wallet_identifier')}."
-        else:
-            text = "User verification has completed successfully."
+        text = "The user identity profile has been verified from his identity wallet. User data received: " + json.dumps(claims)
     elif status == "denied":
-        text = "User verification was denied."
+        text = "User verification from his identity wallet failed."
     else:  # not_found or other
         text = "I could not retrieve user verification result. We may need to restart the process."
 

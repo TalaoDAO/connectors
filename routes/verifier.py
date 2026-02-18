@@ -43,12 +43,12 @@ def user_verification(agent_identifier, red, mode, manager):
     profile = wallet.ecosystem_profile
     logging.info("profile  %s", profile)
     request_uri_method = None 
-    if profile == "DIIP V4":
+    if profile == "DIIP V5":
         request_uri_method = "get"
         draft = 28
         presentation_format = "dcql_query"
         client_id = agent_identifier
-    elif profile == "ARF":
+    elif profile in ["ARF", "EUDIW"]:
         request_uri_method = "get"
         draft = 30
         presentation_format = "dcql_query"
@@ -394,7 +394,9 @@ async def verifier_response():
     # wallet data received for user verification
     if request_type == "user_verification":
         wallet_data = {"scope": "profile"}
-        wallet_data.update(claims)   
+        for c in ["given_name", "family_name", "birth_date"]:
+            if claims.get(c):
+                wallet_data.update({c: claims.get(c)})   
         # Store user data in Redis
         red.setex(request_id + "_wallet_data", POLL_LIFE, json.dumps(wallet_data))
         # fallback

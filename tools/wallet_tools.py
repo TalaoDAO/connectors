@@ -21,6 +21,12 @@ tools_guest = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "profile": {
+                    "type": "string",
+                    "description": "Identity ecosystem profile or regulation",
+                    "enum": ["DIIP V3", "EUDIW", "EBSI", "DIIP V5"],
+                    "default": "DIIP V3"
+                },
                 "account_type": {
                     "type": "string",
                     "description": "Human or Company as a the owner of the Agents",
@@ -642,6 +648,7 @@ def call_create_agent_identifier_and_wallet(arguments: Dict[str, Any], owner_ide
         agent_identifier=agent_did,
         wallet_identifier=wallet_identifier,
         did_document=json.dumps(did_document),
+        ecosystem_profile=owner_wallet.ecosystem_profile,
         url=wallet_url,
         notification_email=owner_wallet.notification_email,
     )
@@ -991,6 +998,7 @@ def call_create_agent_wallet(arguments: Dict[str, Any], owner_identifier: str, c
         agent_identifier=agent_identifier,
         wallet_identifier=wallet_identifier,
         url=wallet_url,
+        ecosystem_profile=owner_wallet.ecosystem_profile,
         notification_email=owner_wallet.notification_email,
         receive_credentials=arguments.get("receive_credentials")
     )
@@ -1109,6 +1117,7 @@ def call_create_account(arguments: Dict[str, Any], config: dict) -> Dict[str, An
         agent_identifier=did,
         notification_email=arguments.get("notification_email"),
         wallet_identifier=wallet_identifier,
+        ecosystem_profile=arguments.get("profile"),
         did_document=json.dumps(did_document),
         url=f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
     )

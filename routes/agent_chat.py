@@ -29,7 +29,7 @@ CONFIRMATION_PATTERNS = (
 MCP_SERVER_URL = "https://wallet4agent.com/mcp"
 
 # --------- PROFILES / DIDs / PATs ---------
-ALLOWED_PROFILES = {"demo", "demo2", "diipv4", "arf", "ewc"}
+ALLOWED_PROFILES = {"demo"}
 
 # Map profile -> DID
 AGENT_DIDS: Dict[str, str] = {
@@ -81,12 +81,12 @@ def init_app(app):
 
 
 def ecosystem(wallet_profile):
-    if wallet_profile in ["demo", "demo2", "cheqd"]:
+    if wallet_profile in ["demo", "cheqd"]:
         return "DIIP V3"
-    elif wallet_profile == "diipv4":
-        return "DIIP V4"
+    elif wallet_profile == "diipv5":
+        return "DIIP V5"
     else:
-        return "EUDIW-ARF"
+        return "EUDIW"
 
 
 def _normalize_profile(profile) -> str:
@@ -260,9 +260,9 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
 def register_agent_profile(profile: str, did: str, wallet_profile: str | None = None) -> None:
     """
     Enregistre dynamiquement un agent de chat :
-    - profile : identifiant court (demo, demo2, diipv4, arf, ewc, cheqd, etc.)
+    - profile : identifiant court (demo, cheqd, etc.)
     - did : DID complet (did:web:..., did:cheqd:..., etc.)
-    - wallet_profile : ex. 'DIIP V3', 'DIIP V4', 'EUDIW-ARF'
+    - wallet_profile : ex. 'DIIP V3', 'DIIP V5', 'EUDIW'
     """
     profile = profile.lower()
     ALLOWED_PROFILES.add(profile)

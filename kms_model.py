@@ -4,19 +4,37 @@ import os, base64, json
 from typing import Any, Dict, Optional, List
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from database import db
+import copy
 
 
 class Key(db.Model):
     __bind_key__ = "second"  # this model goes to the second database
     id = db.Column(db.Integer, primary_key=True)
-    key_id = db.Column(db.String(128))
+    key_id = db.Column(db.String(128), unique=True)
     key_data = db.Column(db.Text)
     type = db.Column(db.String(128), default="Ed25519")
     created_at = db.Column(db.DateTime, default=datetime.now)
 
 
-def seed_key(myenv):
+def seed_key():
+    try:
+        with open('keys.json') as f:
+            keys = json.load(f)
+        talao_key = copy.copy(keys.get("did:web:talao.co#key-2"))
+    except Exception:
+        print("key not available in keys.json")
+        return
+    talao_key.pop("d", None)
+    key_data = encrypt_json(talao_key)
     if not Key.query.first():
+        key_1 = Key(
+            key_id="did:web:talao.co:#key-2",
+            key_data=key_data,
+            type="P-256"
+        )
+        db.session.add(key_1)
+        db.session.commit()
+        print("Talao key has been added to local KMS")
         return
 
 

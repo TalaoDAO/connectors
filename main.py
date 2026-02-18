@@ -57,7 +57,7 @@ def create_app() -> Flask:
     )
 
     # ---- App metadata / UI helpers ----
-    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.4.1")
+    app.jinja_env.globals["Version"] = os.getenv("APP_VERSION", "0.5.0")
     try:
         app.jinja_env.globals["Created"] = os.path.getctime(__file__)
     except Exception:
@@ -117,10 +117,8 @@ def create_app() -> Flask:
         # NOTE: seeding in production can be dangerous; guard by env flag
         if os.getenv("SEED_DATA", "1") == "1":
             logging.info("Run seed DB")
+            seed_key()
             seed_wallet(mode, manager)
-            seed_key(myenv)
-         
-  
 
     # ---- Register routes / APIs ----
     verifier.init_app(app)    # your verifier API

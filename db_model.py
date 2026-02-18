@@ -29,7 +29,7 @@ class Wallet(db.Model):
     client_public_key = db.Column(db.Text)
     mcp_authentication = db.Column(db.String(256), default="Personal Access Token (PAT)")
     notification_email = db.Column(db.String(256))
-    ecosystem_profile = db.Column(db.String(64), default="ARF")
+    ecosystem_profile = db.Column(db.String(64), default="DIIP V3")
     url = db.Column(db.Text)
     linked_vp = db.Column(db.Text, default="{}")
     is_chat_agent = db.Column(db.Boolean, default=False)
@@ -62,8 +62,32 @@ class Attestation(db.Model):
 
 
 def seed_wallet(mode, manager):
-    talao = "did:web:talao.com"
+    talao = "did:web:talao.co"
     if not Wallet.query.first():
+        vm = "did:web:talao.io:#key-2"
+        key_id = 1
+        did = "did:web:talao.co"
+        wallet_identifier = str(uuid.uuid4())
+        url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
+        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="talao")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="talao", duration=90*24*60*60)
+        agentcard_url = mode.server + ".well-known/agent-card.json"
+        wallet_0 = Wallet(
+            admin_pat_jti=admin_pat_jti,  # 365 days
+            agent_pat_jti=agent_pat_jti,
+            owner=talao,
+            type="company",
+            agent_identifier=did,
+            wallet_identifier=wallet_identifier,
+            agentcard_url=agentcard_url,
+            ecosystem_profile="DIIP V3",
+            url=url,
+            notification_email="thierry.tevenet@talao.io",
+            status="active",
+            did_document=None
+        )
+        db.session.add(wallet_0)
+        
         vm = "did:web:wallet4agent.com:demo#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
@@ -80,6 +104,7 @@ def seed_wallet(mode, manager):
             agent_identifier=did,
             wallet_identifier=wallet_identifier,
             agentcard_url=agentcard_url,
+            ecosystem_profile="DIIP V3",
             url=url,
             notification_email="thierry@altme.io",
             status="active",
@@ -87,84 +112,19 @@ def seed_wallet(mode, manager):
         )
         db.session.add(wallet_1)
         
-        vm = "did:web:wallet4agent.com:demo2#key-1"
-        key_id = manager.create_or_get_key_for_tenant(vm)
-        jwk, kid, alg = manager.get_public_key_jwk(key_id)
-        did = "did:web:wallet4agent.com:demo2"
-        wallet_identifier = str(uuid.uuid4())
-        url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
-        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="demo2")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="demo2", duration=90*24*60*60)
-        wallet_2 = Wallet(
-            admin_pat_jti=admin_pat_jti,
-            agent_pat_jti=agent_pat_jti,
-            owner=talao,
-            agent_identifier=did,
-            wallet_identifier=wallet_identifier,
-            notification_email="thierry@altme.io",
-            status="active",
-            url=url,
-            did_document=create_did_document(did, jwk, wallet_identifier, talao, mode, None)
-        )
-        db.session.add(wallet_2)
-        
-        did = "did:web:wallet4agent.com:diipv4"
+        did = "did:web:wallet4agent.com:eudiw"
         vm = did + "#key-1"
         key_id = manager.create_or_get_key_for_tenant(vm)
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         wallet_identifier = str(uuid.uuid4())
         url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
-        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="diipv4")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="diipv4", duration=90*24*60*60)
-        wallet_3 = Wallet(
-            admin_pat_jti=admin_pat_jti,
-            agent_pat_jti=agent_pat_jti,
-            owner=talao,
-            ecosystem_profile="DIIP V4",
-            agent_identifier=did,
-            wallet_identifier=wallet_identifier,
-            notification_email="thierry@altme.io",
-            status="active",
-            url=url,
-            did_document=create_did_document(did, jwk, wallet_identifier, talao, mode, None)
-        )
-        db.session.add(wallet_3)
-        
-        did = "did:web:wallet4agent.com:ewc"
-        vm = did + "#key-1"
-        key_id = manager.create_or_get_key_for_tenant(vm)
-        jwk, kid, alg = manager.get_public_key_jwk(key_id)
-        wallet_identifier = str(uuid.uuid4())
-        url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
-        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="ewc")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="ewc", duration=90*24*60*60)
-        wallet_4 = Wallet(
-            admin_pat_jti=admin_pat_jti,
-            agent_pat_jti=agent_pat_jti,
-            owner=talao,
-            ecosystem_profile="EWC",
-            agent_identifier=did,
-            wallet_identifier=wallet_identifier,
-            notification_email="thierry@altme.io",
-            status="active",
-            url=url,
-            did_document=create_did_document(did, jwk, wallet_identifier, talao, mode, None)
-        )
-        db.session.add(wallet_4)
-        
-        did = "did:web:wallet4agent.com:arf"
-        vm = did + "#key-1"
-        key_id = manager.create_or_get_key_for_tenant(vm)
-        jwk, kid, alg = manager.get_public_key_jwk(key_id)
-        wallet_identifier = str(uuid.uuid4())
-        url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
-        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="arf")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="arf", duration=90*24*60*60)
+        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="eudiw")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="eudiw", duration=90*24*60*60)
         wallet_5 = Wallet(
             admin_pat_jti=admin_pat_jti,
             agent_pat_jti=agent_pat_jti,
             owner=talao,
-            ecosystem_profile="ARF",
+            ecosystem_profile="EUDIW",
             agent_identifier=did,
             wallet_identifier=wallet_identifier,
             notification_email="thierry@altme.io",
@@ -178,14 +138,14 @@ def seed_wallet(mode, manager):
         jwk, kid, alg = manager.get_public_key_jwk(key_id)
         wallet_identifier = "local"
         url = f"{mode.server.rstrip('/')}/wallets/{wallet_identifier}"
-        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="arf")
-        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="arf", duration=90*24*60*60)
+        admin_pat, admin_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="local")
+        agent_pat, agent_pat_jti = oidc4vc.generate_access_token(did, "admin", "pat", jti="local", duration=90*24*60*60)
         wallet_6 = Wallet(
             admin_pat_jti=admin_pat_jti,
             owner=talao,
             agent_pat_jti=agent_pat_jti,
             agentcard_url=mode.server + "local/.well-known/agent-card.json",
-            ecosystem_profile="ARF",
+            ecosystem_profile="DIIP V3",
             agent_identifier="local",
             wallet_identifier=wallet_identifier,
             notification_email="thierry@altme.io",
