@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Open your wallet</title>
+  <title>Wallet verification</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <style>
     :root {
@@ -21,7 +21,7 @@
     }
     .card {
       width: 100%;
-      max-width: 480px;
+      max-width: 520px;
       margin: 24px;
       padding: 24px 20px;
       border-radius: 20px;
@@ -29,15 +29,26 @@
       box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
       border: 1px solid rgba(148, 163, 184, 0.4);
     }
-    h1 {
-      font-size: 1.3rem;
-      margin: 0 0 6px;
-    }
+    h1 { font-size: 1.3rem; margin: 0 0 6px; }
     .subtitle {
       font-size: 0.9rem;
       color: #cbd5f5;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
+      line-height: 1.35;
     }
+
+    /* Desktop QR / Mobile button responsiveness */
+    .desktop-only { display: none !important; }
+    .mobile-only { display: block !important; }
+
+    /* Switch to desktop layout only on wider screens */
+    @media (min-width: 900px) {
+      .desktop-only { display: block !important; }
+      .mobile-only { display: none !important; }
+    }
+.mobile-only { display: none; }
+    }
+
     .primary-btn {
       width: 100%;
       font-size: 1rem;
@@ -45,20 +56,60 @@
       border-radius: 999px;
       padding: 14px 16px;
       border: none;
-      margin: 8px 0 4px;
+      margin: 10px 0 4px;
       background: linear-gradient(135deg, #4f46e5, #22c55e);
       color: #f9fafb;
       cursor: pointer;
       touch-action: manipulation;
     }
-    .primary-btn:active {
+
+    /* Ensure mobile wallet button keeps its style */
+    .mobile-only .primary-btn {
+      display: block !important;
+      width: 100% !important;
+      background: linear-gradient(135deg, #4f46e5, #22c55e) !important;
+      color: #ffffff !important;
+      font-weight: 600 !important;
+      border-radius: 999px !important;
+      padding: 14px 16px !important;
+      border: none !important;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.35) !important;
+    }
+
+    .mobile-only .primary-btn:hover {
+      filter: brightness(1.05);
+    }
+
+    .mobile-only .primary-btn:active {
       transform: scale(0.98);
     }
-    .status {
-      margin-top: 4px;
-      font-size: 0.85rem;
-      color: #9ca3af;
+
+    .primary-btn:active { transform: scale(0.98); }
+    .primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .status { margin-top: 6px; font-size: 0.85rem; color: #9ca3af; }
+
+    /* QR block */
+    .qr-wrap {
+      display: grid;
+      place-items: center;
+      padding: 14px 0 6px;
     }
+    .qr-box {
+      border-radius: 16px;
+      padding: 14px;
+      background: #ffffff;
+      color: #111827;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
+    }
+    .qr-hint {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: #cbd5f5;
+      text-align: center;
+    }
+
     .divider {
       margin: 18px 0 12px;
       border-top: 1px solid rgba(148, 163, 184, 0.35);
@@ -91,126 +142,231 @@
       color: #6b7280;
       text-align: right;
     }
-    .brand a {
-      color: #a5b4fc;
-      text-decoration: none;
+    .brand a { color: #a5b4fc; text-decoration: none; }
+
+    /* Success / error panel */
+    .result {
+      display: none;
+      margin-top: 14px;
+      padding: 14px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(15, 23, 42, 0.8);
     }
+    .result-row { display: flex; gap: 12px; align-items: center; }
+    .icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+    .icon svg { width: 30px; height: 30px; }
+    .result-title { font-weight: 700; margin: 0; font-size: 1rem; }
+    .result-text {
+      margin: 2px 0 0;
+      font-size: 0.9rem;
+      color: #cbd5f5;
+      line-height: 1.35;
+    }
+    .ok .icon { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.45); }
+    .ok .result-title { color: #86efac; }
+    .bad .icon { background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.45); }
+    .bad .result-title { color: #fca5a5; }
 
-    /* Responsive behavior:
-   - default (mobile): show button, hide QR
-   - desktop (>= 768px): show QR, hide button
-*/
-.mobile-only { display: block; }
-.desktop-only { display: none; }
-
-@media (min-width: 768px) {
-  .mobile-only { display: none; }
-  .desktop-only { display: block; }
-}
-
-.qr-wrap {
-  display: flex;
-  justify-content: center;
-  margin: 14px 0 10px;
-}
-
-.qr {
-  padding: 12px;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.25);
-}
-
-.qr canvas, .qr img {
-  display: block;
-}
-
+    /* When finalized, hide the “how to” section (QR + button + fallback) */
+    .hide-when-done { display: block; }
+    .done .hide-when-done { display: none; }
   </style>
 </head>
 <body>
-  <div class="card">
+  <div class="card" id="card">
     <h1>Open your wallet</h1>
-    <div class="subtitle">Tap the button below to start your verification in your wallet app.</div>
-
-    <!-- Mobile CTA -->
-    <div class="mobile-only">
-      <button id="openWallet" class="primary-btn">Open in wallet</button>
-      <div id="status" class="status"></div>
+    <div class="subtitle">
+      On desktop, scan the QR code with your wallet. On mobile, tap “Open in wallet”.
+      This page will automatically show a success screen once your wallet sends the response.
     </div>
 
-    <!-- Desktop QR -->
-    <div class="desktop-only">
-      <div class="subtitle">Scan this QR code with your wallet app to start verification.</div>
-      <div class="qr-wrap">
-        <div id="qrcode" class="qr"></div>
+    <!-- Result panel (hidden until final status) -->
+    <div id="result" class="result">
+      <div class="result-row">
+        <div id="resultIcon" class="icon" aria-hidden="true"></div>
+        <div>
+          <p id="resultTitle" class="result-title"></p>
+          <p id="resultText" class="result-text"></p>
+        </div>
       </div>
-      <div class="status">If you can’t scan, copy the link below.</div>
     </div>
 
+    <div class="hide-when-done">
+      <!-- Desktop QR -->
+      <div class="qr-wrap desktop-only" aria-label="Verification QR code">
+        <div class="qr-box">
+          <div id="qrcode"></div>
+        </div>
+        <div class="qr-hint">Scan with your wallet app</div>
+      </div>
 
-    <div class="divider"></div>
+      <!-- Mobile button -->
+      <div class="mobile-only">
+        <button id="openWallet" class="primary-btn">Open in wallet</button>
+        <div id="status" class="status"></div>
+      </div>
 
-    <div class="fallback-title">If nothing happens:</div>
-    <ol>
-      <li>Make sure your wallet app is installed on this device.</li>
-      <li>Open your wallet and look for “Scan QR” or “Open link”.</li>
-      <li>Copy and paste the link below into your wallet if it supports it.</li>
-    </ol>
-    <code id="rawUri"></code>
+      <div class="divider"></div>
 
-    <div class="brand">
-      Powered by <a href="https://wallet4agent.com/" target="_blank" rel="noopener noreferrer">wallet4agent</a>
+      <div class="fallback-title">If nothing happens:</div>
+      <ol>
+        <li>Make sure your wallet app is installed on this device.</li>
+        <li>Open your wallet and look for “Open link”.</li>
+        <li>Copy and paste the link below into your wallet if it supports it.</li>
+      </ol>
+      <code id="rawUri"></code>
+
+      <div class="brand">
+        Powered by <a href="https://wallet4agent.com/" target="_blank" rel="noopener noreferrer">wallet4agent</a>
+      </div>
     </div>
   </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
+
+  <!-- QR generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
+
 
 <script>
-  // Flask passes "uri" to this template: render_template("email_verification.html", uri=uri)
   const openidVcUri = {{ uri|tojson }};
+  const requestId = {{ request_id|default(None)|tojson }};
 
-  const statusEl = document.getElementById("status");
+  const cardEl = document.getElementById("card");
   const rawUriEl = document.getElementById("rawUri");
+
+  // Mobile-only elements (may not exist on desktop)
+  const statusEl = document.getElementById("status");
   const openBtn = document.getElementById("openWallet");
+
+  // Desktop-only QR container
   const qrEl = document.getElementById("qrcode");
+
+  const resultEl = document.getElementById("result");
+  const resultIconEl = document.getElementById("resultIcon");
+  const resultTitleEl = document.getElementById("resultTitle");
+  const resultTextEl = document.getElementById("resultText");
+
+  function iconCheck() {
+    return `
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M20 6L9 17l-5-5" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+  }
+
+  function iconCross() {
+    return `
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M18 6L6 18M6 6l12 12" stroke="#ef4444" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+  }
+
+  function showFinal(ok, title, text) {
+    // idempotent: once we show a final state, never overwrite it
+    if (cardEl.classList.contains("done")) return;
+
+    cardEl.classList.add("done");
+    resultEl.style.display = "block";
+    resultEl.classList.toggle("ok", !!ok);
+    resultEl.classList.toggle("bad", !ok);
+
+    resultIconEl.innerHTML = ok ? iconCheck() : iconCross();
+    resultTitleEl.textContent = title;
+    resultTextEl.textContent = text;
+  }
 
   if (!openidVcUri) {
     if (statusEl) statusEl.textContent = "Missing verification link. Please return to your email and try again.";
   } else {
-    rawUriEl.textContent = openidVcUri;
+    if (rawUriEl) rawUriEl.textContent = openidVcUri;
+    // Render QR on desktop (element exists but hidden on mobile via CSS)
+    // Using qrcodejs (https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js)
+    // which exposes `new QRCode(element, options)` (no `toCanvas()` API).
+    if (qrEl && window.QRCode) {
+      qrEl.innerHTML = "";
+      new QRCode(qrEl, {
+        text: String(openidVcUri).trim(),
+        width: 320,
+        height: 320,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.L
+      });
+    } else if (qrEl) {
+      // If the CDN is blocked, at least show the link clearly
+      qrEl.innerHTML = "<div style='color:#cbd5f5;font-size:0.85rem;text-align:center'>QR library not loaded. Use the link below.</div>";
+    }
   }
-
-  // Mobile button behavior
+  // Mobile: open wallet deep link
   if (openBtn) {
     openBtn.addEventListener("click", function () {
       if (!openidVcUri) {
-        statusEl.textContent = "No verification link found.";
+        if (statusEl) statusEl.textContent = "No verification link found.";
         return;
       }
-
-      statusEl.textContent = "Trying to open your wallet…";
+      if (statusEl) statusEl.textContent = "Trying to open your wallet…";
       window.location.href = openidVcUri;
 
       setTimeout(function () {
-        statusEl.textContent =
-          "If your wallet did not open, please follow the instructions below or check that your wallet app is installed.";
+        if (!cardEl.classList.contains("done") && statusEl) {
+          statusEl.textContent =
+            "If your wallet did not open, follow the instructions below or check that your wallet app is installed.";
+        }
       }, 2500);
     });
   }
 
-  function renderQrWithLib(uri) {
-    if (!qrEl) return;
-    qrEl.innerHTML = "";
-    // global QRCode from qrcodejs
-    new QRCode(qrEl, { text: uri, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  // --- Polling: show success when verifier receives wallet response ---
+  let pollTimer = null;
+  let finalized = false;
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
   }
 
-  if (openidVcUri && qrEl) {
-    renderQrWithLib(openidVcUri);
+  async function pollOnce() {
+    if (!requestId || finalized) return;
+    try {
+      const res = await fetch(`/verifier/pull/${encodeURIComponent(requestId)}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (!data || !data.status) return;
+      if (data.status === "pending") return;
+
+      finalized = true;
+      stopPolling();
+
+      if (data.status === "verified") {
+        showFinal(true, "Verification successful", "Your wallet response was received. You can close this page.");
+      } else if (data.status === "denied") {
+        showFinal(false, "Verification denied", "The wallet denied the request. Please restart from the email link.");
+      } else if (data.status === "not_found") {
+        showFinal(false, "Session expired", "This verification session is no longer available. Please restart from the email link.");
+      }
+    } catch (e) {
+      // ignore transient errors
+    }
+  }
+
+  if (requestId) {
+    pollTimer = setInterval(pollOnce, 1000);
+    pollOnce();
   }
 </script>
-
-
-
 </body>
 </html>

@@ -32,6 +32,9 @@ def init_app(app):
 
     # to manage the verification through a link sent
     app.add_url_rule('/verification_email/<url_id>',  view_func=verification_email, methods=['GET'])
+
+    # polling endpoint for email verification / web pages
+    app.add_url_rule('/verifier/pull/<id>', view_func=verifier_pull, methods=['GET'])
     return
 
 
@@ -132,7 +135,7 @@ def user_verification(agent_identifier, red, mode, manager):
 
     url = 'openid-vc://?' + urlencode(authorization_request_for_qrcode)
     url_id = str(uuid.uuid4())
-    red.setex(url_id, 1000, url)
+    red.setex(url_id, 1000, json.dumps({"uri": url, "request_id": verification_request_id}))
     
     return {
         "url": url,
@@ -214,11 +217,24 @@ def agent_authentication(target_agent, agent_identifier, red, mode, manager):
 def verification_email(url_id):
     red = current_app.config["REDIS"]
     try:
-        uri = red.get(url_id).decode()
+        raw = red.get(url_id)
+        if not raw:
+            raise Exception('missing')
+        raw = raw.decode()
     except Exception:
         return render_template("wallet/session_expired.html")
-    #red.delete(url_id)
-    return render_template("wallet/email_verification.html", uri=uri)
+
+    # Backward compatible: value may be plain uri or JSON {uri, request_id}
+    uri = None
+    request_id = None
+    try:
+        obj = json.loads(raw)
+        uri = obj.get("uri") or obj.get("url")
+        request_id = obj.get("request_id") or obj.get("verification_request_id")
+    except Exception:
+        uri = raw
+
+    return render_template("wallet/email_verification.html", uri=uri, request_id=request_id)
 
 
 def verifier_request_uri(stream_id):
@@ -233,6 +249,13 @@ def verifier_request_uri(stream_id):
         "Cache-Control": "no-cache"
     }
     return Response(payload, headers=headers)
+
+
+
+# polling endpoint
+def verifier_pull(id):
+    red = current_app.config["REDIS"]
+    return jsonify(wallet_pull_status(id, red))
 
 
 def get_format(vp, type="vp"):
@@ -431,7 +454,6 @@ def wallet_pull_status(id, red):
     if status == "pending":
         return {"status": status}
     elif status == "denied":
-        red.delete(id + "_status")
         return {"status": status}
 
     # verified -> try to include wallet_data if present
@@ -447,9 +469,5 @@ def wallet_pull_status(id, red):
     }
     if wallet_data is not None:
         response.update(wallet_data)
-    
-    # delete redis storage
-    if status == "verified":
-        red.delete(id + "_status")
-        red.delete(id + "_wallet_data")
+    # Keep data until TTL expiry (setex) so polling is stable and idempotent
     return response

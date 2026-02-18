@@ -32,7 +32,25 @@
       flex-direction: column;
     }
 
-    header {
+    
+    /* Layout wrapper (same footer alignment as home.html) */
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 1.5rem 2rem 4rem;
+      width: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    @media (min-width: 1100px) {
+      .page {
+        padding-inline: 0;
+      }
+    }
+header {
       position: sticky;
       top: 0;
       z-index: 40;
@@ -375,11 +393,79 @@
       opacity: 0.5;
       cursor: default;
     }
-  </style>
+  
+
+    /* Footer styles (from home.html) */
+    footer{
+          border-top: 1px solid rgba(30, 64, 175, 0.65);
+          margin-top: auto;
+          background: radial-gradient(circle at 50% 0%, rgba(15, 23, 42, 0.97), #020617 55%, #000 100%);
+        }
+
+    footer .footer-inner{
+          max-width: 1120px;
+          margin: 0 auto;
+          padding: 1.25rem 1.5rem 1.75rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1.25rem;
+          font-size: 0.8rem;
+          color: rgba(148, 163, 184, 1);
+        }
+
+    @media (min-width: 1100px){
+          footer .footer-inner {
+            padding-inline: 0;
+          }
+        }
+
+    footer a{
+          color: inherit;
+          text-decoration: none;
+          border-bottom: 1px dashed rgba(148, 163, 184, 0.6);
+          padding-bottom: 1px;
+        }
+
+    footer a:hover{
+          color: #e5e7eb;
+          border-bottom-style: solid;
+        }
+
+    footer .footer-links{
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.75rem 1.5rem;
+          align-items: center;
+        }
+
+    footer .footer-meta{
+          opacity: 0.9;
+        }
+
+    @media (max-width: 720px){
+          header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+          }
+    
+          .nav {
+            align-self: stretch;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
+    
+          footer .footer-inner {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+        }
+</style>
 </head>
 <body>
-
-  <header>
+  <div class="page">
+<header>
     <div class="inner">
       <div class="logo">
         <a href="/">WALLET4AGENT.COM</a>
@@ -392,7 +478,7 @@
 
   <main>
     <div class="chat-container">
-      <div class="chat-title">AI Agent with DID and Wallet</div>
+      <div class="chat-title">AI Agent with Identity Wallet</div>
  
 <div id="chat-messages" class="chat-messages">
   <div class="chat-message assistant">
@@ -403,7 +489,7 @@
             <div class="intro-mark">W</div>
             <div style="min-width:0">
               <p class="intro-title">Wallet4Agent Demo — <strong>{{profile_name}}</strong></p>
-              <div class="intro-sub">AI agent identity (DID) + wallet, connected through MCP</div>
+              <div class="intro-sub">AI agent identity + wallet, connected through MCP</div>
             </div>
           </div>
           <div class="intro-chips" aria-hidden="true">
@@ -418,11 +504,11 @@
         </p>
 
         <div class="intro-grid">
-          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Identity</strong> — show my DID & wallet configuration</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Identity</strong> — show my identifier & wallet configuration</div></div>
           <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Credentials</strong> — list & present verifiable credentials</div></div>
           <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Publishing</strong> — expose selected claims as Linked VPs</div></div>
           <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Trust</strong> — authenticate / verify other AI agents</div></div>
-          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Signing</strong> — sign messages and JSON payloads with DID keys</div></div>
+          <div class="intro-item"><div class="i">✓</div><div class="t"><strong>Signing</strong> — sign messages and JSON payloads with identity keys</div></div>
           <div class="intro-item"><div class="i">✓</div><div class="t"><strong>User verification</strong> — verify age/profile/proofs by email</div></div>
         </div>
 
@@ -446,6 +532,7 @@
   </main>
 
   {% include "footer.html" %}
+  </div>
 <script>
   const AGENT_PROFILE = "{{ profile }}";
 </script>
