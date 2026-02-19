@@ -48,10 +48,15 @@ def user_verification(agent_identifier, red, mode, manager):
     request_uri_method = None 
     if profile == "DIIP V5":
         request_uri_method = "get"
-        draft = 28
+        draft = 30
         presentation_format = "dcql_query"
         client_id = agent_identifier
-    elif profile in ["ARF", "EUDIW"]:
+    elif profile == "DIIP V4":
+        request_uri_method = "get"
+        draft = 28
+        presentation_format = "presentation_exchange"
+        client_id = agent_identifier
+    elif profile in ["ARF", "EUDIW", "APTITUDE"]:
         request_uri_method = "get"
         draft = 30
         presentation_format = "dcql_query"

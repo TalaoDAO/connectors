@@ -33,6 +33,14 @@ def seed_key():
             type="P-256"
         )
         db.session.add(key_1)
+        
+        key_2 = Key(
+            key_id="did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb#key-1",
+            key_data="zy0vUSgs0FBmc4cH7hVgo1d/WVVL0N5unfnT35QpRTPMAQBS3nl+t6zgQU0ZTe05HwuPd56GiwM0Bzgfqgv24wzbPVP2aybGOmXtQS3/rfkB8gq2qwxOno62mGYl3Yt40YHkHkOaOl2P/dsTMFQQt7c8o9vw2ZnsM08VHW5rTzh9dvDEoisJEMZvDsEs0bMsFDsDzh3CiA7QM6zEUbAlclr9iGE3TEHGjW590QSZUPCER/KFClfOVw4KY3g6Osw8Gni2KtCharCO8TjvzO5WhbZEsXTcRoo2jSk0OkXkCGtavA==",
+            type="P-256"
+        )
+        db.session.add(key_2)
+        
         db.session.commit()
         print("Talao key has been added to local KMS")
         return

@@ -153,6 +153,19 @@ def seed_wallet(mode, manager):
             url=url,
         )
         db.session.add(wallet_6)
+        wallet_7 = Wallet(
+            admin_pat_jti="",
+            owner=talao,
+            agent_pat_jti="0d8f604bada25488b25f274f6dd83367",
+            ecosystem_profile="DIIP V3",
+            agent_identifier="did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb",
+            wallet_identifier="8125ea05-152b-4524-9b51-1508b8053beb",
+            notification_email="thierry@altme.io",
+            status="active",
+            url="https://wallet4agent.com/wallets/8125ea05-152b-4524-9b51-1508b8053beb",
+            did_document="""{"id": "did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb", "controller": ["did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb"], "verificationMethod": [{"id": "did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb#key-1", "type": "JsonWebKey2020", "controller": "did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb", "publicKeyJwk": {"kty": "OKP", "crv": "Ed25519", "x": "Cz3oGIp8FtItoaFGFhNaF1SnAluhmgFrHkC1_EYz6zw", "kid": "did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb#key-1"}}], "service": [{"id": "did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb#oidc4vc-wallet", "type": "OIDC4VCWalletService", "serviceEndpoint": "https://wallet4agent.com/wallets/8125ea05-152b-4524-9b51-1508b8053beb"}], "assertionMethod": ["did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb#key-1"], "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/jws-2020/v1"], "authentication": ["did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb#key-1"]}"""
+        )
+        db.session.add(wallet_7)
         
         db.session.commit()
 

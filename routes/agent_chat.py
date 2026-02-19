@@ -33,7 +33,7 @@ ALLOWED_PROFILES = {"demo"}
 
 # Map profile -> DID
 AGENT_DIDS: Dict[str, str] = {
-    profile: f"did:web:wallet4agent.com:{profile}" for profile in ALLOWED_PROFILES
+    profile: "did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb" for profile in ALLOWED_PROFILES
 }
 
 MCP_AGENT_PATS: Dict[str, str] = {}
@@ -248,6 +248,55 @@ def _build_system_message(agent_did: str, ecosystem) -> Dict[str, str]:
         "- did:web provides you with a stable, domain-anchored, easily updateable identity suited for service agents, "
         "web integrations, organizational identities, and fast deployments where DNS-based trust is acceptable.\n\n"
     )
+    
+    did_cheqd_context = (
+        "CHEQD DID DESCRIPTION:\n"
+        "- As an AI Agent you use a did:cheqd Decentralized Identifier.\n"
+        "- did:cheqd is a blockchain-anchored DID method designed specifically for Verifiable Credentials, decentralized identity, and trusted data ecosystems.\n"
+        "- It provides strong cryptographic trust guarantees through decentralized ledger anchoring while optimizing for real-world credential use cases.\n"
+        "- did:cheqd supports decentralized key management, DID document resolution, and secure service endpoint discovery.\n"
+        "\n"
+        "KEY CAPABILITIES:\n"
+        "- Publish and resolve DID Documents anchored on the cheqd network (mainnet or testnet).\n"
+        "- Register verification methods including authentication keys, assertion keys, and key agreement keys.\n"
+        "- Define service endpoints for credential issuance, verification, messaging, and agent interaction.\n"
+        "- Support Verifiable Credential issuance, presentation, verification, and lifecycle management.\n"
+        "- Enable cryptographic signing, verification, and secure agent-to-agent communication.\n"
+        "\n"
+        "TRUST MODEL:\n"
+        "- did:cheqd is anchored on a decentralized public permissionless blockchain operated by independent validators.\n"
+        "- DID Documents are tamper-evident and cryptographically verifiable.\n"
+        "- Trust does not depend on a centralized authority, DNS provider, or hosting service.\n"
+        "- Ownership and control of the DID is proven through cryptographic keys held in your wallet.\n"
+        "- Updates to the DID Document require authorized signatures from the DID controller.\n"
+        "\n"
+        "PRIVACY & CREDENTIAL ECOSYSTEM:\n"
+        "- did:cheqd is optimized for privacy-preserving credential ecosystems.\n"
+        "- It supports off-chain storage of Verifiable Credentials while anchoring trust on-chain.\n"
+        "- Credential exchanges occur peer-to-peer between wallets, agents, and verifiers.\n"
+        "- The blockchain stores only identifiers, metadata, and proofs—not personal data.\n"
+        "- This ensures compliance with privacy-by-design principles and data protection regulations.\n"
+        "\n"
+        "USE CASES:\n"
+        "- Trusted identity for AI agents operating autonomously across organizations and ecosystems.\n"
+        "- Issuance and verification of Verifiable Credentials and attestations.\n"
+        "- Cross-organization agent authentication and trust establishment.\n"
+        "- On-Behalf-Of delegation where agents act for humans or companies.\n"
+        "- Machine-to-machine trust in decentralized systems.\n"
+        "\n"
+        "TECHNICAL NOTES:\n"
+        "- did:cheqd identifiers follow the format: did:cheqd:<network>:<unique-identifier>\n"
+        "- Example: did:cheqd:testnet:1849a6f2-0314-4440-90cb-4700cd8fe0cb\n"
+        "- DID resolution retrieves a DID Document containing keys, verification methods, and service endpoints.\n"
+        "- DID Documents can be updated through signed transactions or registrar operations.\n"
+        "- did:cheqd integrates with SSI frameworks, Universal Resolver, and credential exchange protocols.\n"
+        "\n"
+        "SUMMARY:\n"
+        "- did:cheqd provides you with a decentralized, blockchain-anchored, cryptographically verifiable identity.\n"
+        "- It enables trusted credential exchange, secure agent authentication, and interoperability across decentralized identity ecosystems.\n"
+        "- It is optimized for Verifiable Credentials, privacy-preserving identity, and autonomous agent trust.\n\n"
+    )
+
 
     if agent_did.startswith("did:cheqd"):
         content += did_cheqd_context
@@ -389,13 +438,10 @@ def agent_page_profile(profile):
     
     return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
-
 def agent_page():
-    """
-    Render the web chat UI for the default 'demo' Agent profile.
-    Endpoint: /agent
-    """
-    return render_template("agent_chat.html", profile="demo", profile_name="did:web:wallet4agent.com:demo")
+    normalized = _normalize_profile("demo")
+    profile_name = AGENT_DIDS[normalized]
+    return render_template("agent_chat.html", profile=normalized, profile_name=profile_name)
 
 
 def chat():
